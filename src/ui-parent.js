@@ -112,15 +112,15 @@ Views.settings = function () {
   }
   // تصدير واستيراد
   const fileIn = el('input', { type: 'file', accept: '.json' });
-  fileIn.addEventListener('change', async () => { const f = fileIn.files[0]; if (!f) return; try { const j = JSON.parse(await f.text()); const list = j.events || j; const n = Store.importEvents(list); UI.toast(`أُضيف ${n} سجلاً من ${list.length}`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } });
+  fileIn.addEventListener('change', async () => { const f = fileIn.files[0]; if (!f) return; try { const j = JSON.parse(await f.text()); const list = j.events || j; const n = Store.importEvents(list); UI.savedToast(`أُضيف ${n} سجلاً من ${list.length} وحُفظ`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } });
   wrap.append(el('div', { class: 'card' }, el('h2', null, 'تبادل البيانات بالملفات'), el('p', { class: 'small muted' }, 'صدّري ملف الأحداث وأرسليه؛ الاستيراد يضيف ما ليس موجوداً ولا يكرر.'), el('div', { class: 'btns' }, el('button', { onclick: () => { const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), by: App.role.id, events: Store.events }, null, 0)], { type: 'application/json' }); const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-${todayKey()}-${App.role.id}.json` }); document.body.append(a); a.click(); a.remove(); } }, `تصدير (${Store.events.length} سجل)`), fileIn)));
   // محاكاة الوقت
   if (App.role.id !== 'asst') {
     const off = el('input', { type: 'datetime-local' });
     if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
   }
-  if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', () => { Store.reset(); Store.settings.active = null; Store.settings.sbCursor = null; Store.settings.syncRejected = []; Store.saveSettings(); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
-  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, 'لوحة المعلمة · الإصدار 0.10.1 · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً'));
+  if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.settings.sbCursor = null; Store.settings.syncRejected = []; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
+  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, 'لوحة المعلمة · الإصدار 0.11 · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً'));
   return wrap;
 };
 

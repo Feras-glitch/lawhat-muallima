@@ -119,7 +119,7 @@ function endSession(s, note) {
   } }, 'تسجيل')]);
 }
 /* تسجيل الإنهاء وبطاقة التسليم بمعرّفات ثابتة: إعادة المحاولة بعد فشل الحفظ لا تكرر ولا تفقد */
-function commitEnd(s, a, status, rem, reason, note) {
+async function commitEnd(s, a, status, rem, reason, note) {
   const round = a.round || 1;
   try {
     for (const c of childrenOf(s)) {
@@ -132,8 +132,10 @@ function commitEnd(s, a, status, rem, reason, note) {
         else { const upId = `hu_${a.sid}_${c}_${round}`; if (!Store.events.some(e => e.id === upId)) Store.add({ id: upId, type: 'handoff_update', handoff: prev.id, child: c, round, items: [{ k: 'update', text: `استُكملت الجلسة (جولة ${round}): ${statusName(status)}` }].concat(items.filter(i => i.k !== 'done' || true)) }); }
       }
     }
+    /* لا تُغلق الجلسة باعتبارها محفوظة قبل ثبوت الكتابة */
+    if (!(await Store.durable())) throw new Error(Store.storageError || 'تعذّر الحفظ على الجهاز');
   } catch (e) { a.pendingEnd = { status, rem, reason, note }; saveActive(); UI.toast('لم يكتمل التسجيل: ' + e.message + ' — أعيدي المحاولة من «إنهاء الجلسة»'); UI.rerender(true); return false; }
-  Store.settings.active = null; Store.saveSettings(); UI.toast('سُجّلت الجلسة'); UI.rerender(); return true;
+  Store.settings.active = null; Store.saveSettings(); UI.toast('سُجّلت الجلسة وحُفظت'); UI.rerender(); return true;
 }
 /* بنود بطاقة التسليم من سجلات هذه الجلسة (بمعرّف الجلسة sid، لا بالتوقيت) */
 function handoffItems(s, a, c, status, rem, reason, note) {
@@ -162,7 +164,7 @@ function handoffItems(s, a, c, status, rem, reason, note) {
 function mayRecord(type, extra) { return Store.roleAllows(App.role.id, Object.assign({ type }, extra || {})); }
 function requestBox(c, what) {
   const sent = Store.events.some(e => e.type === 'note' && e.child === c && e.day === todayKey() && e.text.startsWith('طلب اعتماد: ' + what));
-  return el('div', { class: 'alert' }, `لا يُسمح لحسابك بتسجيل ${what} (حتى في النيابة). `, sent ? el('span', { class: 'pill g' }, 'أُرسل الطلب لآية') : el('button', { class: 'ghost small', onclick: () => UI.prompt(`طلب اعتماد ${what} من آية`, 'ما الذي أُنجز فعلاً؟', t => { if (!t) return; Store.add({ type: 'note', child: c, text: `طلب اعتماد: ${what} — ${t}` }); UI.toast('أُرسل الطلب ضمن بطاقة التسليم'); UI.rerender(true); }) }, 'طلب اعتماد من آية'));
+  return el('div', { class: 'alert' }, `لا يُسمح لحسابك بتسجيل ${what} (حتى في النيابة). `, sent ? el('span', { class: 'pill g' }, 'أُرسل الطلب لآية') : el('button', { class: 'ghost small', onclick: () => UI.prompt(`طلب اعتماد ${what} من آية`, 'ما الذي أُنجز فعلاً؟', t => { if (!t) return; Store.add({ type: 'note', child: c, text: `طلب اعتماد: ${what} — ${t}` }); UI.savedToast('أُرسل الطلب ضمن بطاقة التسليم'); UI.rerender(true); }) }, 'طلب اعتماد من آية'));
 }
 /* ورد النظر والسماع: تسجيل الصفحات المقروءة فعلاً (قراءة لا تسميع؛ لا تغيّر لوناً ولا تاريخ مراجعة) */
 function TilawaBox(c, a, st) {
@@ -175,7 +177,7 @@ function TilawaBox(c, a, st) {
   const times = el('input', { type: 'number', min: 1, max: 10, value: sv.times || (st.text.includes('3 مرات') ? 3 : st.text.includes('مرتين') ? 2 : 1), style: 'width:60px', oninput: e => { a[k] = Object.assign(a[k] || {}, { times: e.target.value }); saveActive(); } });
   const todayRec = Store.events.filter(e => e.type === 'tilawa' && e.child === c && e.day === todayKey() && e.kind === kind);
   const box = el('div', { class: 'small' }, el('div', { class: 'muted' }, `${CHILDREN[c].name} · ${kind === 'listen' ? 'سماع' : 'قراءة نظراً'} — ${last ? `آخر مرة: ص${Math.min(...last.pages)}–${Math.max(...last.pages)} (${fmtDay(last.day)})` : 'لا تسجيل سابق'}`),
-    el('div', { class: 'row' }, 'من ص', from, 'إلى ص', to, 'مرات', times, el('button', { class: 'btn-g', onclick: () => { const f = Number(from.value), t = Number(to.value); if (!(f >= 1 && t <= 604 && f <= t && t - f < 30)) { UI.toast('نطاق غير صالح (حتى 30 صفحة)'); return; } const pages = []; for (let p = f; p <= t; p++) pages.push(p); Store.add({ type: 'tilawa', child: c, pages, kind, times: Number(times.value) || 1, step: st.id }); if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.toast('سُجّلت القراءة'); UI.rerender(true); } }, 'تسجيل')));
+    el('div', { class: 'row' }, 'من ص', from, 'إلى ص', to, 'مرات', times, el('button', { class: 'btn-g', onclick: () => { const f = Number(from.value), t = Number(to.value); if (!(f >= 1 && t <= 604 && f <= t && t - f < 30)) { UI.toast('نطاق غير صالح (حتى 30 صفحة)'); return; } const pages = []; for (let p = f; p <= t; p++) pages.push(p); Store.add({ type: 'tilawa', child: c, pages, kind, times: Number(times.value) || 1, step: st.id }); if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.savedToast('سُجّلت القراءة'); UI.rerender(true); } }, 'تسجيل')));
   if (todayRec.length) box.append(el('div', { class: 'muted' }, 'اليوم: ' + todayRec.map(r => `ص${Math.min(...r.pages)}–${Math.max(...r.pages)} ×${r.times || 1}`).join('، ')));
   return box;
 }
@@ -199,7 +201,7 @@ function SessionView(s, a) {
   const cur = kind.steps[curIdx] || kind.steps[kind.steps.length - 1];
   /* بطاقة الرأس: الطفل والجلسة، المطلوب، آخر ملاحظة، قرار آية الجاري */
   const head = el('div', { class: 'card' },
-    a.pendingEnd ? el('div', { class: 'alert red' }, 'لم يكتمل تسجيل الإنهاء. ', el('button', { class: 'btn-r', onclick: () => commitEnd(s, a, a.pendingEnd.status, a.pendingEnd.rem, a.pendingEnd.reason, a.pendingEnd.note) }, 'إعادة محاولة التسجيل')) : null,
+    a.pendingEnd ? el('div', { class: 'alert red' }, 'لم يكتمل تسجيل الإنهاء. ', el('button', { class: 'btn-r', onclick: async () => { await Store.flush(); commitEnd(s, a, a.pendingEnd.status, a.pendingEnd.rem, a.pendingEnd.reason, a.pendingEnd.note); } }, 'إعادة محاولة التسجيل')) : null,
     a.resumed ? el('div', { class: 'alert small' }, `استكمال جلسة سبق إنهاؤها (جولة ${a.round}).`) : null,
     a.proxy ? el('div', { class: 'alert small' }, `نيابةً عن ${ROLES[a.proxy.orig].name}: ${a.proxy.reason}. صلاحيات الاعتماد والقرارات تبقى بحسب حسابك.`) : null,
     el('div', { class: 'row between' }, el('span', { class: 'now-badge' }, 'جلسة جارية'), el('span', { class: 'muted small' }, `${timePair(s.start)} – ${fmtTime12(s.end)}`)),
@@ -372,7 +374,7 @@ function FluencyBox(c, a, st) {
 
 function MemorizeBox(c, a, st) {
   const d = deriveChild(c); const box = el('div', { class: 'small' });
-  if (!d.nextNew) return el('div', { class: 'muted small' }, 'لا صفحة جديدة محددة.');
+  if (!d.nextNew) return el('div', { class: 'alert small' }, c === 'karim' ? 'اكتمل المسار الحالي (عمّ ← تبارك ← قد سمع). يحدد ولي الأمر وآية المسار التالي قبل أي حفظ جديد.' : 'اكتمل المسار المبرمج. يحدد ولي الأمر وآية المسار التالي.');
   if (!mayRecord('new_page')) return el('div', { class: 'small' }, el('div', null, `الجديد: ${pagesText(d, d.nextNew, d.nextLines)}`), requestBox(c, `حفظ ${pagesText(d, d.nextNew, d.nextLines)}`));
   const already = d.todayNew.includes(d.nextNew) || (d.todayNew.length && c !== 'karim');
   const tKey = 'timer_' + c;
@@ -400,7 +402,7 @@ function MemorizeBox(c, a, st) {
       if (c !== 'karim' && !partial && (half.checked || d.reduced)) lines = [1, 8];
       if (c === 'karim') { const to = Math.min(15, Math.max(d.nextLines[0] + 3, Number(linesIn.value) || d.nextLines[1])); lines = [d.nextLines[0], to]; }
       Store.add({ type: 'new_page', child: c, page: d.nextNew, linesFrom: lines[0], linesTo: lines[1], minutes: mins });
-      a[tKey] = null; if (!a.steps.includes(st.id)) a.steps.push(st.id); saveActive(); UI.toast('سُجّل الحفظ الجديد'); UI.rerender(true);
+      a[tKey] = null; if (!a.steps.includes(st.id)) a.steps.push(st.id); saveActive(); UI.savedToast('سُجّل الحفظ الجديد وحُفظ'); UI.rerender(true);
     } }, partial ? 'تم إكمال الصفحة' : 'تم الحفظ'),
     c !== 'karim' && !partial && !d.reduced ? el('label', { class: 'row', style: 'margin:0' }, half, ' نصف صفحة (المعايرة)') : null));
   else box.append(el('div', { class: 'muted' }, 'سُجّل حفظ اليوم.'));
@@ -440,7 +442,7 @@ function undoLast() {
   const mine = Store.events.filter(e => Store.canUndo(App.role.id, e) && e.by === App.role.id && e.day === todayKey() && !['undo', 'session_done', 'handoff', 'handoff_update', 'handoff_status', 'layer'].includes(e.type));
   const last = mine[mine.length - 1];
   if (!last) { UI.toast('لا تسجيل للتراجع عنه اليوم'); return; }
-  UI.confirm(`التراجع عن: ${eventText(last)}؟ يُلغى أثره في الحسابات ويبقى أثر التصحيح في السجل.`, () => { Store.add({ type: 'undo', target: last.id, child: last.child || undefined, reason: 'تراجع ' + ROLES[App.role.id].name }); UI.toast('تم التراجع'); UI.rerender(true); });
+  UI.confirm(`التراجع عن: ${eventText(last)}؟ يُلغى أثره في الحسابات ويبقى أثر التصحيح في السجل.`, () => { Store.add({ type: 'undo', target: last.id, child: last.child || undefined, reason: 'تراجع ' + ROLES[App.role.id].name }); UI.savedToast('تم التراجع'); UI.rerender(true); });
 }
 function MutashabihBox(c) {
   const ws = weekStartKey(App.now()); const list = mutashabihat(c, ws); const box = el('div', { class: 'small' });
@@ -457,7 +459,9 @@ function errorModal(c, page, lines) {
   const pageIn = el('input', { type: 'number', min: 1, max: 604, value: page, style: 'width:100px' });
   const surahSel = el('select'); const ayahIn = el('input', { type: 'number', min: 1, placeholder: 'رقم الآية', style: 'width:120px' });
   const fillSurahs = () => { surahSel.innerHTML = ''; for (const s of surahsOfPage(Number(pageIn.value) || 1)) surahSel.append(el('option', { value: s }, SURAH_NAMES[s - 1])); };
-  fillSurahs(); pageIn.addEventListener('input', fillSurahs);
+  const hint = el('div', { class: 'small muted' });
+  const showHint = () => { const rg = ayahRangeOnPage(Number(pageIn.value), Number(surahSel.value)); hint.textContent = rg ? `في هذه الصفحة: ${SURAH_NAMES[Number(surahSel.value) - 1]} ${rg[0]}–${rg[1]}` : ''; };
+  fillSurahs(); showHint(); pageIn.addEventListener('input', () => { fillSurahs(); showHint(); }); surahSel.addEventListener('change', showHint);
   let etype = null; const typeBtns = el('div', { class: 'btns' });
   const target = el('div', { style: 'display:none' });
   const tSurah = el('input', { type: 'number', min: 1, max: 114, placeholder: 'رقم السورة', style: 'width:120px' }); const tAyah = el('input', { type: 'number', min: 1, placeholder: 'الآية', style: 'width:100px' });
@@ -465,16 +469,19 @@ function errorModal(c, page, lines) {
   for (const t of ERROR_TYPES) typeBtns.append(el('button', { class: 'ghost', onclick: e => { etype = t.id; [...typeBtns.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); target.style.display = t.id === 'jump' ? '' : 'none'; } }, t.name));
   const note = el('input', { placeholder: 'ملاحظة (اختياري)' });
   const segBox = c === 'karim' ? el('div', { class: 'small' }, label('المقطع (الأسطر)'), el('div', { class: 'row' }, (lines ? el('span', { class: 'pill n' }, `الأسطر ${lines[0]}–${lines[1]}`) : el('span', { class: 'muted' }, 'غير محدد — سيُعرض للمراجعة ولا يُنسب لكل المقاطع')))) : null;
-  const body = el('div', null, el('div', { class: 'row' }, el('div', null, label('الصفحة'), pageIn), el('div', { style: 'flex:1' }, label('السورة'), surahSel), el('div', null, label('الآية'), ayahIn)), segBox, label('نوع الخطأ'), typeBtns, target, label('ملاحظة'), note);
+  const body = el('div', null, el('div', { class: 'row' }, el('div', null, label('الصفحة'), pageIn), el('div', { style: 'flex:1' }, label('السورة'), surahSel), el('div', null, label('الآية'), ayahIn)), hint, segBox, label('نوع الخطأ'), typeBtns, target, label('ملاحظة'), note);
   const bg = UI.modal(`خطأ · ${CHILDREN[c].name}`, body, [el('button', { class: 'primary', onclick: () => {
     if (!etype) { UI.toast('اختاري نوع الخطأ'); return; }
     const pg = Number(pageIn.value), su = Number(surahSel.value), ay = Number(ayahIn.value);
     if (!(pg >= 1 && pg <= 604)) { UI.toast('رقم الصفحة بين 1 و604'); return; }
     if (!(su >= 1 && su <= 114)) { UI.toast('اختاري السورة'); return; }
     if (!(ay >= 1 && ay <= SURAH_AYAT[su - 1])) { UI.toast(`رقم الآية بين 1 و${SURAH_AYAT[su - 1]}`); return; }
+    /* الآية يجب أن تكون في الصفحة نفسها (حدود مصحف المدينة) */
+    const rg = ayahRangeOnPage(pg, su);
+    if (!rg || ay < rg[0] || ay > rg[1]) { UI.toast(`الآية ${SURAH_NAMES[su - 1]} ${ay} في ص${pageOfAyah(su, ay)}، لا في ص${pg}${rg ? ` (آيات ${SURAH_NAMES[su - 1]} هنا ${rg[0]}–${rg[1]})` : ''}`); return; }
     const ev = { type: 'error', child: c, page: pg, surah: su, ayah: ay, etype, note: note.value }; if (lines && pg === page) ev.lines = lines;
     if (etype === 'jump') { const ts = Number(tSurah.value), ta = Number(tAyah.value); if (!(ts >= 1 && ts <= 114)) { UI.toast('اكتبي رقم السورة التي انتقل إليها'); return; } ev.target = { surah: ts, ayah: ta || null }; }
-    Store.add(ev); bg.remove(); UI.toast('سُجّل الخطأ'); UI.rerender(true);
+    Store.add(ev); bg.remove(); UI.savedToast('سُجّل الخطأ'); UI.rerender(true);
   } }, 'حفظ')]);
 }
 
@@ -558,14 +565,16 @@ function cancelModal() {
   const reasonSel = el('select', null, ['مرض طفل', 'سفر أو ظرف عائلي', 'انقطاع الإنترنت', 'غياب معلمة', 'سبب آخر'].map(x => el('option', { value: x }, x)));
   const txt = el('input', { placeholder: 'تفصيل (اختياري)' });
   const bg = UI.modal('إلغاء جلسات اليوم', el('div', null, el('p', { class: 'small muted' }, 'تُلغى الجلسات المختارة غير المنفذة فقط. النتائج المسجلة سابقاً تبقى. الجلسة الجارية تُحفظ بما أُنجز ويظهر الباقي.'), checks.map(([s, c]) => el('label', { class: 'row', style: 'margin:4px 0' }, c, ` ${fmtTime12(s.start)} ${childName(s.child)} · ${SESSION_KINDS[s.kind].name}`)), label('السبب'), reasonSel, txt),
-    [el('button', { class: 'danger', onclick: () => { const reason = reasonSel.value + (txt.value.trim() ? ': ' + txt.value.trim() : ''); let ok = 0, fail = 0; const failed = [];
+    [el('button', { class: 'danger', onclick: async () => { const reason = reasonSel.value + (txt.value.trim() ? ': ' + txt.value.trim() : ''); let ok = 0, fail = 0; const failed = []; const added = [];
       for (const [s, c] of checks) { if (!c.checked) continue; const key = sessionKey(s, dayK);
         try {
-          if (act && act.key === key) { if (commitEnd(s, act, 'stopped', SESSION_KINDS[s.kind].steps.filter(st => !act.steps.includes(st.id)).map(st => st.id), 'إلغاء: ' + reason, act.note || '')) ok++; else { fail++; failed.push(s); } continue; }
+          if (act && act.key === key) { if (await commitEnd(s, act, 'stopped', SESSION_KINDS[s.kind].steps.filter(st => !act.steps.includes(st.id)).map(st => st.id), 'إلغاء: ' + reason, act.note || '')) ok++; else { fail++; failed.push(s); } continue; }
           for (const ch of childrenOf(s)) if (!Store.events.some(e => e.type === 'session_cancel' && e.key === key && e.child === ch)) Store.add({ type: 'session_cancel', key, child: ch, kind: s.kind, start: s.start, reason });
-          ok++; c.disabled = true; c.checked = false;
+          added.push([s, c]);
         } catch (e) { fail++; failed.push(s); }
       }
+      /* الإلغاءات تُعدّ ناجحة بعد ثبوت حفظها فقط */
+      if (added.length) { if (await Store.durable()) { for (const [s, c] of added) { ok++; c.disabled = true; c.checked = false; } } else { for (const [s] of added) { fail++; failed.push(s); } } }
       if (fail) { UI.toast(`أُلغيت ${ok} جلسة، وتعذّر ${fail}: ${failed.map(s => childName(s.child) + ' ' + fmtTime12(s.start)).join('، ')} — أعيدي المحاولة`); UI.rerender(true); return; }
       bg.remove(); UI.toast(`أُلغيت ${ok} جلسة`); UI.rerender(); } }, 'تأكيد الإلغاء')]);
 }

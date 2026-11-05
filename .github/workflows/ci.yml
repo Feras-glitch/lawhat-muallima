@@ -10,6 +10,13 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,8 +29,13 @@ jobs:
         run: python3 build.py && test -s dist/index.html
       - name: تثبيت Playwright
         run: pip install playwright && python3 -m playwright install --with-deps chromium
-      - name: الاختبارات (120 سيناريو + التأكيدات)
+      - name: سياسات الخادم على PostgreSQL حقيقي (33 حالة قبول/رفض)
+        env: { PGHOST: localhost, PGUSER: postgres, PGPASSWORD: postgres, PGDATABASE: postgres }
+        run: bash tests/sql_policy_test.sh
+      - name: الاختبارات (السيناريو الكامل + التأكيدات)
         run: python3 test_smoke.py
+      - name: اختبارات الفشل (IndexedDB حقيقي، حقن أعطال التخزين والشبكة)
+        run: python3 tests/audit_failures.py
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: dist-and-shots, path: "dist/index.html\nshots/" }

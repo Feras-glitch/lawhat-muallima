@@ -197,13 +197,13 @@ async def asserts():
         await page.evaluate("Store.settings.timeOffset = Date.UTC(2026,10,9,4,55) - Date.now(); Store.saveSettings(); const s=PLAN.find(x=>x.kind==='noon'&&x.child==='dalal'); startSession(s);")
         await page.evaluate("const a=Store.settings.active; Store.add({type:'outcome',child:'dalal',page:562,step:'far',result:'yellow'}); Store.add({type:'error',child:'dalal',page:562,surah:58,ayah:2,etype:'jump',target:{surah:79,ayah:2}});")
         assert await page.evaluate("Store.events.slice(-1)[0].sid === Store.settings.active.sid"), 'sid not attached'
-        r = await page.evaluate("""(()=>{ const s=PLAN.find(x=>x.kind==='noon'&&x.child==='dalal'); const a=Store.settings.active;
+        r = await page.evaluate("""(async()=>{ const s=PLAN.find(x=>x.kind==='noon'&&x.child==='dalal'); const a=Store.settings.active;
             let n=0; const orig=Store.saveEvents.bind(Store); Store.saveEvents=function(){ n++; if(n===2){ this.storageError='sim'; return false;} return orig(); };
-            commitEnd(s,a,'partial',['second','cards'],null,'');
+            await commitEnd(s,a,'partial',['second','cards'],null,'');
             Store.saveEvents=orig;
             return { active: !!Store.settings.active, pending: !!(Store.settings.active&&Store.settings.active.pendingEnd), sd: Store.events.filter(e=>e.type==='session_done'&&e.sid===a.sid).length, ho: Store.events.filter(e=>e.type==='handoff'&&e.sid===a.sid).length }; })()""")
         assert r == {'active': True, 'pending': True, 'sd': 1, 'ho': 0}, r
-        r = await page.evaluate("""(()=>{ const s=PLAN.find(x=>x.kind==='noon'&&x.child==='dalal'); const a=Store.settings.active; const sid=a.sid; commitEnd(s,a,a.pendingEnd.status,a.pendingEnd.rem,a.pendingEnd.reason,a.pendingEnd.note);
+        r = await page.evaluate("""(async()=>{ const s=PLAN.find(x=>x.kind==='noon'&&x.child==='dalal'); const a=Store.settings.active; const sid=a.sid; await commitEnd(s,a,a.pendingEnd.status,a.pendingEnd.rem,a.pendingEnd.reason,a.pendingEnd.note);
             return { active: !!Store.settings.active, sd: Store.events.filter(e=>e.type==='session_done'&&e.sid===sid).length, ho: Store.events.filter(e=>e.type==='handoff'&&e.sid===sid).length, sid }; })()""")
         assert r['active'] is False and r['sd'] == 1 and r['ho'] == 1, r
         sid = r['sid']
@@ -211,7 +211,7 @@ async def asserts():
         await page.evaluate("const h=handoffs().slice(-1)[0]; Store.add({type:'handoff_status',handoff:h.id,child:'dalal',status:'handled',by:'aya'});")
         st = await page.evaluate("const s=PLAN.find(x=>x.kind==='noon'&&x.child==='dalal'); sessionStatus(s, todayKey()).status")
         assert st == 'partial', st
-        await page.evaluate("const s=PLAN.find(x=>x.kind==='noon'&&x.child==='dalal'); startSession(s, sessionStatus(s, todayKey())); const a=Store.settings.active; a.steps=['second','far','cards']; commitEnd(s,a,'complete',[],null,'أُكملت لاحقاً');")
+        await page.evaluate("(async()=>{ const s=PLAN.find(x=>x.kind==='noon'&&x.child==='dalal'); startSession(s, sessionStatus(s, todayKey())); const a=Store.settings.active; a.steps=['second','far','cards']; await commitEnd(s,a,'complete',[],null,'أُكملت لاحقاً'); })()")
         r = await page.evaluate(f"(()=>{{ const hs=handoffs(h=>h.sid==='{sid}'); const s=PLAN.find(x=>x.kind==='noon'&&x.child==='dalal'); return {{ n: hs.length, state: hs[0].state, upd: hs[0].updates, items: hs[0].items.map(i=>i.k), st: sessionStatus(s, todayKey()).status }}; }})()")
         assert r['n'] == 1 and r['state'] == 'reopened' and r['upd'] == 1 and r['st'] == 'complete' and 'update' in r['items'], r
         await page.evaluate("App.logout()")
@@ -402,7 +402,7 @@ async def asserts():
         assert 'نيابةً عن آية' in txt, txt[:200]
         assert await page.evaluate("Store.events.filter(e=>e.type==='session_start').slice(-1)[0].proxyFor") == 'aya'
         assert await page.evaluate("App.can('canColor')") is False
-        await page.evaluate("const s=PLAN.find(x=>x.kind==='gate_new'&&x.child==='dalal'); const a=Store.settings.active; a.steps=['gate','memorize','first']; commitEnd(s,a,'complete',[],null,'');")
+        await page.evaluate("(async()=>{ const s=PLAN.find(x=>x.kind==='gate_new'&&x.child==='dalal'); const a=Store.settings.active; a.steps=['gate','memorize','first']; await commitEnd(s,a,'complete',[],null,''); })()")
         sd = await page.evaluate("const s=PLAN.find(x=>x.kind==='gate_new'&&x.child==='dalal'); sessionStatus(s, todayKey())")
         assert sd['proxyFor'] == 'aya' and sd['status'] == 'complete' and sd['conflicts'] == [], sd
         assert await page.evaluate("handoffs(h=>h.child==='dalal'&&h.key===sessionKey(PLAN.find(x=>x.kind==='gate_new'&&x.child==='dalal'), todayKey())).length") == 1

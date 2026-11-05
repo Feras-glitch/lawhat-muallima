@@ -28,6 +28,7 @@ const UI = {
     this.rerender();
     setInterval(() => { const ae = document.activeElement; const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT'); if (App.view === 'now' && App.role && !document.querySelector('.modal-bg') && !typing) this.rerender(true); }, 30000);
     setInterval(() => Alarms.tick(), 15000);
+    window.addEventListener('beforeunload', e => { if (Store.idbOk && Store.dirty.size) { e.preventDefault(); e.returnValue = ''; } });
     document.addEventListener('click', () => Alarms.unlock(), { once: true });
   },
   rerender(soft) {
@@ -48,7 +49,8 @@ const UI = {
   },
   statusInner() {
     const m = Alarms.muted() && Alarms.on() ? ' · 🔇 الأصوات مكتومة أثناء الجلسة' : '';
-    if (Store.storageError) return [el('span', { class: 'dot bad' }), 'تعذّر الحفظ! صدّري البيانات' + m];
+    if (Store.storageError) return [el('span', { class: 'dot bad' }), Store.storageError + m];
+    if (Store.idbOk && Store.dirty.size) return [el('span', { class: 'dot off' }), `جارٍ الحفظ… (${Store.dirty.size})` + m];
     if (!Store.idbOk) { const used = (localStorage.getItem('lm_events_v1') || '').length / 1048576; if (used > 2.5) return [el('span', { class: 'dot bad' }), `تخزين محدود (${used.toFixed(1)} من 5 م.ب) — افتحي البرنامج من الرابط لا من الملف` + m]; }
     const rejN = (Store.settings.syncRejected || []).length; if (rejN) return [el('span', { class: 'dot bad' }), `${rejN} سجل مرفوض من المزامنة — الإعدادات` + m];
     if (Store.settings.localMode && Store.settings.sbUrl) return [el('span', { class: 'dot off' }), 'وضع محلي — المزامنة متوقفة (الإعدادات ← الخادم ← العودة للاتصال)' + m];
@@ -58,6 +60,8 @@ const UI = {
     const pend = Store.raw.filter(e => !e.synced).length;
     return [el('span', { class: 'dot ok' }), (pend ? `حُفظ على الجهاز · ${pend} بانتظار الرفع` : 'تمت المزامنة') + m];
   },
+  /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ وإلا رسالة الفشل */
+  savedToast(msg) { Store.durable().then(ok => this.toast(ok ? msg : 'لم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ'))); },
   renderStatus() { const s = document.getElementById('status'); if (s) { s.innerHTML = ''; s.append(...this.statusInner()); } },
   nav() {
     const items = App.role.id === 'parent'

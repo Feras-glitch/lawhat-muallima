@@ -42,27 +42,54 @@ const Store = {
     return new Promise((res) => { try { const tx = this.db.transaction('events', 'readwrite'); const st = tx.objectStore('events'); for (const e of list) st.put(e); tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false); } catch (e) { res(false); } });
   },
   clearDb() { if (!this.idbOk || !this.db) return Promise.resolve(false); return new Promise((res) => { try { const tx = this.db.transaction('events', 'readwrite'); tx.objectStore('events').clear(); tx.oncomplete = () => res(true); tx.onerror = () => res(false); } catch (e) { res(false); } }); },
-  /* الحفظ: مع IDB تُكتب السجلات المتغيرة فقط (دفعة قصيرة)؛ بدونه يُكتب الكل في localStorage.
-     القيمة المرجعة: هل التخزين سليم الآن (فشل سابق في IDB أو امتلاء localStorage يعيد false). */
-  dirty: new Set(),
+  /* الحفظ: مع IDB تُكتب السجلات المتغيرة فقط؛ بدونه يُكتب الكل في localStorage (متزامن).
+     مع IDB: add يعيد فوراً والسجل «جارٍ حفظه» (dirty) حتى تكتمل المعاملة؛ نقاط الالتزام (إنهاء جلسة، سحب) تنتظر durable(). */
+  dirty: new Set(), flushing: null, retryTimer: null,
   saveEvents(changed) {
     if (this.idbOk) {
       for (const e of (changed || this.raw)) this.dirty.add(e.id);
       clearTimeout(this.flushTimer); this.flushTimer = setTimeout(() => this.flush(), 20);
+      try { UI.renderStatus(); } catch (x) {}
       return true;
     }
     try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); this.storageError = null; return true; } catch (e) { this.storageError = 'تعذّر الحفظ: امتلأت ذاكرة الجهاز. صدّري البيانات وأبلغي ولي الأمر.'; return false; } },
-  async flush() {
-    if (!this.dirty.size) return true;
+  /* هل كل ما في الذاكرة محفوظ دائماً الآن؟ */
+  saved() { return this.idbOk ? this.dirty.size === 0 && !this.storageError : !this.storageError; },
+  /* ينتظر اكتمال الكتابة الدائمة لكل ما سُجّل حتى الآن */
+  async durable() { if (!this.idbOk) return !this.storageError; clearTimeout(this.flushTimer); await this.flush(); return this.saved(); },
+  gen: 0,
+  /* كتابة دفعة واحدة من المعلّق؛ عند الفشل يبقى معلّقاً (إلا إن مُسح السجل أثناءها) */
+  async flushOnce() {
+    const gen = this.gen;
     const ids = this.dirty; this.dirty = new Set();
     const list = this.raw.filter(e => ids.has(e.id));
     const ok = await this.putMany(list);
-    if (!ok) { for (const id of ids) this.dirty.add(id);
-      /* طوارئ: نسخة كاملة في localStorage إن اتسعت، ويبقى التحذير حتى ينجح IDB */
-      let lsOk = false; try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); lsOk = true; } catch (e) {}
-      this.storageError = lsOk ? 'تعذّر الحفظ في قاعدة الجهاز (حُفظت نسخة احتياطية مؤقتة)؛ صدّري البيانات' : 'تعذّر الحفظ في قاعدة الجهاز وامتلأت الذاكرة؛ صدّري البيانات فوراً'; try { UI.toast(this.storageError); UI.renderStatus(); } catch (x) {} }
-    else if (this.storageError && this.storageError.startsWith('تعذّر الحفظ في قاعدة')) { this.storageError = null; try { UI.renderStatus(); } catch (x) {} }
+    if (!ok) {
+      if (gen === this.gen) {
+        for (const id of ids) this.dirty.add(id);
+        /* طوارئ: نسخة كاملة في localStorage إن اتسعت؛ تُدمج عند الفتح التالي وتُمحى فور نجاح الحفظ */
+        let lsOk = false; try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); lsOk = true; } catch (e) {}
+        this.storageError = lsOk ? 'تعذّر الحفظ في قاعدة الجهاز (حُفظت نسخة احتياطية مؤقتة)؛ صدّري البيانات' : 'تعذّر الحفظ في قاعدة الجهاز وامتلأت الذاكرة؛ صدّري البيانات فوراً ولا تغلقي الصفحة';
+        try { UI.toast(this.storageError); } catch (x) {}
+        clearTimeout(this.retryTimer); this.retryTimer = setTimeout(() => this.flush(), 5000);
+      }
+    } else if (!this.dirty.size && gen === this.gen) {
+      this.storageError = null; /* كل شيء ثابت في IDB الآن */
+      /* كل السجلات في IDB الآن: نسخة الطوارئ لم تعد لازمة، ومحوها يمنع إحياء ما حُذف لاحقاً */
+      try { localStorage.removeItem(LS_EVENTS); } catch (e) {}
+    }
+    try { UI.renderStatus(); } catch (x) {}
     return ok;
+  },
+  /* يكتب كل المعلّق ويعيد true فقط إن ثبت كله؛ المستدعون المتزامنون ينتظرون الدفعة الجارية ولا يعودون قبلها */
+  async flush() {
+    for (;;) {
+      if (this.flushing) { const ok = await this.flushing; if (!ok) return false; continue; }
+      if (!this.dirty.size) return !this.storageError;
+      const pr = this.flushOnce(); this.flushing = pr;
+      const ok = await pr; if (this.flushing === pr) this.flushing = null;
+      if (!ok) return false;
+    }
   },
   /* السجل الخام append-only؛ events = السجلات الحيّة (غير المتراجَع عنها). التراجع نفسه يبقى في الخام */
   /* مرآة محلية لسياسة الخادم: ما يجوز لكل دور تسجيله (النيابة لا توسّعها) */
@@ -85,7 +112,16 @@ const Store = {
   },
   ofType(t) { return this.byTypeMap.get(t) || []; },
   ofKey(k) { return this.byKeyMap.get(k) || []; },
-  reset() { this.raw = []; this.dirty = new Set(); this.refresh(); if (this.idbOk) this.clearDb(); else this.saveEvents(); },
+  /* مسح كل نسخ السجلات على الجهاز (IDB ونسخة الطوارئ/القديمة في localStorage). المسح في الذاكرة فوري،
+     ومعاملة المسح تُنشأ فوراً فتسبق أي كتابة لاحقة؛ القيمة: وعد بنجاح المسح الدائم */
+  reset() {
+    clearTimeout(this.flushTimer); clearTimeout(this.retryTimer);
+    this.gen++;
+    this.raw = []; this.dirty = new Set(); this.refresh();
+    let lsOk = true; try { localStorage.removeItem(LS_EVENTS); } catch (e) { lsOk = false; }
+    const cleared = this.idbOk ? this.clearDb() : Promise.resolve(true);
+    return cleared.then(ok => { ok = ok && lsOk; if (ok && this.storageError) this.storageError = null; try { UI.renderStatus(); } catch (x) {} return ok; });
+  },
   saveSettings() { localStorage.setItem(LS_SETTINGS, JSON.stringify(this.settings)); },
   add(ev) {
     ev.id = ev.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
@@ -241,7 +277,7 @@ function deriveChild(childId) {
       currentJuz = juzOfPage(e.page);
     }
     if (e.type === 'color') { const pg = pages[e.page]; if (e.lines) { pg.segs = pg.segs || {}; pg.segs[segKey(e.lines)] = { color: e.color, day: e.day, lines: e.lines }; const order = { red: 3, yellow: 2, green: 1, none: 0 }; const worst = Object.values(pg.segs).reduce((w, x) => order[x.color] > order[w] ? x.color : w, 'none'); pg.color = worst === 'none' ? e.color : worst; pg.colorDay = e.day; } else { pg.color = e.color; pg.colorDay = e.day; } }
-    if (e.type === 'outcome') {
+    if (e.type === 'outcome' && !e.parent) { /* فحص ولي الأمر منفصل: لا يغيّر تواريخ مراجعة المعلمة ولا ترتيب البعيد */
       pages[e.page].lastReview = e.day;
       if ((e.step === 'far' || e.step === 'exam') && e.result !== 'partial') pages[e.page].lastFar = e.day;
     }

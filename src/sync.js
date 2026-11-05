@@ -31,6 +31,8 @@ const Sync = {
   },
   logout() { Store.settings.sbSession = null; Store.settings.sbRole = null; Store.saveSettings(); },
   /* تصنيف أخطاء الرفع: دائم (صلاحيات/بيانات) أم مؤقت (دخول، خادم، حدّ طلبات، شبكة) */
+  /* ترتيب المؤشرات: الوقت ثم المعرّف (نصوص الخادم بصيغة واحدة فتُقارن نصاً عند تساوي الميلي ثانية) */
+  cmpCursor(a, b) { if (a.t === b.t) return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; const d = Date.parse(a.t) - Date.parse(b.t); return d || (a.t < b.t ? -1 : 1); },
   isPermanent(status) { return [400, 403, 409, 422].includes(status); },
   transientMsg(status) { return status === 401 ? 'انتهت الجلسة، أعيدي الدخول' : status === 429 ? 'الخادم مشغول (حدّ الطلبات)؛ سيُعاد الرفع تلقائياً' : status >= 500 ? `عطل مؤقت في الخادم (${status})؛ سيُعاد الرفع تلقائياً` : `تعذّر الرفع مؤقتاً (${status})؛ سيُعاد تلقائياً`; },
   schedule() { if (!this.cfg()) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.run(), 1500); },
@@ -65,17 +67,20 @@ const Sync = {
       }
       // سحب
       let n = 0;
-      for (let round = 0; round < 20; round++) {
-        let cur = Store.settings.sbCursor;
-        if (typeof cur === 'string') { cur = { t: cur, id: '' }; Store.settings.sbCursor = cur; Store.saveSettings(); } /* ترحيل مؤشر 0.3 */
-        if (!cur || typeof cur.t !== 'string') cur = { t: '1970-01-01T00:00:00Z', id: '' };
-        /* نافذة تداخل 5 ثوانٍ: صف بدأت معاملته قبل المؤشر والتُزم بعده لا يضيع؛ التكرار يُزال بالمعرّف */
-        const back = cur.t === '1970-01-01T00:00:00Z' ? cur.t : new Date(Math.max(0, Date.parse(cur.t) - 5000)).toISOString();
-        const t = encodeURIComponent(back), id = encodeURIComponent(back === cur.t ? cur.id : '');
+      const EPOCH = '1970-01-01T00:00:00Z';
+      let cur = Store.settings.sbCursor;
+      if (typeof cur === 'string') { cur = { t: cur, id: '' }; Store.settings.sbCursor = cur; Store.saveSettings(); } /* ترحيل مؤشر 0.3 */
+      if (!cur || typeof cur.t !== 'string') cur = { t: EPOCH, id: '' };
+      /* نافذة تداخل 5 ثوانٍ تُطبَّق مرة واحدة في بداية الجولة (صف التُزم متأخراً لا يضيع؛ المكرر يُزال بالمعرّف)،
+         ثم التصفح بمؤشر متقدم حصراً (inserted_at, id) */
+      let q = cur.t === EPOCH ? { t: cur.t, id: cur.id } : { t: new Date(Math.max(0, Date.parse(cur.t) - 5000)).toISOString(), id: '' };
+      let best = cur, complete = false;
+      for (let round = 0; round < 50; round++) {
+        const t = encodeURIComponent(q.t), id = encodeURIComponent(q.id);
         const r2 = await fetch(`${c.url}/rest/v1/events?select=id,by,type,child,payload,inserted_at&or=(inserted_at.gt.${t},and(inserted_at.eq.${t},id.gt.${id}))&order=inserted_at.asc,id.asc&limit=1000`, { headers: this.headers() });
-        if (!r2.ok) throw new Error('رفض الخادم السحب: ' + r2.status);
+        if (!r2.ok) throw new Error((this.isPermanent(r2.status) ? 'رفض الخادم السحب: ' + r2.status : this.transientMsg(r2.status)));
         const rows = await r2.json();
-        if (!rows.length) break;
+        if (!rows.length) { complete = true; break; }
         /* أعمدة الخادم (المحمية بالسياسات) تغلب ما في payload */
         const incoming = rows.map(r => Object.assign({}, r.payload, { id: r.id, by: r.by, type: r.type, child: r.child || undefined, synced: true }));
         const bad = incoming.filter(e => !Store.validEvent(e, incoming));
@@ -87,10 +92,15 @@ const Sync = {
           try { Store.saveSettings(); } catch (err) { Store.settings.syncRejected = prev; this.lastError = 'تعذّر حفظ السجلات المرفوضة (امتلأت الذاكرة)؛ لن يتقدم المؤشر'; UI.renderStatus(); throw new Error(this.lastError); }
         }
         n += Store.importEvents(incoming.filter(e => !bad.includes(e)));
-        const last = rows[rows.length - 1]; Store.settings.sbCursor = { t: last.inserted_at, id: last.id }; Store.saveSettings();
-        if (rows.length < 1000) break;
+        /* المؤشر لا يتقدم إلا بعد ثبوت السجلات على القرص */
+        if (!(await Store.durable())) throw new Error('تعذّر حفظ السجلات المسحوبة على الجهاز؛ لن يتقدم المؤشر وستُعاد المحاولة');
+        const last = rows[rows.length - 1]; q = { t: last.inserted_at, id: last.id };
+        if (this.cmpCursor(q, best) > 0) { best = q; Store.settings.sbCursor = best; Store.saveSettings(); }
+        if (rows.length < 1000) { complete = true; break; }
       }
-      this.lastOk = Date.now(); this.lastError = (Store.settings.syncRejected || []).length ? `${Store.settings.syncRejected.length} سجل مرفوض بانتظار المعالجة (الإعدادات ← المرفوضات)` : null;
+      this.incomplete = !complete;
+      if (!complete) setTimeout(() => this.run(), 2000);
+      this.lastOk = Date.now(); this.lastError = this.incomplete ? 'المزامنة لم تكتمل بعد (دفعة كبيرة)؛ تُستكمل تلقائياً' : (Store.settings.syncRejected || []).length ? `${Store.settings.syncRejected.length} سجل مرفوض بانتظار المعالجة (الإعدادات ← المرفوضات)` : null;
       Store.saveSettings();
       if (n) UI.rerender();
     } catch (err) { this.lastError = err.message; }
@@ -143,7 +153,7 @@ create policy "insert_own_role" on public.events for insert to authenticated wit
   )
   -- التراجع: عن سجل صاحبه الحساب نفسه فقط، وآية عن سجلات المساعدة أيضاً؛ الهدف يجب أن يكون موجوداً على الخادم
   and (type <> 'undo' or exists (
-    select 1 from public.events t where t.id = payload->>'target' and t.type <> 'undo'
+    select 1 from public.events t where t.id = events.payload->>'target' and t.type <> 'undo'
       and (t.by = public.my_role() or (public.my_role() = 'aya' and t.by = 'asst'))))
 );
 -- ثم: Authentication > Users > أنشئ ثلاثة مستخدمين بالبريد وكلمة السر،
