@@ -47,14 +47,14 @@ const Sync = {
       for (const phase of [pendingAll.filter(e => e.type !== 'undo'), pendingAll.filter(e => e.type === 'undo')]) {
         if (!phase.length) continue;
         const r = await post(phase.map(toRow));
-        if (r.ok) { for (const e of phase) e.synced = true; Store.saveEvents(); continue; }
+        if (r.ok) { for (const e of phase) e.synced = true; Store.saveEvents(phase); continue; }
         if (!this.isPermanent(r.status)) throw new Error(this.transientMsg(r.status));
         /* رفض صلاحيات (403/4xx دائم): لا نُوقف المزامنة كلها؛ نعزل السجل المرفوض ونحفظه مع سببه.
            خطأ مؤقت أثناء الفحص الفردي (401/408/425/429/5xx/شبكة) يُبقي السجل منتظراً ويوقف الجولة. */
         for (const e of phase) {
           const r1 = await post([toRow(e)]);
-          if (r1.ok) { e.synced = true; Store.saveEvents(); continue; }
-          if (!this.isPermanent(r1.status)) { Store.saveEvents(); throw new Error(this.transientMsg(r1.status)); }
+          if (r1.ok) { e.synced = true; Store.saveEvents([e]); continue; }
+          if (!this.isPermanent(r1.status)) { Store.saveEvents(phase); throw new Error(this.transientMsg(r1.status)); }
           let why = 'رفض الخادم (' + r1.status + ')'; try { const j = await r1.json(); if (j && j.message) why += ': ' + j.message; } catch (x) {}
           e.synced = true; e.pushRejected = why;
           const rej = Store.settings.syncRejected || []; if (!rej.some(x => x.id === e.id)) rej.push({ id: e.id, type: e.type, by: e.by, child: e.child || null, day: e.day, reason: 'لم يقبل الخادم الرفع — ' + why, at: Date.now(), payload: e, direction: 'push' }); Store.settings.syncRejected = rej; Store.saveSettings();

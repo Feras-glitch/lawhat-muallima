@@ -6,13 +6,63 @@ const LS_SESSION = 'lm_session_v1';
 const Store = {
   events: [],
   settings: {},
-  load() {
-    try { this.raw = JSON.parse(localStorage.getItem(LS_EVENTS) || '[]'); } catch (e) { this.raw = []; }
-    this.refresh();
+  /* ===== التخزين: IndexedDB (سعة كبيرة، كتابة سجل واحد لا الكل) مع ترحيل تلقائي من localStorage وبديل عند تعذّر IDB ===== */
+  db: null, idbOk: false, pending: new Map(), flushTimer: null,
+  async openDb() {
+    if (!window.indexedDB) return null;
+    return new Promise((res) => {
+      let req; try { req = indexedDB.open('lawhat_muallima', 1); } catch (e) { res(null); return; }
+      req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains('events')) db.createObjectStore('events', { keyPath: 'id' }); };
+      req.onsuccess = () => res(req.result); req.onerror = () => res(null); req.onblocked = () => res(null);
+    });
+  },
+  async load() {
     try { this.settings = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'); } catch (e) { this.settings = {}; }
     if (!this.settings.pins) this.settings.pins = { aya: '1111', asst: '2222', parent: '3333' };
     if (!this.settings.deviceId) this.settings.deviceId = 'd' + Math.random().toString(36).slice(2, 10);
     this.saveSettings();
+    let lsRaw = []; try { lsRaw = JSON.parse(localStorage.getItem(LS_EVENTS) || '[]'); } catch (e) { lsRaw = []; }
+    this.db = await this.openDb();
+    if (this.db) {
+      const fromDb = await new Promise((res) => { try { const tx = this.db.transaction('events', 'readonly'); const r = tx.objectStore('events').getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res(null); } catch (e) { res(null); } });
+      if (fromDb) {
+        this.idbOk = true;
+        const have = new Set(fromDb.map(e => e.id));
+        const migrate = lsRaw.filter(e => e && e.id && !have.has(e.id));
+        this.raw = fromDb.concat(migrate).sort((a, b) => a.ts - b.ts);
+        if (migrate.length) { const ok = await this.putMany(migrate); if (ok) { try { localStorage.removeItem(LS_EVENTS); } catch (e) {} } }
+        else if (lsRaw.length && !migrate.length) { try { localStorage.removeItem(LS_EVENTS); } catch (e) {} }
+      } else { this.raw = lsRaw; }
+    } else { this.raw = lsRaw; }
+    this.refresh();
+  },
+  /* كتابة سجلات بعينها إلى IDB */
+  putMany(list) {
+    if (!this.idbOk || !this.db) return Promise.resolve(false);
+    return new Promise((res) => { try { const tx = this.db.transaction('events', 'readwrite'); const st = tx.objectStore('events'); for (const e of list) st.put(e); tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false); } catch (e) { res(false); } });
+  },
+  clearDb() { if (!this.idbOk || !this.db) return Promise.resolve(false); return new Promise((res) => { try { const tx = this.db.transaction('events', 'readwrite'); tx.objectStore('events').clear(); tx.oncomplete = () => res(true); tx.onerror = () => res(false); } catch (e) { res(false); } }); },
+  /* الحفظ: مع IDB تُكتب السجلات المتغيرة فقط (دفعة قصيرة)؛ بدونه يُكتب الكل في localStorage.
+     القيمة المرجعة: هل التخزين سليم الآن (فشل سابق في IDB أو امتلاء localStorage يعيد false). */
+  dirty: new Set(),
+  saveEvents(changed) {
+    if (this.idbOk) {
+      for (const e of (changed || this.raw)) this.dirty.add(e.id);
+      clearTimeout(this.flushTimer); this.flushTimer = setTimeout(() => this.flush(), 20);
+      return true;
+    }
+    try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); this.storageError = null; return true; } catch (e) { this.storageError = 'تعذّر الحفظ: امتلأت ذاكرة الجهاز. صدّري البيانات وأبلغي ولي الأمر.'; return false; } },
+  async flush() {
+    if (!this.dirty.size) return true;
+    const ids = this.dirty; this.dirty = new Set();
+    const list = this.raw.filter(e => ids.has(e.id));
+    const ok = await this.putMany(list);
+    if (!ok) { for (const id of ids) this.dirty.add(id);
+      /* طوارئ: نسخة كاملة في localStorage إن اتسعت، ويبقى التحذير حتى ينجح IDB */
+      let lsOk = false; try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); lsOk = true; } catch (e) {}
+      this.storageError = lsOk ? 'تعذّر الحفظ في قاعدة الجهاز (حُفظت نسخة احتياطية مؤقتة)؛ صدّري البيانات' : 'تعذّر الحفظ في قاعدة الجهاز وامتلأت الذاكرة؛ صدّري البيانات فوراً'; try { UI.toast(this.storageError); UI.renderStatus(); } catch (x) {} }
+    else if (this.storageError && this.storageError.startsWith('تعذّر الحفظ في قاعدة')) { this.storageError = null; try { UI.renderStatus(); } catch (x) {} }
+    return ok;
   },
   /* السجل الخام append-only؛ events = السجلات الحيّة (غير المتراجَع عنها). التراجع نفسه يبقى في الخام */
   /* مرآة محلية لسياسة الخادم: ما يجوز لكل دور تسجيله (النيابة لا توسّعها) */
@@ -29,9 +79,13 @@ const Store = {
     const undone = new Set();
     for (const u of this.raw) if (u.type === 'undo') { const t = byId.get(u.target); if (t && this.canUndo(u.by, t)) undone.add(u.target); }
     this.events = this.raw.filter(e => e.type !== 'undo' && !undone.has(e.id));
+    /* فهارس للأداء: بالنوع وبمفتاح الجلسة */
+    this.byTypeMap = new Map(); this.byKeyMap = new Map();
+    for (const e of this.events) { let a = this.byTypeMap.get(e.type); if (!a) this.byTypeMap.set(e.type, a = []); a.push(e); if (e.key && (e.type === 'session_done' || e.type === 'session_cancel' || e.type === 'session_start')) { let k = this.byKeyMap.get(e.key); if (!k) this.byKeyMap.set(e.key, k = []); k.push(e); } }
   },
-  reset() { this.raw = []; this.refresh(); this.saveEvents(); },
-  saveEvents() { try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); this.storageError = null; return true; } catch (e) { this.storageError = 'تعذّر الحفظ: امتلأت ذاكرة الجهاز. صدّري البيانات وأبلغي ولي الأمر.'; return false; } },
+  ofType(t) { return this.byTypeMap.get(t) || []; },
+  ofKey(k) { return this.byKeyMap.get(k) || []; },
+  reset() { this.raw = []; this.dirty = new Set(); this.refresh(); if (this.idbOk) this.clearDb(); else this.saveEvents(); },
   saveSettings() { localStorage.setItem(LS_SETTINGS, JSON.stringify(this.settings)); },
   add(ev) {
     ev.id = ev.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
@@ -45,12 +99,12 @@ const Store = {
     if (!this.validEvent(ev)) { const msg = 'سجل غير صالح لم يُحفظ: ' + ev.type; try { UI.toast(msg); } catch (x) {} throw new Error(msg); }
     if (!this.roleAllows(ev.by, ev)) { const msg = `لا يُسمح لحساب ${ROLES[ev.by] ? ROLES[ev.by].name : ev.by} بتسجيل «${ev.type}»؛ يُطلب من آية`; try { UI.toast(msg); } catch (x) {} throw new Error(msg); }
     this.raw.push(ev);
-    if (!this.saveEvents()) { this.raw.pop(); try { UI.toast(this.storageError); UI.renderStatus(); } catch (x) {} throw new Error(this.storageError); }
+    if (!this.saveEvents([ev])) { this.raw.pop(); try { UI.toast(this.storageError); UI.renderStatus(); } catch (x) {} throw new Error(this.storageError); }
     this.refresh();
     Sync.schedule();
     return ev;
   },
-  byType(type, child) { return this.events.filter(e => e.type === type && (!child || e.child === child)); },
+  byType(type, child) { return this.ofType(type).filter(e => !child || e.child === child); },
   rejectReason(e, batch) {
     if (!e || typeof e !== 'object') return 'ليس كائناً';
     if (typeof e.id !== 'string' || typeof e.type !== 'string' || typeof e.ts !== 'number' || !/^\d{4}-\d{2}-\d{2}$/.test(e.day || '')) return 'حقول أساسية ناقصة أو غير صالحة';
@@ -113,10 +167,10 @@ const Store = {
     if (bad.length) throw new Error(`رُفض الملف كاملاً: ${bad.length} سجل غير صالح (مثال: ${JSON.stringify(bad[0]).slice(0, 80)})`);
     const have = new Set(this.raw.map(e => e.id));
     const before = this.raw.slice();
-    let n = 0;
-    for (const e of list) if (!have.has(e.id)) { this.raw.push(e); have.add(e.id); n++; }
+    let n = 0; const added = [];
+    for (const e of list) if (!have.has(e.id)) { this.raw.push(e); have.add(e.id); n++; added.push(e); }
     this.raw.sort((a, b) => a.ts - b.ts);
-    if (!this.saveEvents()) { this.raw = before; throw new Error(this.storageError); }
+    if (!this.saveEvents(added)) { this.raw = before; throw new Error(this.storageError); }
     this.refresh();
     return n;
   },
@@ -192,7 +246,7 @@ function deriveChild(childId) {
       if ((e.step === 'far' || e.step === 'exam') && e.result !== 'partial') pages[e.page].lastFar = e.day;
     }
     if (e.type === 'error') pages[e.page].errors++;
-    if (e.type === 'juz_passed') { for (const p of juzPages(e.juz)) if (pages[p].layer === 'near') pages[p].layer = 'far'; }
+    if (e.type === 'juz_passed') { const jp = juzPages(e.juz); for (const p of jp) if (pages[p].layer === 'near') { pages[p].lastFar = e.day; pages[p].lastReview = e.day; } for (const p of juzPages(e.juz)) if (pages[p].layer === 'near') pages[p].layer = 'far'; }
     if (e.type === 'surah_passed') { passedSurahs.add(e.surah); passedDay[e.surah] = e.day; }
     if (e.type === 'decision') { if (e.kind === 'pause') paused = true; if (e.kind === 'resume') paused = false; if (e.kind === 'reduce') reduced = true; if (e.kind === 'restore') reduced = false; }
   }
@@ -314,8 +368,9 @@ function sessionDone(s, dayK) { return !!sessionStatus(s, dayK); }
 /* حالة الجلسة: آخر إنهاء أو إلغاء، مع كشف التعارض (تسجيل من معلمتين بمعرّفين، أو إلغاء ثم إنهاء متأخر) */
 function sessionStatus(s, dayK) {
   const k = sessionKey(s, dayK);
-  const dones = Store.events.filter(e => e.type === 'session_done' && e.key === k);
-  const cancels = Store.events.filter(e => e.type === 'session_cancel' && e.key === k);
+  const ks = Store.ofKey(k);
+  const dones = ks.filter(e => e.type === 'session_done');
+  const cancels = ks.filter(e => e.type === 'session_cancel');
   if (!dones.length && !cancels.length) return null;
   const last = [...dones, ...cancels].sort((a, b) => a.ts - b.ts).pop();
   const sids = new Set(dones.map(e => e.sid)); const bys = new Set(dones.map(e => e.proxyFor ? e.by : e.by));

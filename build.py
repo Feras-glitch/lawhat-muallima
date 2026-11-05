@@ -4,7 +4,7 @@ import pathlib
 src = pathlib.Path(__file__).parent / 'src'
 css = (src / 'style.css').read_text(encoding='utf-8')
 js = '\n'.join((src / f).read_text(encoding='utf-8') for f in ['data.js', 'model.js', 'sync.js', 'ui-core.js', 'ui-now.js', 'ui-child.js', 'ui-parent.js', 'ui-present.js'])
-js += "\n\nStore.load(); UI.init(); Sync.start();\n"
+js += "\n\nStore.load().then(() => { UI.init(); Sync.start(); });\n"
 html = f"""<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
