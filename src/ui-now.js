@@ -15,7 +15,7 @@ function OutcomeCtl(c, page, step, extra, onRecord, compact) {
   if (!mayRecord('outcome', { step })) return requestBox(c, `تسجيل ${step === 'exam' ? 'الفحص' : 'النتيجة'} ${pageLabel(page)}`);
   const seg = extra && extra.lines ? extra.lines : null;
   const cur = effectiveOutcomes(e => e.child === c && e.page === page && e.step === step && e.day === today && sameSeg(e.lines, seg)).pop() || null;
-  const base = () => Object.assign({ type: 'outcome', child: c, page, step }, extra || {}, cur ? { prompts: cur.prompts, tajweed: cur.tajweed, meaning: cur.meaning, selfCorrect: cur.selfCorrect } : {});
+  const base = () => Object.assign({ type: 'outcome', child: c, page, step }, extra || {}, cur ? { result: cur.result, prompts: cur.prompts, tajweed: cur.tajweed, meaning: cur.meaning, selfCorrect: cur.selfCorrect } : {});
   const rec = (patch) => { const ev = Object.assign(base(), patch); for (const k of Object.keys(ev)) if (ev[k] == null) delete ev[k]; Store.add(ev); if (onRecord) onRecord(ev); UI.rerender(true); if (patch.result === 'yellow' && !cur) { /* تفاصيل المساعدة تُطلب فوراً */ } };
   const mk = (r, cls, t) => el('button', { class: cls + (cur && cur.result === r ? ' on' : ''), style: compact ? 'padding:4px 10px' : '', onclick: () => rec({ result: r, prompts: r === 'clean' ? 0 : r === 'yellow' ? Math.max(1, (cur && cur.prompts) || 1) : r === 'red' ? Math.max(3, (cur && cur.prompts) || 3) : (cur ? cur.prompts : undefined) }) }, t);
   const box = el('div', { class: 'ocl' });
@@ -47,7 +47,7 @@ Views.now = function () {
     wrap.append(el('div', { class: 'card' },
       el('div', { class: 'row between' }, el('span', { class: 'now-badge' }, 'الآن'), el('span', { class: 'muted small' }, `${timePair(current.start)} – ${fmtTime12(current.end)}`)),
       el('div', { class: 'big', style: 'margin:6px 0' }, `${childName(current.child)} · ${SESSION_KINDS[current.kind].name}`),
-      sd ? el('p', { class: 'muted' }, `سُجّلت هذه الجلسة: ${statusName(sd.status)}.`, sd.status && sd.status !== 'complete' && current.teacher === App.role.id ? el('button', { class: 'ghost small', style: 'margin-right:8px', onclick: () => startSession(current, sd) }, 'استكمال') : null) : el('button', { class: 'primary', onclick: () => startSession(current) }, 'ابدئي الجلسة')));
+      sd ? el('p', { class: 'muted' }, `سُجّلت هذه الجلسة: ${statusName(sd.status)}.`, ['partial', 'stopped'].includes(sd.status) && current.teacher === App.role.id ? el('button', { class: 'ghost small', style: 'margin-right:8px', onclick: () => startSession(current, sd) }, 'استكمال') : null) : el('button', { class: 'primary', onclick: () => startSession(current) }, 'ابدئي الجلسة')));
   } else if (list.length) {
     wrap.append(el('div', { class: 'card' }, el('h2', null, next ? 'لا جلسة الآن' : 'انتهت جلسات اليوم'), next ? el('p', null, `التالية: ${childName(next.child)} · ${SESSION_KINDS[next.kind].name} في ${timePair(next.start)}`) : el('p', { class: 'muted' }, 'سجّلي أي خطأ أو ملاحظة متأخرة من زر التسجيل الحر.')));
   }
@@ -169,9 +169,10 @@ function TilawaBox(c, a, st) {
   const d = deriveChild(c); const kind = st.id === 'listen' ? 'listen' : 'nazar';
   const last = lastTilawa(c, kind);
   const dflt = st.id === 'tomorrow' ? (d.nextNew || 582) : st.id === 'listen' ? (d.todayNew[0] || d.nextNew || 582) : (last ? Math.max(...last.pages) + 1 : (d.nextNew || 582));
-  const from = el('input', { type: 'number', min: 1, max: 604, value: dflt, style: 'width:80px' });
-  const to = el('input', { type: 'number', min: 1, max: 604, value: st.id === 'listen' && st.text.includes('الخمس') ? Math.min(604, dflt + 4) : dflt, style: 'width:80px' });
-  const times = el('input', { type: 'number', min: 1, max: 10, value: st.text.includes('3 مرات') ? 3 : st.text.includes('مرتين') ? 2 : 1, style: 'width:60px' });
+  const k = `til_${st.id}_${c}`; const sv = a[k] || {};
+  const from = el('input', { type: 'number', min: 1, max: 604, value: sv.from || dflt, style: 'width:80px', oninput: e => { a[k] = Object.assign(a[k] || {}, { from: e.target.value }); saveActive(); } });
+  const to = el('input', { type: 'number', min: 1, max: 604, value: sv.to || (st.id === 'listen' && st.text.includes('الخمس') ? Math.min(604, dflt + 4) : dflt), style: 'width:80px', oninput: e => { a[k] = Object.assign(a[k] || {}, { to: e.target.value }); saveActive(); } });
+  const times = el('input', { type: 'number', min: 1, max: 10, value: sv.times || (st.text.includes('3 مرات') ? 3 : st.text.includes('مرتين') ? 2 : 1), style: 'width:60px', oninput: e => { a[k] = Object.assign(a[k] || {}, { times: e.target.value }); saveActive(); } });
   const todayRec = Store.events.filter(e => e.type === 'tilawa' && e.child === c && e.day === todayKey() && e.kind === kind);
   const box = el('div', { class: 'small' }, el('div', { class: 'muted' }, `${CHILDREN[c].name} · ${kind === 'listen' ? 'سماع' : 'قراءة نظراً'} — ${last ? `آخر مرة: ص${Math.min(...last.pages)}–${Math.max(...last.pages)} (${fmtDay(last.day)})` : 'لا تسجيل سابق'}`),
     el('div', { class: 'row' }, 'من ص', from, 'إلى ص', to, 'مرات', times, el('button', { class: 'btn-g', onclick: () => { const f = Number(from.value), t = Number(to.value); if (!(f >= 1 && t <= 604 && f <= t && t - f < 30)) { UI.toast('نطاق غير صالح (حتى 30 صفحة)'); return; } const pages = []; for (let p = f; p <= t; p++) pages.push(p); Store.add({ type: 'tilawa', child: c, pages, kind, times: Number(times.value) || 1, step: st.id }); if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.toast('سُجّلت القراءة'); UI.rerender(true); } }, 'تسجيل')));
@@ -365,7 +366,7 @@ function cardHtml(card) {
 
 function FluencyBox(c, a, st) {
   const page = fluencyPage(c);
-  const sec = el('input', { type: 'number', placeholder: 'ثوانٍ', style: 'width:110px' });
+  const sec = el('input', { type: 'number', placeholder: 'ثوانٍ', style: 'width:110px', value: a['sec_' + c] || '', oninput: e => { a['sec_' + c] = e.target.value; saveActive(); } });
   return el('div', { class: 'small row' }, el('span', null, pageLabel(page)), sec, el('button', { onclick: () => { const v = Number(sec.value); if (!v) return; Store.add({ type: 'fluency_time', child: c, page, seconds: v }); if (v < 180) { Store.add({ type: 'fluency_page', child: c, page: page + 1, why: 'نزلت تحت 3 دقائق' }); UI.toast('نزلت تحت 3 دقائق؛ الصفحة التالية غداً'); } if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.rerender(true); } }, 'تسجيل الزمن'), el('button', { class: 'ghost', onclick: () => UI.prompt('رقم صفحة الطلاقة', 'رقم الصفحة', v => { const n = Number(v); if (n >= 1 && n <= 604) { Store.add({ type: 'fluency_page', child: c, page: n, why: 'تغيير يدوي' }); UI.rerender(true); } }, String(page)) }, 'تغيير الصفحة'));
 }
 
@@ -551,7 +552,7 @@ function lastDays(n) { const out = []; const d = App.now(); for (let i = 0; i < 
 function cancelModal() {
   const d = App.now(); const dayK = todayKey();
   const list = sessionsFor(App.role.id, d).filter(s => !sessionStatus(s, dayK));
-  const act = Store.settings.active;
+  const act = Store.settings.active && Store.settings.active.role === App.role.id && Store.settings.active.dayK === dayK ? Store.settings.active : null;
   if (!list.length) { UI.toast('لا جلسات متبقية اليوم'); return; }
   const checks = list.map(s => { const c = el('input', { type: 'checkbox' }); c.checked = true; return [s, c]; });
   const reasonSel = el('select', null, ['مرض طفل', 'سفر أو ظرف عائلي', 'انقطاع الإنترنت', 'غياب معلمة', 'سبب آخر'].map(x => el('option', { value: x }, x)));

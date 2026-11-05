@@ -26,7 +26,7 @@ const UI = {
     if (saved && ROLES[saved]) { App.role = ROLES[saved]; App.view = saved === 'parent' ? 'dash' : 'now'; }
     if (Sync.cfg() && Store.settings.sbRole && Store.settings.sbSession) { App.role = ROLES[Store.settings.sbRole]; if (!saved) App.view = App.role.id === 'parent' ? 'dash' : 'now'; }
     this.rerender();
-    setInterval(() => { if (App.view === 'now' && App.role && !document.querySelector('.modal-bg')) this.rerender(true); }, 30000);
+    setInterval(() => { const ae = document.activeElement; const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT'); if (App.view === 'now' && App.role && !document.querySelector('.modal-bg') && !typing) this.rerender(true); }, 30000);
     setInterval(() => Alarms.tick(), 15000);
     document.addEventListener('click', () => Alarms.unlock(), { once: true });
   },
@@ -34,7 +34,9 @@ const UI = {
     if (!App.role) { this.root.innerHTML = ''; this.root.append(Views.login()); return; }
     const scroll = window.scrollY;
     this.root.innerHTML = '';
-    this.root.append(this.header(), el('main', null, (Views[App.view] || Views.now)()), this.nav());
+    let main; try { main = el('main', null, (Views[App.view] || Views.now)()); }
+    catch (err) { console.error(err); main = el('main', null, el('div', { class: 'card' }, el('h2', null, 'تعذّر عرض هذه الشاشة'), el('p', { class: 'small' }, 'سجل تالف وصل بالمزامنة أو خطأ في البرنامج: ', String(err && err.message || err)), el('div', { class: 'btns' }, el('button', { onclick: () => { App.view = 'settings'; UI.rerender(); } }, 'الإعدادات (تصدير البيانات)'), el('button', { class: 'ghost', onclick: () => { App.view = 'now'; UI.rerender(); } }, 'الآن')))); }
+    this.root.append(this.header(), main, this.nav());
     if (soft) window.scrollTo(0, scroll);
   },
   header() {
@@ -49,6 +51,7 @@ const UI = {
     if (Store.storageError) return [el('span', { class: 'dot bad' }), 'تعذّر الحفظ! صدّري البيانات' + m];
     if (!Store.idbOk) { const used = (localStorage.getItem('lm_events_v1') || '').length / 1048576; if (used > 2.5) return [el('span', { class: 'dot bad' }), `تخزين محدود (${used.toFixed(1)} من 5 م.ب) — افتحي البرنامج من الرابط لا من الملف` + m]; }
     const rejN = (Store.settings.syncRejected || []).length; if (rejN) return [el('span', { class: 'dot bad' }), `${rejN} سجل مرفوض من المزامنة — الإعدادات` + m];
+    if (Store.settings.localMode && Store.settings.sbUrl) return [el('span', { class: 'dot off' }), 'وضع محلي — المزامنة متوقفة (الإعدادات ← الخادم ← العودة للاتصال)' + m];
     if (!Sync.cfg()) return [el('span', { class: 'dot' }), 'حُفظ على الجهاز' + m];
     if (!navigator.onLine) return [el('span', { class: 'dot off' }), 'بلا إنترنت، سيُرفع لاحقاً'];
     if (Sync.lastError) return [el('span', { class: 'dot bad' }), Sync.lastError];

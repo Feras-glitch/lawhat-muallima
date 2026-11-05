@@ -31,7 +31,7 @@ const Sync = {
   },
   logout() { Store.settings.sbSession = null; Store.settings.sbRole = null; Store.saveSettings(); },
   /* تصنيف أخطاء الرفع: دائم (صلاحيات/بيانات) أم مؤقت (دخول، خادم، حدّ طلبات، شبكة) */
-  isPermanent(status) { return [400, 403, 404, 409, 422].includes(status); },
+  isPermanent(status) { return [400, 403, 409, 422].includes(status); },
   transientMsg(status) { return status === 401 ? 'انتهت الجلسة، أعيدي الدخول' : status === 429 ? 'الخادم مشغول (حدّ الطلبات)؛ سيُعاد الرفع تلقائياً' : status >= 500 ? `عطل مؤقت في الخادم (${status})؛ سيُعاد الرفع تلقائياً` : `تعذّر الرفع مؤقتاً (${status})؛ سيُعاد تلقائياً`; },
   schedule() { if (!this.cfg()) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.run(), 1500); },
   async run() {
@@ -43,7 +43,9 @@ const Sync = {
       // دفع: على مرحلتين — السجلات العادية أولاً ثم التراجعات (سياسة الخادم تتحقق من وجود هدف التراجع، ولا ترى صفوف البيان نفسه)
       const toRow = e => ({ id: e.id, ts: e.ts, day: e.day, by: e.by, child: e.child || null, type: e.type, dev: e.dev || null, payload: e });
       const post = async rows => fetch(`${c.url}/rest/v1/events?on_conflict=id`, { method: 'POST', headers: Object.assign(this.headers(true), { Prefer: 'resolution=ignore-duplicates,return=minimal' }), body: JSON.stringify(rows) });
-      const pendingAll = Store.raw.filter(e => !e.synced);
+      /* تُرفع سجلات هذا الحساب فقط؛ سجلات دور آخر (جهاز مشترك/استيراد) تبقى حتى يدخل صاحبها */
+      const me = Store.settings.sbRole;
+      const pendingAll = Store.raw.filter(e => !e.synced && e.by === me);
       for (const phase of [pendingAll.filter(e => e.type !== 'undo'), pendingAll.filter(e => e.type === 'undo')]) {
         if (!phase.length) continue;
         const r = await post(phase.map(toRow));
@@ -67,7 +69,9 @@ const Sync = {
         let cur = Store.settings.sbCursor;
         if (typeof cur === 'string') { cur = { t: cur, id: '' }; Store.settings.sbCursor = cur; Store.saveSettings(); } /* ترحيل مؤشر 0.3 */
         if (!cur || typeof cur.t !== 'string') cur = { t: '1970-01-01T00:00:00Z', id: '' };
-        const t = encodeURIComponent(cur.t), id = encodeURIComponent(cur.id);
+        /* نافذة تداخل 5 ثوانٍ: صف بدأت معاملته قبل المؤشر والتُزم بعده لا يضيع؛ التكرار يُزال بالمعرّف */
+        const back = cur.t === '1970-01-01T00:00:00Z' ? cur.t : new Date(Math.max(0, Date.parse(cur.t) - 5000)).toISOString();
+        const t = encodeURIComponent(back), id = encodeURIComponent(back === cur.t ? cur.id : '');
         const r2 = await fetch(`${c.url}/rest/v1/events?select=id,by,type,child,payload,inserted_at&or=(inserted_at.gt.${t},and(inserted_at.eq.${t},id.gt.${id}))&order=inserted_at.asc,id.asc&limit=1000`, { headers: this.headers() });
         if (!r2.ok) throw new Error('رفض الخادم السحب: ' + r2.status);
         const rows = await r2.json();
@@ -123,7 +127,7 @@ drop policy if exists "read_all_auth" on public.events;
 drop policy if exists "insert_own_role" on public.events;
 drop policy if exists "read_own_profile" on public.profiles;
 create policy "read_own_profile" on public.profiles for select to authenticated using (user_id = auth.uid());
-create or replace function public.my_role() returns text language sql stable security definer as
+create or replace function public.my_role() returns text language sql stable security definer set search_path = '' as
   $$ select role from public.profiles where user_id = auth.uid() $$;
 -- القراءة لكل حساب مسجل؛ لا تعديل ولا حذف لأحد
 create policy "read_all_auth" on public.events for select to authenticated using (true);

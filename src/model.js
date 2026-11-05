@@ -154,17 +154,17 @@ const Store = {
       case 'session_start': return typeof e.key === 'string' && typeof e.sid === 'string' && (e.proxyFor == null || ROLES[e.proxyFor] != null) && (e.reason == null || typeof e.reason === 'string');
       case 'session_cancel': return typeof e.key === 'string' && typeof e.reason === 'string' && e.reason.length > 0;
       case 'fluency_page': return isPage(e.page);
-      case 'session_done': return typeof e.key === 'string' && (e.status == null || oneOf(e.status, ['complete', 'partial', 'stopped'])) && (e.remaining == null || Array.isArray(e.remaining)) && (e.reason == null || typeof e.reason === 'string');
-      case 'handoff': return typeof e.key === 'string' && typeof e.to === 'string' && ROLES[e.to] != null && Array.isArray(e.items);
+      case 'session_done': return typeof e.key === 'string' && (e.steps == null || (Array.isArray(e.steps) && e.steps.every(x => typeof x === 'string'))) && (e.status == null || oneOf(e.status, ['complete', 'partial', 'stopped'])) && (e.remaining == null || Array.isArray(e.remaining)) && (e.reason == null || typeof e.reason === 'string');
+      case 'handoff': return typeof e.key === 'string' && typeof e.to === 'string' && ROLES[e.to] != null && Array.isArray(e.items) && e.items.every(i => i && typeof i === 'object' && typeof i.k === 'string' && typeof i.text === 'string');
       case 'handoff_status': return typeof e.handoff === 'string' && oneOf(e.status, ['seen', 'handled', 'reopened']);
-      case 'handoff_update': return typeof e.handoff === 'string' && Array.isArray(e.items);
+      case 'handoff_update': return typeof e.handoff === 'string' && Array.isArray(e.items) && e.items.every(i => i && typeof i === 'object' && typeof i.k === 'string' && typeof i.text === 'string');
       default: return false;
     }
   },
   importEvents(list) {
     if (!Array.isArray(list)) throw new Error('الملف ليس قائمة أحداث');
-    const bad = list.filter(e => !this.validEvent(e, list));
-    if (bad.length) throw new Error(`رُفض الملف كاملاً: ${bad.length} سجل غير صالح (مثال: ${JSON.stringify(bad[0]).slice(0, 80)})`);
+    const bad = list.filter(e => !this.validEvent(e, list) || !this.roleAllows(e.by, e));
+    if (bad.length) throw new Error(`رُفض الملف كاملاً: ${bad.length} سجل غير صالح أو غير مسموح لدوره (مثال: ${JSON.stringify(bad[0]).slice(0, 80)})`);
     const have = new Set(this.raw.map(e => e.id));
     const before = this.raw.slice();
     let n = 0; const added = [];
@@ -325,7 +325,7 @@ function weekStartKey(d) { const x = new Date(d); const diff = (x.getDay() + 1) 
 /* النتيجة النافذة: آخر حدث لكل (طفل، صفحة، خطوة، يوم) — إعادة النقر تصحيح لا تكرار */
 function effectiveOutcomes(filter) {
   const map = new Map();
-  for (const e of Store.events) if (e.type === 'outcome' && (!filter || filter(e))) map.set(`${e.child}|${e.page}|${e.step}|${e.day}|${segKey(e.lines)}`, e);
+  for (const e of Store.events) if (e.type === 'outcome' && (!filter || filter(e))) map.set(`${e.child}|${e.page}|${e.step}|${e.day}|${segKey(e.lines)}|${e.parent ? 'p' : ''}`, e);
   return [...map.values()].sort((a, b) => a.ts - b.ts);
 }
 
@@ -335,11 +335,11 @@ function sameSeg(a, b) { return segKey(a) === segKey(b); }
 function healthOf(childId) {
   const st = deriveChild(childId);
   const ws = weekStartKey(App.now());
-  const gates = effectiveOutcomes(e => e.child === childId && e.day >= ws && e.step === 'gate');
+  const gates = effectiveOutcomes(e => e.child === childId && e.day >= ws && e.step === 'gate' && !e.parent);
   const gateFails = gates.filter(e => e.result !== 'clean' && e.result !== 'partial').length;
   const exams = effectiveOutcomes(e => e.child === childId && e.step === 'exam' && !e.parent);
   let examGreen = null, examN = 0, examClean = 0, examDay = null;
-  if (exams.length) { examDay = exams[exams.length - 1].day; const last = exams.filter(e => e.day === examDay && e.result !== 'partial'); examN = last.length; examClean = last.filter(e => e.result === 'clean').length; examGreen = Math.round(100 * examClean / examN); }
+  if (exams.length) { examDay = exams[exams.length - 1].day; const last = exams.filter(e => e.day === examDay && e.result !== 'partial'); examN = last.length; examClean = last.filter(e => e.result === 'clean').length; examGreen = examN ? Math.round(100 * examClean / examN) : null; }
   const evaluated = gates.length > 0 || exams.length > 0;
   let light = evaluated ? 'green' : 'grey';
   if (gateFails >= 2 || (st.far.length && st.maxGap > 12) || (examGreen != null && examGreen < 70)) light = 'red';
@@ -405,7 +405,7 @@ function jumpStats(child, surah, ayah) {
 
 /* ===== اللون المقترح من المعايير الكاملة (الوثيقة: أخضر = بلا تلقين، زلة واحدة مصحَّحة ذاتياً، تجويد سليم، إجابة المعنى) ===== */
 function suggestColor(child, page, day, lines) {
-  const outs = effectiveOutcomes(e => e.child === child && e.day === day && e.page === page && (lines ? sameSeg(e.lines, lines) : true));
+  const outs = effectiveOutcomes(e => e.child === child && e.day === day && e.page === page && !e.parent && (lines ? sameSeg(e.lines, lines) : true));
   const allErrs = Store.events.filter(e => e.child === child && e.day === day && e.type === 'error' && e.page === page);
   /* مع مقطع محدد: تُحسب أخطاء المقطع نفسه فقط؛ الأخطاء بلا مقطع تُعرض للمراجعة ولا تُنسب لكل المقاطع */
   const errs = lines ? allErrs.filter(e => e.lines && sameSeg(e.lines, lines)) : allErrs;

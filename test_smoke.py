@@ -316,14 +316,15 @@ async def asserts():
         txt = await page.evaluate("document.getElementById('status') ? document.getElementById('status').innerText : ''")
         assert 'مرفوض' in txt, txt
         # الدفع على مرحلتين وعزل المرفوض: الخادم يرفض الدفعة ثم يقبل كل سجل إلا واحداً
-        r = await page.evaluate("""(async()=>{ Store.reset(); Store.settings.syncRejected=[]; Store.saveSettings(); App.setRole('asst');
+        r = await page.evaluate("""(async()=>{ Store.reset(); Store.settings.syncRejected=[]; Store.settings.sbRole='asst'; Store.saveSettings(); App.setRole('asst');
             const a=Store.add({type:'note',child:'dalal',text:'n1'}); const b=Store.add({type:'note',child:'dalal',text:'n2'}); const u=Store.add({type:'undo',target:a.id,child:'dalal'});
+            const other=Store.add({type:'note',child:'dalal',text:'n-aya',by:'aya'}); /* سجل دور آخر لا يُرفع بتوكن المساعدة */
             const posts=[]; const of=window.fetch; window.fetch=async(url,o)=>{ const s=String(url); if(o&&o.method==='POST'&&s.includes('/events?on_conflict')){ const rows=JSON.parse(o.body); posts.push(rows.map(x=>x.type)); if(rows.some(x=>x.id===b.id)) return {ok:false,status:403,json:async()=>({message:'policy'})}; return {ok:true,status:201,json:async()=>({})}; } if(s.includes('/events?select=id')) return {ok:true,json:async()=>[]}; return {ok:true,json:async()=>({})}; };
             Sync.refresh=async()=>true; await Sync.run(); window.fetch=of;
-            return { posts, aSynced: a.synced, bRej: !!b.pushRejected, uSynced: u.synced, rej:(Store.settings.syncRejected||[]).map(x=>x.id), err: Sync.lastError }; })()""")
-        assert r['posts'][0] == ['note','note'] and r['posts'][-1] == ['undo'] and r['aSynced'] and r['bRej'] and r['uSynced'] and r['rej'] == [await page.evaluate("Store.raw.find(e=>e.pushRejected).id")], r
+            return { posts, aSynced: a.synced, bRej: !!b.pushRejected, uSynced: u.synced, otherSynced: other.synced, rej:(Store.settings.syncRejected||[]).map(x=>x.id), err: Sync.lastError }; })()""")
+        assert r['posts'][0] == ['note','note'] and r['posts'][-1] == ['undo'] and r['aSynced'] and r['bRej'] and r['uSynced'] and r['otherSynced'] is False and r['rej'] == [await page.evaluate("Store.raw.find(e=>e.pushRejected).id")], r
         # (LM093-01) رفض دفعة ثم 503 أثناء الفحص الفردي: السجل يبقى منتظراً، ويُرفع تلقائياً بعد التعافي
-        r = await page.evaluate("""(async()=>{ Store.reset(); Store.settings.syncRejected=[]; Store.saveSettings(); App.setRole('asst');
+        r = await page.evaluate("""(async()=>{ Store.reset(); Store.settings.syncRejected=[]; Store.settings.sbRole='asst'; Store.saveSettings(); App.setRole('asst');
             const a=Store.add({type:'note',child:'dalal',text:'n1'}); const b=Store.add({type:'note',child:'dalal',text:'n2'});
             let down=true; const of=window.fetch; window.fetch=async(url,o)=>{ const s=String(url); if(o&&o.method==='POST'&&s.includes('/events?on_conflict')){ const rows=JSON.parse(o.body); if(rows.length>1) return {ok:false,status:403,json:async()=>({})}; if(down && rows[0].id===b.id) return {ok:false,status:503,json:async()=>({})}; return {ok:true,status:201,json:async()=>({})}; } if(s.includes('/events?select=id')) return {ok:true,json:async()=>[]}; return {ok:true,json:async()=>({})}; };
             Sync.refresh=async()=>true; await Sync.run(); const mid={aS:a.synced,bS:b.synced,rej:(Store.settings.syncRejected||[]).length,err:Sync.lastError};
@@ -361,13 +362,13 @@ async def asserts():
         await page.reload(); await page.wait_for_timeout(400)
         assert await page.evaluate("(Store.settings.syncRejected||[]).length") == 102
         await page.evaluate("Store.settings.sbUrl=''; Store.settings.sbKey=''; Store.settings.sbSession=null; Store.settings.syncRejected=[]; Store.settings.sbCursor=null; Store.saveSettings();")
-        await page.evaluate("Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'dalal',page:p,layer:'far',color:'green'});")
+        await page.evaluate("App.setRole('aya'); Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'dalal',page:p,layer:'far',color:'green'});")
         # --- 0.8 ---
         # (2) الباقي مستقل في البعيد لا يصبح «بانتظار الاعتماد»؛ الصفحة الجديدة تبقى كذلك
         r = await page.evaluate("(()=>{ Store.reset(); const d=todayKey(); Store.add({type:'outcome',child:'dalal',page:570,step:'far',result:'clean'}); Store.add({type:'outcome',child:'dalal',page:542,step:'first',result:'clean'}); return [suggestColor('dalal',570,d).color, suggestColor('dalal',570,d).pending, suggestColor('dalal',542,d).pending]; })()")
         assert r == ['green', False, True], r
         # (4) أول يوم: بوابة الأمس «لا ينطبق» تلقائياً والخطوة الحالية هي الحفظ
-        await page.evaluate("Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'dalal',page:p,layer:'far',color:'green'}); Store.settings.timeOffset = Date.UTC(2026,10,14,7-8,5) - Date.now(); Store.saveSettings(); const s=PLAN.find(x=>x.kind==='gate_new'&&x.child==='dalal'); startSession(s); App.view='now'; UI.rerender();")
+        await page.evaluate("App.setRole('aya'); Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'dalal',page:p,layer:'far',color:'green'}); Store.settings.timeOffset = Date.UTC(2026,10,14,7-8,5) - Date.now(); Store.saveSettings(); const s=PLAN.find(x=>x.kind==='gate_new'&&x.child==='dalal'); startSession(s); App.view='now'; UI.rerender();")
         txt = await page.evaluate("document.querySelector('main').innerText")
         assert 'لا ينطبق اليوم' in txt and 'الخطوة الحالية: حفظ الصفحة' in txt, txt[:300]
         # (6) المعايرة: نصف صفحة افتراضياً
@@ -390,7 +391,7 @@ async def asserts():
         assert 'الجرد الأولي' in await page.evaluate("document.querySelector('main').innerText")
         await page.evaluate("for (const c of CHILD_ORDER) Store.add({type:'layer',child:c,page:604,layer:'far',color:'green'}); UI.rerender();")
         assert 'قبل أول جلسة' not in await page.evaluate("document.querySelector('main').innerText")
-        await page.evaluate("Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'dalal',page:p,layer:'far',color:'green'});")
+        await page.evaluate("App.setRole('aya'); Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'dalal',page:p,layer:'far',color:'green'});")
         # --- 0.9 ---
         # الطلاقة في السجل
         await page.evaluate("App.setRole('asst'); Store.add({type:'fluency_page',child:'karim',page:590,why:'t'});")
@@ -479,6 +480,28 @@ async def asserts():
         assert 'باختبار مسجل' in await page.evaluate("eventText(Store.events.filter(e=>e.type==='juz_passed').pop())")
         assert 'استناداً إلى اختبار' in await page.evaluate("Store.events.filter(e=>e.type==='decision').pop().text")
         assert 'لا بوابة ولا فحص' in await page.evaluate("lightText(healthOf('farah'))")
+        await page.evaluate("App.setRole('aya'); Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'dalal',page:p,layer:'far',color:'green'});")
+        # --- مراجعة الخصم (0.10.1) ---
+        await page.evaluate("App.setRole('aya'); Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'dalal',page:p,layer:'far',color:'green'}); Store.settings.timeOffset = Date.UTC(2026,10,21,7-8,10) - Date.now(); Store.saveSettings(); Store.add({type:'new_page',child:'dalal',page:542,linesFrom:1,linesTo:15}); const s=PLAN.find(x=>x.kind==='gate_new'&&x.child==='dalal'); startSession(s); Store.settings.active.cur=2; Store.saveSettings(); App.view='now'; UI.rerender();")
+        await page.locator('.steps li').nth(2).locator('button.btn-g').first.click(); await page.wait_for_timeout(150)
+        await page.click('.chip:has-text("تحقق")'); await page.wait_for_timeout(150)
+        await page.click('.chip:has-text("تجويد")'); await page.wait_for_timeout(150)
+        o = await page.evaluate("effectiveOutcomes(e=>e.child==='dalal'&&e.page===542&&e.step==='first').pop()")
+        assert o['result'] == 'clean' and o['meaning'] == 'ok' and o['tajweed'] == 'issue', o
+        assert await page.evaluate("suggestColor('dalal',542,todayKey()).color") == 'yellow'
+        await page.evaluate("Store.settings.active=null; Store.saveSettings();")
+        # فحص ولي الأمر لا يطمس فحص آية
+        await page.evaluate("Store.add({type:'outcome',child:'dalal',page:570,step:'exam',result:'red'}); App.setRole('parent'); Store.add({type:'outcome',child:'dalal',page:570,step:'exam',result:'clean',parent:true}); App.setRole('aya');")
+        assert await page.evaluate("effectiveOutcomes(e=>e.page===570&&e.step==='exam').length") == 2
+        assert await page.evaluate("suggestColor('dalal',570,todayKey()).color") == 'red'
+        # بطاقة تسليم بعناصر تالفة تُرفض، وشاشة لا تنهار
+        assert await page.evaluate("Store.validEvent({id:'h9',type:'handoff',ts:1,day:'2026-01-01',by:'asst',child:'dalal',key:'k',to:'aya',items:[null]})") is False
+        assert await page.evaluate("(()=>{ Views.__boom = () => { throw new Error('boom'); }; App.view='__boom'; UI.rerender(); const t=document.querySelector('main').innerText; App.view='now'; UI.rerender(); return t.includes('تعذّر عرض'); })()")
+        # الاستيراد يرفض ما لا يجيزه الدور
+        assert await page.evaluate("(()=>{try{Store.importEvents([{id:'i9',type:'color',ts:1,day:'2026-01-01',by:'asst',child:'dalal',page:570,color:'green'}]);return false}catch(e){return true}})()")
+        # فحص كله ناقص لا يعطي NaN
+        await page.evaluate("Store.reset(); Store.add({type:'outcome',child:'farah',page:570,step:'exam',result:'partial'});")
+        assert await page.evaluate("healthOf('farah').examGreen") is None
         await page.evaluate("App.setRole('aya'); Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'dalal',page:p,layer:'far',color:'green'});")
         # per-type validation: linesTo "abc" rejected; cursor string migrates
         bad2 = await page.evaluate("Store.validEvent({id:'z',type:'new_page',ts:1,day:'2026-01-01',child:'dalal',page:542,linesFrom:1,linesTo:'abc'})")
