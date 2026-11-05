@@ -24,3 +24,11 @@
 
 ## البناء
 `python3 build.py` يجمع `src/*` في `dist/index.html`. `python3 -I test_smoke.py` يشغّل اختباراً كاملاً في متصفح بلا واجهة.
+
+## التطوير من GitHub
+
+- `src/` المصدر (ملفات JS + CSS)، `build.py` يجمعها في `dist/index.html` ملفاً واحداً مستقلاً.
+- `test_smoke.py`: سيناريو تفاعلي كامل بالأدوار الثلاثة + كتلة تأكيدات لكل إصلاح سابق. يعمل محلياً بـ`python3 test_smoke.py` (يحتاج Playwright وكروم) ويعمل تلقائياً في GitHub Actions عند كل رفع.
+- `review_walk.py`: جولة لقطات شاشة لكل الشاشات (للمراجعة البصرية).
+- النشر: كل رفع ناجح إلى `main` يُنشر تلقائياً على GitHub Pages (فعّل Pages من إعدادات المستودع: Settings ← Pages ← Source: GitHub Actions).
+- لا تضع مفاتيح Supabase في المستودع؛ تُدخل من إعدادات التطبيق على كل جهاز، ومفتاح service_role لا يُنسخ إلى أي جهاز.

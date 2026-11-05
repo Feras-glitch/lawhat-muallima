@@ -1,0 +1,42 @@
+name: بناء واختبار ونشر
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: فحص الصياغة
+        run: for f in src/*.js; do node --check "$f"; done
+      - name: البناء
+        run: python3 build.py && test -s dist/index.html
+      - name: تثبيت Playwright
+        run: pip install playwright && python3 -m playwright install --with-deps chromium
+      - name: الاختبارات (120 سيناريو + التأكيدات)
+        run: python3 test_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: dist-and-shots, path: "dist/index.html\nshots/" }
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with: { path: dist }
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

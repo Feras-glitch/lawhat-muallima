@@ -1,9 +1,12 @@
 import asyncio, pathlib, json
 from playwright.async_api import async_playwright
+import os
+# محلياً: كروم النظام؛ في CI: كروميوم Playwright
+BROWSER_OPTS = {'executable_path': '/usr/bin/google-chrome', 'args': ['--no-sandbox']} if os.path.exists('/usr/bin/google-chrome') and not os.environ.get('CI') else {'args': ['--no-sandbox']}
 HTML=pathlib.Path('dist/index.html').resolve(); OUT=pathlib.Path('review'); OUT.mkdir(exist_ok=True)
 async def main():
     async with async_playwright() as p:
-        b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
+        b=await p.chromium.launch(**BROWSER_OPTS)
         ctx=await b.new_context(viewport={'width':390,'height':844},locale='ar',timezone_id='Africa/Cairo')
         pg=await ctx.new_page(); errs=[]; pg.on('pageerror',lambda e:errs.append('PAGE:'+str(e))); pg.on('console',lambda m: errs.append('CON:'+m.text) if m.type=='error' else None)
         await pg.goto(HTML.as_uri()); await pg.screenshot(path=OUT/'r01_login.png',full_page=True)

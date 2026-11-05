@@ -1,5 +1,8 @@
 import asyncio, pathlib, json
 from playwright.async_api import async_playwright
+import os
+# محلياً: كروم النظام؛ في CI: كروميوم Playwright
+BROWSER_OPTS = {'executable_path': '/usr/bin/google-chrome', 'args': ['--no-sandbox']} if os.path.exists('/usr/bin/google-chrome') and not os.environ.get('CI') else {'args': ['--no-sandbox']}
 
 HTML = pathlib.Path(__file__).parent / 'dist' / 'index.html'
 SHOTS = pathlib.Path(__file__).parent / 'shots'; SHOTS.mkdir(exist_ok=True)
@@ -7,7 +10,7 @@ SHOTS = pathlib.Path(__file__).parent / 'shots'; SHOTS.mkdir(exist_ok=True)
 async def main():
     errors = []
     async with async_playwright() as p:
-        b = await p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
+        b = await p.chromium.launch(**BROWSER_OPTS)
         ctx = await b.new_context(viewport={'width': 420, 'height': 860}, locale='ar', timezone_id='Africa/Cairo')
         page = await ctx.new_page()
         page.on('pageerror', lambda e: errors.append(str(e)))
@@ -137,7 +140,7 @@ asyncio.run(main())
 # ===== assertions =====
 async def asserts():
     async with async_playwright() as p:
-        b = await p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
+        b = await p.chromium.launch(**BROWSER_OPTS)
         ctx = await b.new_context(viewport={'width': 420, 'height': 860}, locale='ar', timezone_id='Africa/Cairo')
         page = await ctx.new_page()
         errs = []; page.on('pageerror', lambda e: errs.append(str(e)))
