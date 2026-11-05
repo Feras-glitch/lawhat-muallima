@@ -1,0 +1,1964 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6f5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>لوحة المعلمة · برنامج القرآن</title>
+<style>
+:root{--bg:#f6f4ee;--card:#fff;--ink:#1f2a24;--muted:#6b7570;--line:#e3e0d6;--brand:#1f6f5f;--brand2:#2f8f7a;--soft:#e8f2ee;--green:#2e9e5b;--yellow:#e0a800;--red:#d14b3f;--blue:#2f6fb0;--grey:#c9c6bc;--radius:14px;--shadow:0 1px 3px rgba(0,0,0,.06),0 6px 20px rgba(0,0,0,.05)}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:"Noto Naskh Arabic","Segoe UI",Tahoma,"Noto Sans Arabic",system-ui,sans-serif;font-size:17px;line-height:1.6}
+body{direction:rtl;min-height:100vh;padding-bottom:84px}
+button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:10px 16px;background:var(--soft);color:var(--brand)}
+button.primary{background:var(--brand);color:#fff}
+button.ghost{background:transparent;color:var(--brand);border:1px solid var(--line)}
+button.ghost.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+button.danger{background:#fbe9e7;color:var(--red)}
+button:disabled{opacity:.45;cursor:default}
+input,select,textarea{font:inherit;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:#fff;color:var(--ink);width:100%}
+textarea{min-height:70px;resize:vertical}
+label{display:block;font-size:.9em;color:var(--muted);margin:8px 0 4px}
+header.top{position:sticky;top:0;z-index:5;background:rgba(246,244,238,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+header.top .title{font-weight:700;color:var(--brand)}
+header.top .sub{font-size:.85em;color:var(--muted)}
+.status{font-size:.8em;color:var(--muted);display:flex;align-items:center;gap:6px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--grey);display:inline-block}
+.dot.ok{background:var(--green)}.dot.bad{background:var(--red)}.dot.off{background:var(--yellow)}
+main{padding:14px 14px 20px;max-width:980px;margin:0 auto}
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;margin-bottom:14px}
+.card h2{margin:0 0 8px;font-size:1.15em;color:var(--brand)}
+.card h3{margin:12px 0 6px;font-size:1em}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row.between{justify-content:space-between}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.85em;background:var(--soft);color:var(--brand)}
+.pill.g{background:#e3f4e8;color:var(--green)}.pill.y{background:#fbf3d6;color:#8a6a00}.pill.r{background:#fbe9e7;color:var(--red)}.pill.n{background:#eee;color:#666}
+.muted{color:var(--muted)}
+.small{font-size:.86em}
+.big{font-size:1.3em;font-weight:700}
+nav.bottom{position:fixed;bottom:0;right:0;left:0;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:6}
+nav.bottom button{background:transparent;color:var(--muted);padding:6px 8px;border-radius:10px;font-size:.85em;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:60px}
+nav.bottom button.active{color:var(--brand);background:var(--soft)}
+nav.bottom .ico{font-size:1.25em}
+.steps{list-style:none;padding:0;margin:0}
+.steps li{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)}
+.steps li:last-child{border-bottom:0}
+.steps .chk{width:28px;height:28px;border-radius:8px;border:2px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;color:#fff;background:#fff}
+.steps li.done .chk{background:var(--green);border-color:var(--green)}
+.steps .body{flex:1}
+.steps .min{color:var(--muted);font-size:.85em}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.btn-g{background:#e3f4e8;color:var(--green)}.btn-y{background:#fbf3d6;color:#8a6a00}.btn-r{background:#fbe9e7;color:var(--red)}
+.btn-g.on{background:var(--green);color:#fff}.btn-y.on{background:var(--yellow);color:#fff}.btn-r.on{background:var(--red);color:#fff}
+.pagechip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:10px;background:#f1efe8;margin:3px}
+.map{display:block}
+.map .c{aspect-ratio:1;border-radius:3px;background:#ececec;font-size:.5em;display:flex;align-items:center;justify-content:center;color:transparent;cursor:pointer}
+.map .c.far{background:#cfe9d7}.map .c.near{background:#cfe0f5}.map .c.new{background:#f3e3b8}
+.map .c.green{background:var(--green)}.map .c.yellow{background:var(--yellow)}.map .c.red{background:var(--red)}
+.map .c.stale{outline:2px solid var(--red)}
+.map .c.today{outline:2px solid var(--blue)}
+.legend span{display:inline-flex;align-items:center;gap:5px;margin-inline-end:12px;font-size:.85em}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.light{width:14px;height:14px;border-radius:50%;display:inline-block;vertical-align:middle}
+.light.green{background:var(--green)}.light.yellow{background:var(--yellow)}.light.red{background:var(--red)}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.modal{background:#fff;width:100%;max-width:640px;border-radius:18px 18px 0 0;padding:16px;max-height:92vh;overflow:auto}
+@media(min-width:700px){.modal-bg{align-items:center}.modal{border-radius:18px}}
+.toast{position:fixed;bottom:90px;right:50%;transform:translateX(50%);background:#1f2a24;color:#fff;padding:10px 16px;border-radius:12px;z-index:30;font-size:.9em;box-shadow:var(--shadow)}
+table{width:100%;border-collapse:collapse;font-size:.9em}
+th,td{text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.timer{font-variant-numeric:tabular-nums;font-weight:700;color:var(--brand)}
+.login{max-width:420px;margin:60px auto;padding:0 16px}
+.login .roles{display:grid;gap:10px;margin:16px 0}
+.login .roles button{padding:16px;font-size:1.05em;background:#fff;border:1px solid var(--line);color:var(--ink);text-align:right}
+.login .roles button.sel{border-color:var(--brand);background:var(--soft)}
+.alert{background:#fff8e6;border:1px solid #f1dc9a;border-radius:10px;padding:10px 12px;margin:8px 0}
+.alert.red{background:#fbe9e7;border-color:#f3b9b2}
+.kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.kpi .v{font-size:1.4em;font-weight:700;color:var(--brand)}
+.kpi .k{font-size:.8em;color:var(--muted)}
+.ayahrow{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line);gap:8px}
+details summary{cursor:pointer;color:var(--brand)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tabs button{background:#fff;border:1px solid var(--line);color:var(--ink);padding:6px 12px}
+.tabs button.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.now-badge{background:var(--brand);color:#fff;border-radius:999px;padding:2px 10px;font-size:.8em}
+pre{white-space:pre-wrap;background:#f1efe8;padding:10px;border-radius:10px;font-size:.8em;direction:ltr;text-align:left}
+.present{position:fixed;inset:0;background:#fffdf7;z-index:40;display:flex;flex-direction:column;padding:16px}
+.present .ptop{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:10px}
+.present .pbody{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:20px}
+.phuge{font-size:clamp(3em,12vw,8em);font-weight:700;color:var(--brand);line-height:1.1}
+.pbig{font-size:clamp(1.4em,4vw,2.4em);font-weight:600}
+.pchips{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.pchip{font-size:clamp(1.6em,5vw,3em);font-weight:700;background:var(--soft);color:var(--brand);border-radius:16px;padding:6px 22px}
+.pcard{font-size:clamp(1.2em,3vw,1.8em);text-align:right;line-height:2;max-width:900px}
+.pline{font-size:clamp(1.2em,3vw,1.8em);padding:8px 0;border-bottom:1px dashed var(--line)}
+.light.grey{background:#b9b6ad}
+.steps li.closed .body{opacity:.75}
+.steps li.open{background:var(--soft);border-radius:8px;padding:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.chip{padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:.85em}
+.chip.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.ocl{width:100%}
+@media(max-width:480px){button{min-height:42px}.ayahrow button{min-height:36px}}
+header.top{flex-wrap:wrap}
+.map{overflow-x:auto}
+.map .juz{display:grid;grid-template-columns:repeat(20,minmax(14px,1fr));gap:3px;min-width:340px}
+.map .jl{font-size:.75em;color:var(--muted);margin:6px 0 2px}
+.map .c{color:#0008;font-size:.55em}
+@media(max-width:480px){.map .juz{grid-template-columns:repeat(10,1fr);min-width:0}.map .c{font-size:.7em}}
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
+const CHILDREN = {
+  dalal: { id: 'dalal', name: 'دلال', age: 10, unit: 'page', unitLabel: 'صفحة' },
+  farah: { id: 'farah', name: 'فرح', age: 8, unit: 'page', unitLabel: 'صفحة' },
+  karim: { id: 'karim', name: 'كريم', age: 6, unit: 'lines', unitLabel: '4 أسطر' },
+};
+const CHILD_ORDER = ['dalal', 'farah', 'karim'];
+
+const ROLES = {
+  aya: { id: 'aya', name: 'آية', title: 'المعلمة الرئيسية', canColor: true, canDecide: true },
+  asst: { id: 'asst', name: 'المساعدة', title: 'المعلمة المساعدة', canColor: false, canDecide: false },
+  parent: { id: 'parent', name: 'ولي الأمر', title: 'ولي الأمر', canColor: false, canDecide: false, readOnly: true },
+};
+
+/* مصحف المدينة: 604 صفحات. بدايات الأجزاء والسور بالصفحة */
+const JUZ_START = [1,22,42,62,82,102,121,142,162,182,201,222,242,262,282,302,322,342,362,382,402,422,442,462,482,502,522,542,562,582];
+const SURAH_NAMES = ['الفاتحة','البقرة','آل عمران','النساء','المائدة','الأنعام','الأعراف','الأنفال','التوبة','يونس','هود','يوسف','الرعد','إبراهيم','الحجر','النحل','الإسراء','الكهف','مريم','طه','الأنبياء','الحج','المؤمنون','النور','الفرقان','الشعراء','النمل','القصص','العنكبوت','الروم','لقمان','السجدة','الأحزاب','سبأ','فاطر','يس','الصافات','ص','الزمر','غافر','فصلت','الشورى','الزخرف','الدخان','الجاثية','الأحقاف','محمد','الفتح','الحجرات','ق','الذاريات','الطور','النجم','القمر','الرحمن','الواقعة','الحديد','المجادلة','الحشر','الممتحنة','الصف','الجمعة','المنافقون','التغابن','الطلاق','التحريم','الملك','القلم','الحاقة','المعارج','نوح','الجن','المزمل','المدثر','القيامة','الإنسان','المرسلات','النبأ','النازعات','عبس','التكوير','الانفطار','المطففين','الانشقاق','البروج','الطارق','الأعلى','الغاشية','الفجر','البلد','الشمس','الليل','الضحى','الشرح','التين','العلق','القدر','البينة','الزلزلة','العاديات','القارعة','التكاثر','العصر','الهمزة','الفيل','قريش','الماعون','الكوثر','الكافرون','النصر','المسد','الإخلاص','الفلق','الناس'];
+const SURAH_START = [1,2,50,77,106,128,151,177,187,208,221,235,249,255,262,267,282,293,305,312,322,332,342,350,359,367,377,385,396,404,411,415,418,428,434,440,446,453,458,467,477,483,489,496,499,502,507,511,515,518,520,523,526,528,531,534,537,542,545,549,551,553,554,556,558,560,562,564,566,568,570,572,574,575,577,578,580,582,583,585,586,587,587,589,590,591,591,592,593,594,595,595,596,596,597,597,598,598,599,599,600,600,601,601,601,602,602,602,603,603,603,604,604,604];
+const SURAH_AYAT = [7,286,200,176,120,165,206,75,129,109,123,111,43,52,99,128,111,110,98,135,112,78,118,64,77,227,93,88,69,60,34,30,73,54,45,83,182,88,75,85,54,53,89,59,37,35,38,29,18,45,60,49,62,55,78,96,29,22,24,13,14,11,11,18,12,12,30,52,52,44,28,28,20,56,40,31,50,40,46,42,29,19,36,25,22,17,19,26,30,20,15,21,11,8,8,19,5,8,8,11,11,8,3,9,5,4,7,3,6,3,5,4,5,6];
+
+function juzOfPage(p) { let j = 1; for (let i = 0; i < 30; i++) if (p >= JUZ_START[i]) j = i + 1; return j; }
+function surahsOfPage(p) {
+  /* السورة تظهر في الصفحة إن كانت بين صفحة بدايتها وصفحة بداية السورة التالية (تقريب: آخر صفحة قد تكون مشتركة) */
+  const list = [];
+  for (let s = 0; s < 114; s++) {
+    const start = SURAH_START[s];
+    const next = s < 113 ? SURAH_START[s + 1] : 605;
+    if ((start <= p && p < next) || start === p) list.push(s + 1);
+  }
+  return list;
+}
+function pageLabel(p) {
+  const ss = surahsOfPage(p);
+  const names = ss.map(n => SURAH_NAMES[n - 1]);
+  return `ص ${p} · ${names.join(' / ')}`;
+}
+function juzLabel(j) { return `الجزء ${j}`; }
+function juzPages(j) { const a = JUZ_START[j - 1]; const b = j < 30 ? JUZ_START[j] - 1 : 604; const out = []; for (let p = a; p <= b; p++) out.push(p); return out; }
+
+/* ===== أنواع الأخطاء ===== */
+const ERROR_TYPES = [
+  { id: 'hesitate', name: 'تردد', short: 'تردد' },
+  { id: 'prompt', name: 'تلقين', short: 'تلقين' },
+  { id: 'swap', name: 'إبدال كلمة', short: 'إبدال' },
+  { id: 'jump', name: 'انتقال إلى موضع مشابه', short: 'مشابه' },
+  { id: 'tajweed', name: 'تجويد', short: 'تجويد' },
+  { id: 'skip', name: 'سقوط آية أو كلمة', short: 'سقوط' },
+];
+
+/* ===== الخطة اليومية المضمّنة =====
+   الأيام: 6=السبت 0=الأحد 1=الاثنين 2=الثلاثاء 3=الأربعاء 4=الخميس 5=الجمعة (ترقيم JS)
+   kind يحدد شاشة الجلسة وخطواتها. teacher: aya | asst
+*/
+const WORKDAYS = [6, 0, 1, 2, 3];
+const THURSDAY = 4;
+
+const SESSION_KINDS = {
+  gate_new: { name: 'بوابة الأمس وحفظ الجديد', teacher: 'aya', steps: [
+    { id: 'gate', text: 'بوابة الأمس: تسميع صفحة الأمس غيباً', min: 5, outcome: 'gate' },
+    { id: 'memorize', text: 'حفظ الصفحة الجديدة بالتسلسل (ثلاثة مقاطع، آية آية، ثم الربط)', min: 25, timer: true },
+    { id: 'first', text: 'التسميع الأول: الصفحة كاملة غيباً مرتين + سؤالا معنى', min: 10, outcome: 'first' },
+  ]},
+  near_review: { name: 'أوائل الآيات والمراجعة القريبة', teacher: 'asst', steps: [
+    { id: 'awael', text: 'أوائل الآيات: يكتب أول كلمتين من كل آية في صفحة الأمس من الذاكرة، وتُصحَّح', min: 4, outcome: 'awael' },
+    { id: 'near', text: 'المراجعة القريبة: صفحات الجزء الحالي غيباً، الأحدث أولاً', min: 20, outcome: 'near' },
+    { id: 'tilawa', text: 'ورد النظر: 2–3 صفحات من الجزء القادم نظراً بالتجويد', min: 8 },
+    { id: 'listen', text: 'سماع صفحة اليوم من القارئ مع المتابعة بالإصبع، 3 مرات', min: 8 },
+  ]},
+  karim_new: { name: 'بوابة الأمس وتلقين الجديد', teacher: 'aya', steps: [
+    { id: 'gate', text: 'بوابة الأمس: تسميع مقطع الأمس غيباً', min: 3, outcome: 'gate' },
+    { id: 'memorize', text: 'يقرأ المقطع الجديد نظراً، ثم تلقين آية آية بالتسلسل حتى يقوله غيباً', min: 14, timer: true },
+    { id: 'first', text: 'التسميع الأول + سؤال من بطاقة السورة', min: 3, outcome: 'first' },
+  ]},
+  noon: { name: 'قرآن الظهر', teacher: 'asst', steps: [
+    { id: 'second', text: 'التسميع الثاني لصفحة اليوم غيباً', min: 3, outcome: 'second' },
+    { id: 'far', text: 'حصة البعيد من خريطة المصحف بالترتيب الدوري', min: 9, outcome: 'far' },
+    { id: 'cards', text: '4 أسئلة من بطاقات الصفحات التي سُمّعت، بالتناوب', min: 3, outcome: 'cards' },
+  ]},
+  fluency: { name: 'الطلاقة القرائية', teacher: 'asst', steps: [
+    { id: 'read', text: 'قراءة نظراً مصحَّحة: الصفحة الحالية تُكرر حتى تنزل تحت 3 دقائق', min: 20, outcome: 'fluency' },
+    { id: 'tomorrow', text: 'قراءة مقطع الغد نظراً 3 مرات', min: 5 },
+  ]},
+  karim_asr: { name: 'التسميع الثاني ومراجعة السور', teacher: 'asst', steps: [
+    { id: 'second', text: 'تسميع مقطع اليوم مع سورته من أولها', min: 3, outcome: 'second' },
+    { id: 'far', text: 'مراجعة السور المحفوظة: 3–4 صفحات بالترتيب الدوري', min: 15, outcome: 'far' },
+    { id: 'cards', text: 'سؤال من بطاقة كل سورة روجعت + لعبة معنى قصيرة', min: 7, outcome: 'cards' },
+  ]},
+  circle: { name: 'مجلس المعنى والتلقين لصفحة الغد', teacher: 'aya', steps: [
+    { id: 'context', text: 'سياق صفحة الغد وقصتها وربطها بما قبلها', min: 8 },
+    { id: 'words', text: 'معاني غريب الصفحة كله', min: 5 },
+    { id: 'tadabbur', text: 'سؤال تدبر واحد، كل طفل يجيب بجملة', min: 5 },
+    { id: 'talqeen', text: 'تلقين: تقرأين الآية ويرددان نظراً، جولتان', min: 7 },
+    { id: 'card', text: 'كتابة بطاقة صفحة الغد (الأسئلة الأربعة)', min: 0, card: true },
+  ]},
+  third: { name: 'التسميع الثالث وآيات الصفراء', teacher: 'aya', steps: [
+    { id: 'third', text: 'صفحة اليوم غيباً مرة', min: 3, outcome: 'third' },
+    { id: 'yellow', text: 'آيات القائمة الصفراء لهذا اليوم', min: 2, outcome: 'yellow' },
+  ]},
+  karim_evening: { name: 'قصة الغد وتلقينه ثم التسميع الثالث', teacher: 'aya', steps: [
+    { id: 'story', text: 'قصة مقطع الغد بجملة، كلمتاه الغريبتان، تلقينه 3 مرات، سماعه من القارئ', min: 10, card: true },
+    { id: 'third', text: 'التسميع الثالث لمقطع اليوم', min: 5, outcome: 'third' },
+  ]},
+  prep: { name: 'بطاقات الغد وتلوين السجلات', teacher: 'aya', steps: [
+    { id: 'color', text: 'تلوين صفحات اليوم من سجل المساعدة ومن تسميعاتك', min: 10, color: true },
+    { id: 'cards', text: 'التأكد من بطاقات الغد للثلاثة', min: 10 },
+  ]},
+  /* الخميس */
+  thu_recite: { name: 'سرد الأسبوع وفحص البعيد', teacher: 'aya', steps: [
+    { id: 'week', text: 'سرد صفحات الأسبوع الخمس متصلة غيباً', min: 15, outcome: 'week' },
+    { id: 'exam', text: 'فحص 5 صفحات بالقرعة من البعيد', min: 10, outcome: 'exam', lottery: true },
+  ]},
+  thu_yellow: { name: 'كتابة الصفراء والمتشابهات وتصفيتها', teacher: 'asst', steps: [
+    { id: 'write', text: 'كتابة آيات القائمة الصفراء والمتشابهات كاملة مرة واحدة مع موضعها المشابه', min: 10 },
+    { id: 'clear', text: 'تسميع كل آية منها مع التي قبلها والتي بعدها', min: 15, outcome: 'yellow' },
+  ]},
+  thu_karim: { name: 'سرد مقاطع الأسبوع وسورتان بالقرعة', teacher: 'aya', steps: [
+    { id: 'week', text: 'سرد مقاطع الأسبوع متصلة', min: 10, outcome: 'week' },
+    { id: 'exam', text: 'سورتان بالقرعة من المحفوظ', min: 10, outcome: 'exam', lottery: true },
+  ]},
+  thu_listen: { name: 'سماع صفحات الأسبوع القادم', teacher: 'asst', steps: [
+    { id: 'listen', text: 'الصفحات الخمس التالية من القارئ مع المتابعة نظراً، مرتين', min: 20 },
+  ]},
+  thu_mutashabih: { name: 'مجلس المتشابهات', teacher: 'aya', steps: [
+    { id: 'm', text: 'كل زوج سُجّل هذا الأسبوع: الموضعان جنباً إلى جنب، الفرق وسببه، ثم تسميعهما متتاليين', min: 20, mutashabih: true },
+  ]},
+  thu_quiz: { name: 'مسابقة بطاقات السور', teacher: 'asst', steps: [
+    { id: 'q', text: 'أسئلة بطاقات سور الأسبوع وقصصها في لعبة', min: 20 },
+  ]},
+  thu_tadabbur: { name: 'حلقة التدبر', teacher: 'aya', steps: [
+    { id: 't', text: 'كل طفل يعرض ما تتحدث عنه صفحات أسبوعه وقاعدة عملية طبّقها. «من أين في الآية أخذت هذا؟»', min: 20 },
+  ]},
+};
+
+/* الجدول: start/end بصيغة HH:MM */
+const PLAN = [];
+function addSess(days, start, end, kind, child, teacher) {
+  for (const d of days) PLAN.push({ day: d, start, end, kind, child, teacher: teacher || SESSION_KINDS[kind].teacher });
+}
+/* السبت–الأربعاء */
+addSess(WORKDAYS, '07:00', '07:40', 'gate_new', 'dalal');
+addSess(WORKDAYS, '07:00', '07:40', 'near_review', 'farah');
+addSess(WORKDAYS, '07:50', '08:30', 'gate_new', 'farah');
+addSess(WORKDAYS, '07:50', '08:30', 'near_review', 'dalal');
+addSess(WORKDAYS, '08:30', '08:50', 'karim_new', 'karim');
+addSess(WORKDAYS, '12:10', '12:35', 'fluency', 'karim');
+addSess(WORKDAYS, '12:50', '13:05', 'noon', 'dalal');
+addSess(WORKDAYS, '13:05', '13:20', 'noon', 'farah');
+addSess(WORKDAYS, '15:20', '15:45', 'karim_asr', 'karim');
+addSess(WORKDAYS, '18:00', '18:25', 'circle', 'both');
+addSess(WORKDAYS, '18:25', '18:30', 'third', 'dalal');
+addSess(WORKDAYS, '18:30', '18:35', 'third', 'farah');
+addSess(WORKDAYS, '18:35', '18:50', 'karim_evening', 'karim');
+addSess(WORKDAYS, '18:50', '19:10', 'prep', 'all');
+/* الخميس */
+addSess([THURSDAY], '07:00', '07:25', 'thu_recite', 'dalal');
+addSess([THURSDAY], '07:00', '07:25', 'thu_yellow', 'farah');
+addSess([THURSDAY], '07:35', '08:00', 'thu_recite', 'farah');
+addSess([THURSDAY], '07:35', '08:00', 'thu_yellow', 'dalal');
+addSess([THURSDAY], '08:10', '08:30', 'thu_karim', 'karim');
+addSess([THURSDAY], '08:10', '08:30', 'thu_listen', 'both');
+addSess([THURSDAY], '08:40', '09:00', 'thu_mutashabih', 'both');
+addSess([THURSDAY], '08:40', '09:00', 'thu_quiz', 'karim');
+addSess([THURSDAY], '09:00', '09:20', 'thu_tadabbur', 'both');
+
+const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+/* ===== التخزين والنموذج: أحداث تُضاف ولا تُعدَّل، وحالة تُشتق منها ===== */
+const LS_EVENTS = 'lm_events_v1';
+const LS_SETTINGS = 'lm_settings_v1';
+const LS_SESSION = 'lm_session_v1';
+
+const Store = {
+  events: [],
+  settings: {},
+  load() {
+    try { this.raw = JSON.parse(localStorage.getItem(LS_EVENTS) || '[]'); } catch (e) { this.raw = []; }
+    this.refresh();
+    try { this.settings = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'); } catch (e) { this.settings = {}; }
+    if (!this.settings.pins) this.settings.pins = { aya: '1111', asst: '2222', parent: '3333' };
+    if (!this.settings.deviceId) this.settings.deviceId = 'd' + Math.random().toString(36).slice(2, 10);
+    this.saveSettings();
+  },
+  /* السجل الخام append-only؛ events = السجلات الحيّة (غير المتراجَع عنها). التراجع نفسه يبقى في الخام */
+  /* مرآة محلية لسياسة الخادم: ما يجوز لكل دور تسجيله (النيابة لا توسّعها) */
+  roleAllows(by, ev) {
+    if (by === 'aya') return true;
+    if (by === 'asst') return ['outcome', 'error', 'note', 'session_done', 'fluency_time', 'card', 'yellow_pass', 'handoff', 'handoff_update', 'undo', 'session_start', 'session_cancel', 'fluency_page', 'tilawa'].includes(ev.type) && !(ev.type === 'outcome' && (ev.step === 'exam' || ev.parent));
+    if (by === 'parent') return ['parent_exam', 'note', 'undo'].includes(ev.type) || (ev.type === 'outcome' && ev.parent === true);
+    return false;
+  },
+  /* من يجوز له التراجع عن سجل: صاحبه، وآية عن سجلات المساعدة */
+  canUndo(by, target) { return !!target && target.type !== 'undo' && (target.by === by || (by === 'aya' && target.by === 'asst')); },
+  refresh() {
+    const byId = new Map(this.raw.map(e => [e.id, e]));
+    const undone = new Set();
+    for (const u of this.raw) if (u.type === 'undo') { const t = byId.get(u.target); if (t && this.canUndo(u.by, t)) undone.add(u.target); }
+    this.events = this.raw.filter(e => e.type !== 'undo' && !undone.has(e.id));
+  },
+  reset() { this.raw = []; this.refresh(); this.saveEvents(); },
+  saveEvents() { try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); this.storageError = null; return true; } catch (e) { this.storageError = 'تعذّر الحفظ: امتلأت ذاكرة الجهاز. صدّري البيانات وأبلغي ولي الأمر.'; return false; } },
+  saveSettings() { localStorage.setItem(LS_SETTINGS, JSON.stringify(this.settings)); },
+  add(ev) {
+    ev.id = ev.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+    ev.ts = ev.ts || App.realNow().getTime();
+    ev.day = ev.day || dayKey(wallClock(new Date(ev.ts)));
+    ev.by = ev.by || (App.role && App.role.id) || 'unknown';
+    ev.dev = this.settings.deviceId;
+    const act = this.settings.active;
+    if (act && act.sid && !ev.sid && ev.by === act.role && ['outcome', 'error', 'new_page', 'fluency_time', 'fluency_page', 'yellow_pass', 'card', 'note', 'tilawa', 'juz_exam'].includes(ev.type)) ev.sid = act.sid;
+    ev.synced = false;
+    if (!this.validEvent(ev)) { const msg = 'سجل غير صالح لم يُحفظ: ' + ev.type; try { UI.toast(msg); } catch (x) {} throw new Error(msg); }
+    if (!this.roleAllows(ev.by, ev)) { const msg = `لا يُسمح لحساب ${ROLES[ev.by] ? ROLES[ev.by].name : ev.by} بتسجيل «${ev.type}»؛ يُطلب من آية`; try { UI.toast(msg); } catch (x) {} throw new Error(msg); }
+    this.raw.push(ev);
+    if (!this.saveEvents()) { this.raw.pop(); try { UI.toast(this.storageError); UI.renderStatus(); } catch (x) {} throw new Error(this.storageError); }
+    this.refresh();
+    Sync.schedule();
+    return ev;
+  },
+  byType(type, child) { return this.events.filter(e => e.type === type && (!child || e.child === child)); },
+  rejectReason(e, batch) {
+    if (!e || typeof e !== 'object') return 'ليس كائناً';
+    if (typeof e.id !== 'string' || typeof e.type !== 'string' || typeof e.ts !== 'number' || !/^\d{4}-\d{2}-\d{2}$/.test(e.day || '')) return 'حقول أساسية ناقصة أو غير صالحة';
+    if (e.by != null && !ROLES[e.by]) return 'دور غير معروف: ' + e.by;
+    if (e.child != null && !CHILDREN[e.child]) return 'طفل غير معروف';
+    if (e.type === 'undo') { const t = this.raw.find(x => x.id === e.target) || (batch || []).find(x => x && x.id === e.target); return t ? `لا صلاحية لـ${ROLES[e.by] ? ROLES[e.by].name : e.by} للتراجع عن سجل ${ROLES[t.by] ? ROLES[t.by].name : t.by}` : 'هدف التراجع غير موجود'; }
+    return 'حقول النوع ' + e.type + ' غير صالحة';
+  },
+  validEvent(e, batch) {
+    if (!e || typeof e !== 'object') return false;
+    if (typeof e.id !== 'string' || typeof e.type !== 'string' || typeof e.ts !== 'number' || !/^\d{4}-\d{2}-\d{2}$/.test(e.day || '')) return false;
+    if (e.by != null && !ROLES[e.by]) return false;
+    if (e.sid != null && typeof e.sid !== 'string') return false;
+    if (e.child != null && !CHILDREN[e.child]) return false;
+    const isPage = v => Number.isInteger(v) && v >= 1 && v <= 604;
+    const isInt = (v, a, b) => Number.isInteger(v) && v >= a && v <= b;
+    const oneOf = (v, arr) => arr.includes(v);
+    const needChild = ['juz_exam', 'tilawa', 'handoff', 'layer', 'color', 'new_page', 'outcome', 'error', 'decision', 'surah_passed', 'juz_passed', 'card', 'fluency_time', 'parent_exam', 'yellow_pass'];
+    if (needChild.includes(e.type) && !CHILDREN[e.child]) return false;
+    if (e.page != null && !isPage(e.page)) return false;
+    switch (e.type) {
+      case 'layer': return isPage(e.page) && oneOf(e.layer, ['none', 'new', 'near', 'far']) && (e.color == null || oneOf(e.color, ['green', 'yellow', 'red']));
+      case 'color': return isPage(e.page) && oneOf(e.color, ['green', 'yellow', 'red', 'none']) && (e.lines == null || (Array.isArray(e.lines) && isInt(e.lines[0], 1, 15) && isInt(e.lines[1], 1, 15)));
+      case 'new_page': return isPage(e.page) && isInt(e.linesFrom, 1, 15) && isInt(e.linesTo, 1, 15) && e.linesFrom <= e.linesTo && (e.minutes == null || isInt(e.minutes, 0, 600));
+      case 'outcome': return isPage(e.page) && typeof e.step === 'string' && e.step.length <= 20 && oneOf(e.result, ['clean', 'yellow', 'red', 'partial']) && (e.parent == null || e.parent === true)
+        && (e.prompts == null || isInt(e.prompts, 0, 99)) && (e.tajweed == null || oneOf(e.tajweed, ['ok', 'issue'])) && (e.meaning == null || oneOf(e.meaning, ['ok', 'support', 'untested'])) && (e.selfCorrect == null || isInt(e.selfCorrect, 0, 99))
+        && (e.lines == null || (Array.isArray(e.lines) && isInt(e.lines[0], 1, 15) && isInt(e.lines[1], 1, 15) && e.lines[0] <= e.lines[1]));
+      case 'undo': {
+        if (typeof e.target !== 'string' || e.target === e.id || (e.reason != null && typeof e.reason !== 'string')) return false;
+        const t = this.raw.find(x => x.id === e.target) || (batch ? batch.find(x => x && x.id === e.target) : null);
+        if (!t) return !!batch; /* عند الاستيراد/المزامنة: قد يصل الأصل في دفعة لاحقة؛ لا أثر له حتى يصل */
+        return this.canUndo(e.by, t);
+      }
+      case 'error': return isPage(e.page) && oneOf(e.etype, ERROR_TYPES.map(t => t.id)) && (e.lines == null || (Array.isArray(e.lines) && isInt(e.lines[0], 1, 15) && isInt(e.lines[1], 1, 15) && e.lines[0] <= e.lines[1])) && (e.surah == null || isInt(e.surah, 1, 114)) && (e.ayah == null || isInt(e.ayah, 1, 286)) && (e.target == null || (typeof e.target === 'object' && isInt(e.target.surah, 1, 114) && (e.target.ayah == null || isInt(e.target.ayah, 1, 286))));
+      case 'decision': return oneOf(e.kind, ['repair', 'reduce', 'restore', 'pause', 'resume', 'override', 'juz', 'surah']) && (e.text == null || typeof e.text === 'string');
+      case 'surah_passed': return isInt(e.surah, 1, 114);
+      case 'juz_passed': return isInt(e.juz, 1, 30) && (e.exam == null || typeof e.exam === 'string');
+      case 'juz_exam': return isInt(e.juz, 1, 30) && oneOf(e.result, ['clean', 'yellow', 'red']) && (e.prompts == null || isInt(e.prompts, 0, 99)) && (e.minutes == null || isInt(e.minutes, 0, 600)) && (e.note == null || typeof e.note === 'string')
+        /* الاتساق: مستقل = 0 تلقين؛ بمساعدة = 1–2؛ توقف = أي عدد (حتى بلا تلقين) */
+        && !(e.result === 'clean' && e.prompts > 0) && !(e.result === 'yellow' && (e.prompts == null || e.prompts < 1 || e.prompts > 2));
+      case 'tilawa': return Array.isArray(e.pages) && e.pages.length >= 1 && e.pages.length <= 30 && e.pages.every(x => isPage(x)) && oneOf(e.kind, ['nazar', 'listen']) && (e.times == null || isInt(e.times, 1, 10));
+      case 'yellow_pass': return isPage(e.page) && isInt(e.surah, 1, 114) && isInt(e.ayah, 1, 286);
+      case 'fluency_time': return (e.page == null || isPage(e.page)) && isInt(e.seconds, 1, 7200);
+      case 'parent_exam': return Array.isArray(e.pages) && e.pages.length >= 1 && e.pages.every(x => isPage(Number(x))) && isInt(e.green, 0, e.pages.length);
+      case 'card': return isPage(e.page) && oneOf(e.kind, ['surah', 'page']) && typeof e.key === 'string';
+      case 'note': return typeof e.text === 'string';
+      case 'session_start': return typeof e.key === 'string' && typeof e.sid === 'string' && (e.proxyFor == null || ROLES[e.proxyFor] != null) && (e.reason == null || typeof e.reason === 'string');
+      case 'session_cancel': return typeof e.key === 'string' && typeof e.reason === 'string' && e.reason.length > 0;
+      case 'fluency_page': return isPage(e.page);
+      case 'session_done': return typeof e.key === 'string' && (e.status == null || oneOf(e.status, ['complete', 'partial', 'stopped'])) && (e.remaining == null || Array.isArray(e.remaining)) && (e.reason == null || typeof e.reason === 'string');
+      case 'handoff': return typeof e.key === 'string' && typeof e.to === 'string' && ROLES[e.to] != null && Array.isArray(e.items);
+      case 'handoff_status': return typeof e.handoff === 'string' && oneOf(e.status, ['seen', 'handled', 'reopened']);
+      case 'handoff_update': return typeof e.handoff === 'string' && Array.isArray(e.items);
+      default: return false;
+    }
+  },
+  importEvents(list) {
+    if (!Array.isArray(list)) throw new Error('الملف ليس قائمة أحداث');
+    const bad = list.filter(e => !this.validEvent(e, list));
+    if (bad.length) throw new Error(`رُفض الملف كاملاً: ${bad.length} سجل غير صالح (مثال: ${JSON.stringify(bad[0]).slice(0, 80)})`);
+    const have = new Set(this.raw.map(e => e.id));
+    const before = this.raw.slice();
+    let n = 0;
+    for (const e of list) if (!have.has(e.id)) { this.raw.push(e); have.add(e.id); n++; }
+    this.raw.sort((a, b) => a.ts - b.ts);
+    if (!this.saveEvents()) { this.raw = before; throw new Error(this.storageError); }
+    this.refresh();
+    return n;
+  },
+};
+
+function dayKey(d) { const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0'); return `${y}-${m}-${dd}`; }
+function parseDay(k) { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }
+function daysBetween(a, b) { return Math.round((parseDay(b) - parseDay(a)) / 86400000); }
+function todayKey() { return dayKey(App.now()); }
+/* ===== التوقيت: الخطة بتوقيت الأطفال (الصين)، والعرض بتوقيت المعلمة أيضاً ===== */
+const PLAN_TZ = 'Asia/Shanghai';
+const _tzFmt = new Intl.DateTimeFormat('en-US', { timeZone: PLAN_TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function wallClock(instant) { // Date مزيفة تحمل أرقام ساعة الصين في حقولها المحلية
+  const parts = {}; for (const x of _tzFmt.formatToParts(instant)) parts[x.type] = x.value;
+  return new Date(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour) % 24, Number(parts.minute), Number(parts.second));
+}
+function deviceTz() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { return ''; } }
+function planInstant(dayK, hm) { // لحظة حقيقية من يوم ووقت بتوقيت الصين (+8 بلا توقيت صيفي)
+  const [y, m, d] = dayK.split('-').map(Number); const [h, mi] = hm.split(':').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, h - 8, mi));
+}
+function localOf(dayK, hm) { // نفس اللحظة بساعة جهاز المعلمة
+  const inst = planInstant(dayK, hm);
+  return inst.toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' });
+}
+function sameTz() { return deviceTz() === PLAN_TZ; }
+function timePair(hm, dayK) { return sameTz() ? fmtTime12(hm) : `${fmtTime12(hm)} بكين · ${localOf(dayK || todayKey(), hm)} ${tzShort()}`; }
+function tzShort() { const t = deviceTz(); return t === 'Africa/Cairo' ? 'القاهرة' : t === PLAN_TZ ? 'بكين' : (t.split('/').pop() || 'محلي').replace('_', ' '); }
+function chinaHHMM(ts) { return hhmm(wallClock(new Date(ts))); }
+function hhmm(d) { return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function fmtTime12(s) { const [h, m] = s.split(':').map(Number); const hh = ((h + 11) % 12) + 1; return `${hh}:${String(m).padStart(2, '0')} ${h < 12 ? 'ص' : 'م'}`; }
+function fmtDay(k) { const d = parseDay(k); return `${DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; }
+
+/* ترتيب الحفظ الجديد لكل طفل */
+function newOrder(childId) {
+  const seq = [];
+  if (childId === 'karim') {
+    for (let p = 604; p >= 582; p--) seq.push(p); // جزء عمّ صاعداً من الناس
+    for (let p = 562; p <= 581; p++) seq.push(p); // ثم تبارك
+    for (let p = 542; p <= 561; p++) seq.push(p);
+  } else {
+    for (const j of [28, 27, 26]) for (const p of juzPages(j)) seq.push(p);
+    for (let p = 2; p <= 501; p++) seq.push(p);
+  }
+  return seq;
+}
+
+/* الحالة المشتقة لطفل */
+function deriveChild(childId) {
+  const evs = Store.events.filter(e => e.child === childId);
+  const pages = {};
+  for (let p = 1; p <= 604; p++) pages[p] = { page: p, layer: 'none', color: null, colorDay: null, lastReview: null, lastFar: null, errors: 0, linesDone: 0 };
+  let currentJuz = null;
+  let lastNewPage = null;
+  const newPages = [];
+  const passedSurahs = new Set(); const passedDay = {};
+  let paused = false, reduced = false;
+  for (const e of evs) {
+    if (e.page != null && !pages[e.page]) continue; // حدث بصفحة غير صالحة لا يُسقط العرض
+    if (e.type === 'layer') { const pg = pages[e.page]; pg.layer = e.layer; if (e.color) { pg.color = e.color; pg.colorDay = e.day; } if (e.layer === 'far') { pg.lastReview = e.day; pg.lastFar = e.day; } }
+    if (e.type === 'new_page') {
+      newPages.push(e);
+      const pg = pages[e.page];
+      pg.linesDone = Math.max(pg.linesDone, e.linesTo || 15);
+      pg.lastReview = e.day;
+      if (pg.linesDone >= 15) { pg.layer = 'near'; lastNewPage = e.page; }
+      else { pg.layer = 'new'; lastNewPage = e.page; }
+      currentJuz = juzOfPage(e.page);
+    }
+    if (e.type === 'color') { const pg = pages[e.page]; if (e.lines) { pg.segs = pg.segs || {}; pg.segs[segKey(e.lines)] = { color: e.color, day: e.day, lines: e.lines }; const order = { red: 3, yellow: 2, green: 1, none: 0 }; const worst = Object.values(pg.segs).reduce((w, x) => order[x.color] > order[w] ? x.color : w, 'none'); pg.color = worst === 'none' ? e.color : worst; pg.colorDay = e.day; } else { pg.color = e.color; pg.colorDay = e.day; } }
+    if (e.type === 'outcome') {
+      pages[e.page].lastReview = e.day;
+      if ((e.step === 'far' || e.step === 'exam') && e.result !== 'partial') pages[e.page].lastFar = e.day;
+    }
+    if (e.type === 'error') pages[e.page].errors++;
+    if (e.type === 'juz_passed') { for (const p of juzPages(e.juz)) if (pages[p].layer === 'near') pages[p].layer = 'far'; }
+    if (e.type === 'surah_passed') { passedSurahs.add(e.surah); passedDay[e.surah] = e.day; }
+    if (e.type === 'decision') { if (e.kind === 'pause') paused = true; if (e.kind === 'resume') paused = false; if (e.kind === 'reduce') reduced = true; if (e.kind === 'restore') reduced = false; }
+  }
+  /* صفحة القريب تنتقل إلى البعيد حين تُعتمد كل سورها التي بدأها الطفل */
+  if (passedSurahs.size) for (const p of Object.keys(pages).map(Number)) { const pg = pages[p]; if (pg.layer !== 'near') continue; const ss = surahsOfPage(p); if (ss.every(x => passedSurahs.has(x))) { pg.layer = 'far'; const d = ss.map(x => passedDay[x]).sort().pop(); if (!pg.lastFar || pg.lastFar < d) { pg.lastFar = d; pg.lastReview = d; } } }
+  const far = Object.values(pages).filter(p => p.layer === 'far').map(p => p.page).sort((a, b) => a - b);
+  const near = Object.values(pages).filter(p => p.layer === 'near').map(p => p.page).sort((a, b) => a - b);
+  const order = newOrder(childId);
+  let nextNew = null, nextLines = null;
+  for (const p of order) {
+    const pg = pages[p];
+    if (pg.layer === 'none') { nextNew = p; nextLines = [1, childId === 'karim' ? 4 : (reduced ? 8 : 15)]; break; }
+    if (pg.layer === 'new' && pg.linesDone < 15) { nextNew = p; nextLines = [pg.linesDone + 1, childId === 'karim' ? Math.min(15, pg.linesDone + 4) : 15]; break; }
+  }
+  // حصة البعيد
+  /* الحصة: المحفوظ ÷ 8 جلسات بعيد (5 في الأسبوع) ≈ دورة 12 يوماً تقويمياً */
+  const quota = far.length === 0 ? 0 : (childId === 'karim' ? Math.max(3, Math.ceil(far.length / 8)) : Math.max(7, Math.ceil(far.length / 8)));
+  const today = todayKey();
+  let lastFarPage = null, lastFarTs = 0;
+  for (const e of evs) if (e.type === 'outcome' && e.step === 'far' && e.result !== 'partial' && e.day < today && e.ts >= lastFarTs) { lastFarTs = e.ts; lastFarPage = e.page; }
+  let startIdx = 0;
+  if (lastFarPage != null) { const i = far.indexOf(lastFarPage); startIdx = i >= 0 ? (i + 1) % far.length : 0; }
+  const todayFar = [];
+  for (let k = 0; k < Math.min(quota, far.length); k++) todayFar.push(far[(startIdx + k) % far.length]);
+  // أطول صفحة بلا تسميع
+  let maxGap = 0, maxGapPage = null;
+  for (const p of far) { const d = pages[p].lastFar || pages[p].lastReview; const gap = d ? daysBetween(d, today) : 99; if (gap > maxGap) { maxGap = gap; maxGapPage = p; } }
+  const todayNew = newPages.filter(e => e.day === today).map(e => e.page);
+  const yesterdayNew = lastNewFor(childId, 1);
+  return { id: childId, pages, far, near, currentJuz, lastNewPage, nextNew, nextLines, quota, todayFar, maxGap, maxGapPage, todayNew, yesterdayNew, paused, reduced, passedSurahs };
+}
+
+/* آخر صفحة جديدة قبل اليوم (للبوابة) */
+function lastNewFor(childId, skipToday) {
+  const today = todayKey();
+  const list = Store.events.filter(e => e.child === childId && e.type === 'new_page' && (!skipToday || e.day !== today));
+  if (!list.length) return null;
+  const e = list[list.length - 1];
+  return { page: e.page, lines: e.linesFrom ? [e.linesFrom, e.linesTo] : null, day: e.day };
+}
+
+/* القائمة الصفراء: مفتاح الآية = سورة:آية */
+function yellowList(childId) {
+  const items = {};
+  for (const e of Store.events.filter(e => e.child === childId)) {
+    if (e.type === 'error' && e.surah && e.ayah) {
+      const k = `${e.surah}:${e.ayah}`;
+      if (!items[k]) items[k] = { key: k, surah: e.surah, ayah: e.ayah, page: e.page, first: e.day, last: e.day, count: 0, types: {}, passes: [], target: null };
+      const it = items[k]; it.count++; it.last = e.day; it.types[e.etype] = (it.types[e.etype] || 0) + 1;
+      if (e.etype === 'jump' && e.target) it.target = e.target;
+    }
+    if (e.type === 'yellow_pass' && items[`${e.surah}:${e.ayah}`]) {
+      const it = items[`${e.surah}:${e.ayah}`];
+      if (!it.passes.includes(e.day) && e.day > it.last) it.passes.push(e.day);
+    }
+    if (e.type === 'error' && e.surah && e.ayah) { items[`${e.surah}:${e.ayah}`].passes = items[`${e.surah}:${e.ayah}`].passes.filter(d => d > e.day); }
+  }
+  const all = Object.values(items);
+  return { active: all.filter(i => i.passes.length < 3), cleared: all.filter(i => i.passes.length >= 3) };
+}
+
+function mutashabihat(childId, sinceDay) {
+  return Store.events.filter(e => e.child === childId && e.type === 'error' && e.etype === 'jump' && (!sinceDay || e.day >= sinceDay));
+}
+
+/* بطاقات */
+function cardsFor(childId) {
+  const map = {};
+  for (const e of Store.events.filter(e => e.child === childId && e.type === 'card')) map[e.key] = e; // الأحدث يغلب
+  return map;
+}
+
+/* أسبوع العمل الحالي: من السبت */
+function weekStartKey(d) { const x = new Date(d); const diff = (x.getDay() + 1) % 7; x.setDate(x.getDate() - diff); return dayKey(x); }
+
+/* النتيجة النافذة: آخر حدث لكل (طفل، صفحة، خطوة، يوم) — إعادة النقر تصحيح لا تكرار */
+function effectiveOutcomes(filter) {
+  const map = new Map();
+  for (const e of Store.events) if (e.type === 'outcome' && (!filter || filter(e))) map.set(`${e.child}|${e.page}|${e.step}|${e.day}|${segKey(e.lines)}`, e);
+  return [...map.values()].sort((a, b) => a.ts - b.ts);
+}
+
+function segKey(lines) { return lines ? `${lines[0]}-${lines[1]}` : ''; }
+function sameSeg(a, b) { return segKey(a) === segKey(b); }
+/* مؤشرات الصحة لطفل */
+function healthOf(childId) {
+  const st = deriveChild(childId);
+  const ws = weekStartKey(App.now());
+  const gates = effectiveOutcomes(e => e.child === childId && e.day >= ws && e.step === 'gate');
+  const gateFails = gates.filter(e => e.result !== 'clean' && e.result !== 'partial').length;
+  const exams = effectiveOutcomes(e => e.child === childId && e.step === 'exam' && !e.parent);
+  let examGreen = null, examN = 0, examClean = 0, examDay = null;
+  if (exams.length) { examDay = exams[exams.length - 1].day; const last = exams.filter(e => e.day === examDay && e.result !== 'partial'); examN = last.length; examClean = last.filter(e => e.result === 'clean').length; examGreen = Math.round(100 * examClean / examN); }
+  const evaluated = gates.length > 0 || exams.length > 0;
+  let light = evaluated ? 'green' : 'grey';
+  if (gateFails >= 2 || (st.far.length && st.maxGap > 12) || (examGreen != null && examGreen < 70)) light = 'red';
+  else if (gateFails === 1 || (st.far.length && st.maxGap > 10) || (examGreen != null && examGreen < 85)) light = 'yellow';
+  return { st, gateFails, gateN: gates.length, examGreen, examN, examClean, examDay, maxGap: st.maxGap, light, evaluated };
+}
+
+/* الجلسة الحالية والقادمة حسب الساعة */
+function sessionsFor(role, date) {
+  const d = date.getDay();
+  return PLAN.filter(s => s.day === d && (!role || role === 'parent' || s.teacher === role)).sort((a, b) => a.start.localeCompare(b.start));
+}
+function toMin(s) { const [h, m] = s.split(':').map(Number); return h * 60 + m; }
+function currentSession(role, date) {
+  const list = sessionsFor(role, date); const nowM = date.getHours() * 60 + date.getMinutes();
+  let current = null, next = null;
+  for (const s of list) {
+    if (toMin(s.start) <= nowM && nowM < toMin(s.end)) current = s;
+    else if (toMin(s.start) > nowM && !next) next = s;
+  }
+  return { list, current, next };
+}
+function sessionKey(s, dayK) { return `${dayK}|${s.start}|${s.kind}|${s.child}`; }
+function sessionDone(s, dayK) { return !!sessionStatus(s, dayK); }
+/* آخر سجل إنهاء للجلسة (أو null) */
+/* حالة الجلسة: آخر إنهاء أو إلغاء، مع كشف التعارض (تسجيل من معلمتين بمعرّفين، أو إلغاء ثم إنهاء متأخر) */
+function sessionStatus(s, dayK) {
+  const k = sessionKey(s, dayK);
+  const dones = Store.events.filter(e => e.type === 'session_done' && e.key === k);
+  const cancels = Store.events.filter(e => e.type === 'session_cancel' && e.key === k);
+  if (!dones.length && !cancels.length) return null;
+  const last = [...dones, ...cancels].sort((a, b) => a.ts - b.ts).pop();
+  const sids = new Set(dones.map(e => e.sid)); const bys = new Set(dones.map(e => e.proxyFor ? e.by : e.by));
+  const conflicts = [];
+  if (sids.size > 1) conflicts.push(`سُجّلت ${sids.size} مرات بمعرّفين مختلفين (${[...bys].map(b => ROLES[b] ? ROLES[b].name : b).join('، ')})`);
+  if (cancels.length && dones.length) conflicts.push('أُلغيت ووصل لها إنهاء أيضاً');
+  const st = last.type === 'session_cancel' ? 'cancelled' : (last.status || 'complete');
+  return Object.assign({}, last, { status: st, conflicts, dones, cancels });
+}
+function statusName(st) { return { complete: 'اكتملت', partial: 'بقي جزء', stopped: 'توقفت', cancelled: 'أُلغيت' }[st] || 'اكتملت'; }
+/* جلسات اليوم المسجلة بلا تكرار (بالمفتاح لا بعدد السجلات) */
+function doneKeys(filter) { return new Set(Store.events.filter(e => e.type === 'session_done' && (!filter || filter(e))).map(e => e.key)); }
+/* صفحة الطلاقة الحالية لكريم: آخر حدث في السجل، لا إعداد الجهاز */
+function fluencyPage(c) { const l = Store.events.filter(e => e.type === 'fluency_page' && e.child === c); return l.length ? l[l.length - 1].page : (Store.settings['fluency_' + c] || 582); }
+
+/* ===== بطاقات التسليم ===== */
+function handoffs(filter) {
+  const st = {};
+  const upd = {};
+  for (const e of Store.events) {
+    if (e.type === 'handoff_status') st[e.handoff] = { status: e.status, day: e.day, by: e.by, ts: e.ts };
+    if (e.type === 'handoff_update') { (upd[e.handoff] = upd[e.handoff] || []).push(e); if (st[e.handoff] && st[e.handoff].status === 'handled' && st[e.handoff].ts < e.ts) st[e.handoff] = { status: 'reopened', day: e.day, by: e.by, ts: e.ts }; }
+  }
+  return Store.events.filter(e => e.type === 'handoff').map(h => { const us = upd[h.id] || []; const items = h.items.concat(...us.map(u => u.items.map(i => Object.assign({}, i, { addedDay: u.day })))); return Object.assign({}, h, { items, updates: us.length, state: st[h.id] ? st[h.id].status : 'new', stateDay: st[h.id] ? st[h.id].day : null }); }).filter(h => !filter || filter(h));
+}
+function handoffFor(key, child) { return Store.events.filter(e => e.type === 'handoff' && e.key === key && e.child === child).pop() || null; }
+/* تكرار موضع انتقال معيّن (سورة/آية) وآخر ظهوره */
+function jumpStats(child, surah, ayah) {
+  const l = Store.events.filter(e => e.type === 'error' && e.child === child && e.etype === 'jump' && e.surah === surah && e.ayah === ayah);
+  return { n: l.length, last: l.length ? l[l.length - 1].day : null };
+}
+
+/* ===== اللون المقترح من المعايير الكاملة (الوثيقة: أخضر = بلا تلقين، زلة واحدة مصحَّحة ذاتياً، تجويد سليم، إجابة المعنى) ===== */
+function suggestColor(child, page, day, lines) {
+  const outs = effectiveOutcomes(e => e.child === child && e.day === day && e.page === page && (lines ? sameSeg(e.lines, lines) : true));
+  const allErrs = Store.events.filter(e => e.child === child && e.day === day && e.type === 'error' && e.page === page);
+  /* مع مقطع محدد: تُحسب أخطاء المقطع نفسه فقط؛ الأخطاء بلا مقطع تُعرض للمراجعة ولا تُنسب لكل المقاطع */
+  const errs = lines ? allErrs.filter(e => e.lines && sameSeg(e.lines, lines)) : allErrs;
+  const unassigned = lines ? allErrs.filter(e => !e.lines) : [];
+  const full = outs.filter(o => o.result !== 'partial');
+  const incomplete = outs.length > 0 && full.length === 0;
+  const prompts = Math.max(full.reduce((m, o) => Math.max(m, o.prompts != null ? o.prompts : (o.result === 'yellow' ? 1 : o.result === 'red' ? 3 : 0)), 0), errs.filter(e => e.etype === 'prompt').length);
+  const hesit = errs.filter(e => e.etype === 'hesitate').length + full.reduce((a, o) => a + (o.selfCorrect || 0), 0);
+  const tajweedIssue = full.some(o => o.tajweed === 'issue') || errs.some(e => e.etype === 'tajweed');
+  /* شرط المعنى يخص الصفحة الجديدة (البوابة والتسميعات الثلاثة)؛ البعيد والفحص أسئلتهما من البطاقات في خطوة مستقلة */
+  const NEW_STEPS = ['gate', 'first', 'second', 'third'];
+  const needsMeaning = full.some(o => NEW_STEPS.includes(o.step));
+  const meaning = full.some(o => o.meaning === 'support') ? 'support' : full.some(o => o.meaning === 'ok') ? 'ok' : (needsMeaning ? 'untested' : 'n/a');
+  const stop = full.some(o => o.result === 'red');
+  const reasons = [];
+  let color, pending = false;
+  if (!outs.length) color = 'none';
+  else if (incomplete) { color = 'none'; reasons.push('لم يُسمَّع كاملاً'); }
+  else if (stop || prompts >= 3) { color = 'red'; reasons.push(stop ? 'توقف تام أو حكم أحمر' : `${prompts} تلقينات`); }
+  else if (prompts >= 1 || hesit > 1 || tajweedIssue || meaning === 'support' || errs.some(e => ['swap', 'jump', 'skip'].includes(e.etype))) {
+    color = 'yellow';
+    if (prompts) reasons.push(`تلقين ${prompts}`); if (hesit > 1) reasons.push(`${hesit} زلات`); if (tajweedIssue) reasons.push('تجويد'); if (meaning === 'support') reasons.push('المعنى يحتاج دعماً');
+    for (const t of ['swap', 'jump', 'skip']) { const n = errs.filter(e => e.etype === t).length; if (n) reasons.push(`${ERROR_TYPES.find(x => x.id === t).short || t} ${n}`); }
+  } else if (meaning === 'untested') { color = 'none'; pending = true; reasons.push('الحفظ مستقل — المعنى لم يُختبر — بانتظار الاعتماد'); }
+  else color = 'green';
+  if (unassigned.length) reasons.push(`${unassigned.length} خطأ بلا مقطع — للمراجعة`);
+  return { color, pending, reasons, prompts, hesit, tajweedIssue, meaning, incomplete, n: outs.length, lines: lines || null, unassigned: unassigned.length };
+}
+
+/* آخر ورد نظر للطفل (لا يمس طبقات الحفظ ولا تواريخ المراجعة) */
+function lastTilawa(c, kind) { const l = Store.events.filter(e => e.type === 'tilawa' && e.child === c && (!kind || e.kind === kind)); return l.length ? l[l.length - 1] : null; }
+function juzExams(c, juz) { return Store.events.filter(e => e.type === 'juz_exam' && e.child === c && e.juz === juz); }
+
+/* ===== التزامن الاختياري مع خادم Supabase ===== */
+const Sync = {
+  timer: null, busy: false, lastError: null, lastOk: null,
+  cfg() { const s = Store.settings; return (s.sbUrl && s.sbKey && !s.localMode) ? { url: s.sbUrl.replace(/\/$/, ''), key: s.sbKey } : null; },
+  token() { return Store.settings.sbSession && Store.settings.sbSession.access_token; },
+  headers(json) {
+    const c = this.cfg(); const h = { apikey: c.key, Authorization: 'Bearer ' + (this.token() || c.key) };
+    if (json) h['Content-Type'] = 'application/json';
+    return h;
+  },
+  async login(email, password) {
+    const c = this.cfg(); if (!c) throw new Error('لم يُضبط الخادم');
+    const r = await fetch(`${c.url}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: c.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error_description || j.msg || 'فشل الدخول');
+    Store.settings.sbSession = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: j.user && j.user.email };
+    let role = null;
+    try { const pr = await fetch(`${c.url}/rest/v1/profiles?select=role&user_id=eq.${j.user.id}`, { headers: { apikey: c.key, Authorization: 'Bearer ' + j.access_token } }); const rows = await pr.json(); role = rows && rows[0] && rows[0].role; } catch (e) {}
+    Store.settings.sbRole = ROLES[role] ? role : null;
+    Store.saveSettings();
+    return Store.settings.sbRole;
+  },
+  async refresh() {
+    const c = this.cfg(); const s = Store.settings.sbSession; if (!c || !s || !s.refresh_token) return false;
+    if (Date.now() < s.expires_at - 60000) return true;
+    const r = await fetch(`${c.url}/auth/v1/token?grant_type=refresh_token`, { method: 'POST', headers: { apikey: c.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: s.refresh_token }) });
+    if (!r.ok) { Store.settings.sbSession = null; Store.saveSettings(); return false; }
+    const j = await r.json();
+    Store.settings.sbSession = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: s.email };
+    Store.saveSettings(); return true;
+  },
+  logout() { Store.settings.sbSession = null; Store.settings.sbRole = null; Store.saveSettings(); },
+  /* تصنيف أخطاء الرفع: دائم (صلاحيات/بيانات) أم مؤقت (دخول، خادم، حدّ طلبات، شبكة) */
+  isPermanent(status) { return [400, 403, 404, 409, 422].includes(status); },
+  transientMsg(status) { return status === 401 ? 'انتهت الجلسة، أعيدي الدخول' : status === 429 ? 'الخادم مشغول (حدّ الطلبات)؛ سيُعاد الرفع تلقائياً' : status >= 500 ? `عطل مؤقت في الخادم (${status})؛ سيُعاد الرفع تلقائياً` : `تعذّر الرفع مؤقتاً (${status})؛ سيُعاد تلقائياً`; },
+  schedule() { if (!this.cfg()) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.run(), 1500); },
+  async run() {
+    if (!this.cfg() || this.busy || !navigator.onLine) return;
+    this.busy = true;
+    try {
+      if (!(await this.refresh())) { this.lastError = 'انتهت الجلسة، أعيدي الدخول'; this.busy = false; UI.renderStatus(); return; }
+      const c = this.cfg();
+      // دفع: على مرحلتين — السجلات العادية أولاً ثم التراجعات (سياسة الخادم تتحقق من وجود هدف التراجع، ولا ترى صفوف البيان نفسه)
+      const toRow = e => ({ id: e.id, ts: e.ts, day: e.day, by: e.by, child: e.child || null, type: e.type, dev: e.dev || null, payload: e });
+      const post = async rows => fetch(`${c.url}/rest/v1/events?on_conflict=id`, { method: 'POST', headers: Object.assign(this.headers(true), { Prefer: 'resolution=ignore-duplicates,return=minimal' }), body: JSON.stringify(rows) });
+      const pendingAll = Store.raw.filter(e => !e.synced);
+      for (const phase of [pendingAll.filter(e => e.type !== 'undo'), pendingAll.filter(e => e.type === 'undo')]) {
+        if (!phase.length) continue;
+        const r = await post(phase.map(toRow));
+        if (r.ok) { for (const e of phase) e.synced = true; Store.saveEvents(); continue; }
+        if (!this.isPermanent(r.status)) throw new Error(this.transientMsg(r.status));
+        /* رفض صلاحيات (403/4xx دائم): لا نُوقف المزامنة كلها؛ نعزل السجل المرفوض ونحفظه مع سببه.
+           خطأ مؤقت أثناء الفحص الفردي (401/408/425/429/5xx/شبكة) يُبقي السجل منتظراً ويوقف الجولة. */
+        for (const e of phase) {
+          const r1 = await post([toRow(e)]);
+          if (r1.ok) { e.synced = true; Store.saveEvents(); continue; }
+          if (!this.isPermanent(r1.status)) { Store.saveEvents(); throw new Error(this.transientMsg(r1.status)); }
+          let why = 'رفض الخادم (' + r1.status + ')'; try { const j = await r1.json(); if (j && j.message) why += ': ' + j.message; } catch (x) {}
+          e.synced = true; e.pushRejected = why;
+          const rej = Store.settings.syncRejected || []; if (!rej.some(x => x.id === e.id)) rej.push({ id: e.id, type: e.type, by: e.by, child: e.child || null, day: e.day, reason: 'لم يقبل الخادم الرفع — ' + why, at: Date.now(), payload: e, direction: 'push' }); Store.settings.syncRejected = rej; Store.saveSettings();
+        }
+        Store.saveEvents();
+      }
+      // سحب
+      let n = 0;
+      for (let round = 0; round < 20; round++) {
+        let cur = Store.settings.sbCursor;
+        if (typeof cur === 'string') { cur = { t: cur, id: '' }; Store.settings.sbCursor = cur; Store.saveSettings(); } /* ترحيل مؤشر 0.3 */
+        if (!cur || typeof cur.t !== 'string') cur = { t: '1970-01-01T00:00:00Z', id: '' };
+        const t = encodeURIComponent(cur.t), id = encodeURIComponent(cur.id);
+        const r2 = await fetch(`${c.url}/rest/v1/events?select=id,by,type,child,payload,inserted_at&or=(inserted_at.gt.${t},and(inserted_at.eq.${t},id.gt.${id}))&order=inserted_at.asc,id.asc&limit=1000`, { headers: this.headers() });
+        if (!r2.ok) throw new Error('رفض الخادم السحب: ' + r2.status);
+        const rows = await r2.json();
+        if (!rows.length) break;
+        /* أعمدة الخادم (المحمية بالسياسات) تغلب ما في payload */
+        const incoming = rows.map(r => Object.assign({}, r.payload, { id: r.id, by: r.by, type: r.type, child: r.child || undefined, synced: true }));
+        const bad = incoming.filter(e => !Store.validEvent(e, incoming));
+        if (bad.length) { /* كل المرفوضات تُحفظ مع سببها بلا حد؛ القائمة السابقة تُحفظ كاملة وتُستعاد عند فشل الحفظ */
+          const prev = Store.settings.syncRejected || [];
+          const next = prev.slice();
+          for (const e of bad) if (!next.some(x => x.id === e.id)) next.push({ id: e.id, type: e.type, by: e.by, child: e.child || null, day: e.day, reason: Store.rejectReason(e, incoming), at: Date.now(), payload: e });
+          Store.settings.syncRejected = next;
+          try { Store.saveSettings(); } catch (err) { Store.settings.syncRejected = prev; this.lastError = 'تعذّر حفظ السجلات المرفوضة (امتلأت الذاكرة)؛ لن يتقدم المؤشر'; UI.renderStatus(); throw new Error(this.lastError); }
+        }
+        n += Store.importEvents(incoming.filter(e => !bad.includes(e)));
+        const last = rows[rows.length - 1]; Store.settings.sbCursor = { t: last.inserted_at, id: last.id }; Store.saveSettings();
+        if (rows.length < 1000) break;
+      }
+      this.lastOk = Date.now(); this.lastError = (Store.settings.syncRejected || []).length ? `${Store.settings.syncRejected.length} سجل مرفوض بانتظار المعالجة (الإعدادات ← المرفوضات)` : null;
+      Store.saveSettings();
+      if (n) UI.rerender();
+    } catch (err) { this.lastError = err.message; }
+    this.busy = false; UI.renderStatus();
+  },
+  started: false,
+  start() { if (this.cfg() && !this.started) { this.started = true; this.run(); setInterval(() => this.run(), 30000); window.addEventListener('online', () => this.run()); } },
+};
+
+const SETUP_SQL = `-- يُنفَّذ مرة واحدة في SQL Editor داخل مشروع Supabase
+create table if not exists public.events (
+  id text primary key,
+  ts bigint not null,
+  day text not null,
+  by text,
+  child text,
+  type text not null,
+  dev text,
+  payload jsonb not null,
+  inserted_at timestamptz default now()
+);
+create index if not exists events_ts on public.events (ts);
+create index if not exists events_inserted on public.events (inserted_at);
+alter table public.events enable row level security;
+-- الأدوار: جدول لا يكتبه إلا المالك من لوحة Supabase (لا من التطبيق)
+create table if not exists public.profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  role text not null check (role in ('aya','asst','parent'))
+);
+alter table public.profiles enable row level security;
+-- ترحيل من 0.3: حذف السياسات القديمة (الإدراج المفتوح) قبل إعادة الإنشاء
+drop policy if exists "insert_auth" on public.events;
+drop policy if exists "read_all_auth" on public.events;
+drop policy if exists "insert_own_role" on public.events;
+drop policy if exists "read_own_profile" on public.profiles;
+create policy "read_own_profile" on public.profiles for select to authenticated using (user_id = auth.uid());
+create or replace function public.my_role() returns text language sql stable security definer as
+  $$ select role from public.profiles where user_id = auth.uid() $$;
+-- القراءة لكل حساب مسجل؛ لا تعديل ولا حذف لأحد
+create policy "read_all_auth" on public.events for select to authenticated using (true);
+-- الإدراج: باسم دور الحساب فقط، والحقول الخارجية تطابق الداخلية، ونوع الحدث مسموح للدور
+create policy "insert_own_role" on public.events for insert to authenticated with check (
+  by = public.my_role()
+  and payload->>'id' = id and payload->>'by' = by and payload->>'type' = type
+  and coalesce(payload->>'child','') = coalesce(child,'')
+  and (
+    public.my_role() = 'aya'
+    or (public.my_role() = 'asst' and type in ('outcome','error','note','session_done','fluency_time','card','yellow_pass','handoff','handoff_update','undo','session_start','session_cancel','fluency_page','tilawa') and coalesce(payload->>'step','') <> 'exam' and coalesce(payload->>'parent','') <> 'true')
+    or (public.my_role() = 'parent' and (type in ('parent_exam','note','undo') or (type = 'outcome' and payload->>'parent' = 'true')))
+  )
+  -- التراجع: عن سجل صاحبه الحساب نفسه فقط، وآية عن سجلات المساعدة أيضاً؛ الهدف يجب أن يكون موجوداً على الخادم
+  and (type <> 'undo' or exists (
+    select 1 from public.events t where t.id = payload->>'target' and t.type <> 'undo'
+      and (t.by = public.my_role() or (public.my_role() = 'aya' and t.by = 'asst'))))
+);
+-- ثم: Authentication > Users > أنشئ ثلاثة مستخدمين بالبريد وكلمة السر،
+-- ثم في Table Editor > profiles أضف صفاً لكل مستخدم: user_id (من صفحة المستخدم) و role: aya / asst / parent`;
+
+/* ===== الهيكل العام: التطبيق، الدخول، التنقل، النوافذ ===== */
+const App = {
+  role: null, view: 'now', sub: {}, timeOffset: 0,
+  realNow() { return new Date(Date.now() + (Store.settings.timeOffset || 0)); },
+  now() { return wallClock(this.realNow()); },
+  setRole(r) { this.role = ROLES[r]; sessionStorage.setItem(LS_SESSION, r); this.view = r === 'parent' ? 'dash' : 'now'; Alarms.unlock(); UI.rerender(); },
+  logout() { this.role = null; sessionStorage.removeItem(LS_SESSION); if (Sync.cfg()) Sync.logout(); UI.rerender(); },
+  can(perm) { return !!(this.role && this.role[perm]); },
+};
+
+const el = (tag, attrs, ...children) => {
+  const n = document.createElement(tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v; else if (k === 'html') n.innerHTML = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else if (v !== null && v !== undefined) n.setAttribute(k, v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return n;
+};
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const UI = {
+  root: null,
+  init() {
+    this.root = document.getElementById('app');
+    const saved = sessionStorage.getItem(LS_SESSION);
+    if (saved && ROLES[saved]) { App.role = ROLES[saved]; App.view = saved === 'parent' ? 'dash' : 'now'; }
+    if (Sync.cfg() && Store.settings.sbRole && Store.settings.sbSession) { App.role = ROLES[Store.settings.sbRole]; if (!saved) App.view = App.role.id === 'parent' ? 'dash' : 'now'; }
+    this.rerender();
+    setInterval(() => { if (App.view === 'now' && App.role && !document.querySelector('.modal-bg')) this.rerender(true); }, 30000);
+    setInterval(() => Alarms.tick(), 15000);
+    document.addEventListener('click', () => Alarms.unlock(), { once: true });
+  },
+  rerender(soft) {
+    if (!App.role) { this.root.innerHTML = ''; this.root.append(Views.login()); return; }
+    const scroll = window.scrollY;
+    this.root.innerHTML = '';
+    this.root.append(this.header(), el('main', null, (Views[App.view] || Views.now)()), this.nav());
+    if (soft) window.scrollTo(0, scroll);
+  },
+  header() {
+    const d = App.now();
+    return el('header', { class: 'top' },
+      el('div', null, el('div', { class: 'title' }, 'لوحة المعلمة · برنامج القرآن'), el('div', { class: 'sub' }, `${App.role.title} · ${DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1} · ${fmtTime12(hhmm(d))} بكين${sameTz() ? '' : ' · ' + App.realNow().toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' }) + ' ' + tzShort()}`)),
+      el('div', { class: 'status', id: 'status' }, this.statusInner()),
+      Store.settings.timeOffset ? el('div', { class: 'alert red', style: 'width:100%;margin:6px 0 0;padding:4px 8px' }, '⚠ الوقت محاكى! ', el('button', { class: 'ghost small', onclick: () => { Store.settings.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'العودة للوقت الحقيقي')) : null);
+  },
+  statusInner() {
+    const m = Alarms.muted() && Alarms.on() ? ' · 🔇 الأصوات مكتومة أثناء الجلسة' : '';
+    if (Store.storageError) return [el('span', { class: 'dot bad' }), 'تعذّر الحفظ! صدّري البيانات' + m];
+    const rejN = (Store.settings.syncRejected || []).length; if (rejN) return [el('span', { class: 'dot bad' }), `${rejN} سجل مرفوض من المزامنة — الإعدادات` + m];
+    if (!Sync.cfg()) return [el('span', { class: 'dot' }), 'حُفظ على الجهاز' + m];
+    if (!navigator.onLine) return [el('span', { class: 'dot off' }), 'بلا إنترنت، سيُرفع لاحقاً'];
+    if (Sync.lastError) return [el('span', { class: 'dot bad' }), Sync.lastError];
+    const pend = Store.raw.filter(e => !e.synced).length;
+    return [el('span', { class: 'dot ok' }), (pend ? `حُفظ على الجهاز · ${pend} بانتظار الرفع` : 'تمت المزامنة') + m];
+  },
+  renderStatus() { const s = document.getElementById('status'); if (s) { s.innerHTML = ''; s.append(...this.statusInner()); } },
+  nav() {
+    const items = App.role.id === 'parent'
+      ? [['dash', '🏠', 'اللوحة'], ['children', '👧', 'الأطفال'], ['logs', '📒', 'السجلات'], ['reports', '📊', 'التقارير'], ['settings', '⚙️', 'الإعدادات']]
+      : [['now', '⏱', 'الآن'], ['today', '📅', 'اليوم'], ['children', '👧', 'الأطفال'], ['logs', '📒', 'السجلات'], ['settings', '⚙️', 'الإعدادات']];
+    return el('nav', { class: 'bottom' }, items.map(([v, ico, name]) => el('button', { class: App.view === v || (v === 'today' && App.view === 'thursday') ? 'active' : '', onclick: () => { App.view = v; UI.rerender(); } }, el('span', { class: 'ico' }, ico), name)));
+  },
+  modal(title, bodyEl, actions) {
+    const bg = el('div', { class: 'modal-bg', onclick: e => { if (e.target === bg) bg.remove(); } });
+    const m = el('div', { class: 'modal' }, el('div', { class: 'row between' }, el('h2', { style: 'margin:0;color:var(--brand)' }, title), el('button', { class: 'ghost', onclick: () => bg.remove() }, '✕')), bodyEl, actions ? el('div', { class: 'btns', style: 'margin-top:14px' }, actions) : null);
+    bg.append(m); document.body.append(bg); return bg;
+  },
+  toast(msg) { const t = el('div', { class: 'toast' }, msg); document.body.append(t); setTimeout(() => t.remove(), 2200); },
+  /* بديل prompt() الأصلي: نافذة داخلية؛ cb(text) أو null عند الإلغاء */
+  prompt(title, placeholder, cb, initial) { const t = el('input', { placeholder: placeholder || '', value: initial || '' }); const bg = this.modal(title, el('div', null, t), [el('button', { class: 'primary', onclick: () => { const v = t.value.trim(); if (!v) { this.toast('اكتبي السبب'); return; } bg.remove(); cb(v); } }, 'حفظ'), el('button', { class: 'ghost', onclick: () => { bg.remove(); cb(null); } }, 'إلغاء')]); setTimeout(() => t.focus(), 50); t.addEventListener('keydown', e => { if (e.key === 'Enter') { const v = t.value.trim(); if (v) { bg.remove(); cb(v); } } }); return bg; },
+  confirm(msg, cb) { const bg = this.modal('تأكيد', el('p', null, msg), [el('button', { class: 'primary', onclick: () => { bg.remove(); cb(); } }, 'نعم'), el('button', { class: 'ghost', onclick: () => bg.remove() }, 'لا')]); },
+};
+
+const Views = {};
+
+/* ===== التنبيهات الصوتية داخل البرنامج ===== */
+const Alarms = {
+  ctx: null, fired: new Set(), day: null,
+  on() { return Store.settings.sounds !== false; },
+  unlock() { try { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); if (this.ctx.state === 'suspended') this.ctx.resume(); } catch (e) {} },
+  beep(kind) {
+    if (!this.on()) return; this.unlock(); if (!this.ctx) return;
+    const seq = kind === 'start' ? [[880, 0.15], [1175, 0.25]] : kind === 'end' ? [[660, 0.25]] : [[740, 0.2]];
+    let t = this.ctx.currentTime;
+    for (const [f, d] of seq) { const o = this.ctx.createOscillator(), g = this.ctx.createGain(); o.frequency.value = f; o.type = 'sine'; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + d + 0.02); t += d + 0.08; }
+    if (navigator.vibrate) navigator.vibrate(kind === 'end' ? [120, 60, 120] : 150);
+  },
+  muted() { const a = Store.settings.active; return !!(a && a.dayK === dayKey(App.now()) && a.role === (App.role && App.role.id)); },
+  tick() {
+    if (!App.role || App.role.id === 'parent' || !this.on()) return;
+    const d = App.now(); const dayK = dayKey(d); if (this.day !== dayK) { this.day = dayK; this.fired.clear(); }
+    const nowM = d.getHours() * 60 + d.getMinutes();
+    if (this.lastMin != null && nowM - this.lastMin > 2) { /* عودة بعد غياب: لا أصوات متراكمة */ this.lastMin = nowM; return; }
+    this.lastMin = nowM;
+    const list = sessionsFor(App.role.id, d).slice();
+    if (WORKDAYS.includes(d.getDay())) list.push({ start: '11:40', end: '12:10', kind: 'break', child: 'all' });
+    const starts = new Set(list.map(s => toMin(s.start)));
+    const muted = this.muted();
+    for (const s of list) {
+      const a = toMin(s.start), b = toMin(s.end); const name = s.kind === 'break' ? 'الاستراحة الرئيسية' : `${childName(s.child)} · ${SESSION_KINDS[s.kind].name}`;
+      const ev = [[a, 'start', `الآن: ${name}`]];
+      /* نهاية هادئة اختيارية، وتُدمج مع بداية التالية إن تلاصقتا */
+      if (Store.settings.endAlarm !== false && !starts.has(b)) ev.push([b, 'end', `انتهى وقت: ${name}`]);
+      for (const [m, k, msg] of ev) { const key = `${s.start}|${s.kind}|${s.child}|${k}`; if (nowM === m && !this.fired.has(key)) { this.fired.add(key); if (!muted) this.beep(k); UI.toast((muted ? '🔇 ' : '') + msg); } }
+    }
+  },
+};
+
+/* ===== الدخول ===== */
+Views.login = function () {
+  const online = !!Sync.cfg() && !Store.settings.localMode;
+  const wrap = el('div', { class: 'login' });
+  wrap.append(el('h1', { style: 'color:var(--brand);margin-bottom:4px' }, 'لوحة المعلمة'), el('p', { class: 'muted' }, 'برنامج حفظ القرآن وتدبره — دلال وفرح وكريم'));
+  if (online) {
+    const email = el('input', { type: 'email', placeholder: 'البريد', autocomplete: 'username' });
+    const pass = el('input', { type: 'password', placeholder: 'كلمة السر', autocomplete: 'current-password' });
+    const msg = el('div', { class: 'muted small' });
+    const btn = el('button', { class: 'primary', style: 'width:100%;margin-top:12px', onclick: async () => {
+      btn.disabled = true; msg.textContent = 'جارٍ الدخول…';
+      try { const role = await Sync.login(email.value.trim(), pass.value); if (!role) { msg.textContent = 'الحساب بلا دور؛ اطلب من ولي الأمر ضبط الدور.'; btn.disabled = false; return; } App.setRole(role); Sync.start(); }
+      catch (e) { msg.textContent = e.message; btn.disabled = false; }
+    } }, 'دخول');
+    wrap.append(el('div', { class: 'card' }, label('البريد'), email, label('كلمة السر'), pass, btn, msg));
+    wrap.append(el('p', { class: 'small muted' }, 'الخادم مضبوط. ', el('a', { href: '#', onclick: e => { e.preventDefault(); Store.settings.localMode = true; Store.saveSettings(); UI.rerender(); } }, 'الدخول المحلي بدلاً من ذلك')));
+    return wrap;
+  }
+  let sel = null; const pin = el('input', { type: 'password', inputmode: 'numeric', placeholder: 'الرمز', style: 'text-align:center;font-size:1.3em;letter-spacing:6px' });
+  const roles = el('div', { class: 'roles' });
+  const msg = el('div', { class: 'muted small' });
+  for (const r of Object.values(ROLES)) roles.append(el('button', { onclick: e => { sel = r.id; [...roles.children].forEach(b => b.classList.remove('sel')); e.currentTarget.classList.add('sel'); pin.focus(); } }, el('div', { class: 'big' }, r.name), el('div', { class: 'muted small' }, r.title)));
+  const go = () => { if (!sel) { msg.textContent = 'اختاري الحساب أولاً'; return; } if (pin.value !== Store.settings.pins[sel]) { msg.textContent = 'الرمز غير صحيح'; return; } App.setRole(sel); };
+  pin.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  wrap.append(roles, pin, el('button', { class: 'primary', style: 'width:100%;margin-top:12px', onclick: go }, 'دخول'), msg,
+    el('p', { class: 'small muted', style: 'margin-top:20px' }, 'الرموز الأولية: آية 1111 · المساعدة 2222 · ولي الأمر 3333، وتُغيَّر من الإعدادات. لربط الحسابات الثلاثة عبر الإنترنت: الإعدادات ← الخادم.'));
+  return wrap;
+};
+function label(t) { return el('label', null, t); }
+
+/* ===== شاشة الآن، اليوم، والجلسة ===== */
+function childName(id) { return id === 'both' ? 'دلال وفرح' : id === 'all' ? 'الثلاثة' : (CHILDREN[id] ? CHILDREN[id].name : id); }
+function childrenOf(s) { return s.child === 'both' ? ['dalal', 'farah'] : s.child === 'all' ? CHILD_ORDER : [s.child]; }
+function resultPill(r) { return r === 'clean' ? el('span', { class: 'pill g' }, 'مستقل') : r === 'yellow' ? el('span', { class: 'pill y' }, 'بمساعدة') : r === 'red' ? el('span', { class: 'pill r' }, 'توقف') : r === 'partial' ? el('span', { class: 'pill n' }, 'لم يُقيَّم كاملاً') : el('span', { class: 'pill n' }, '—'); }
+function resultName(r) { return { clean: 'مستقل', yellow: 'بمساعدة', red: 'توقف / 3 تلقينات+', partial: 'لم يُقيَّم كاملاً' }[r] || r; }
+/* مقطع كريم اليوم (الأسطر) لربط التقييم بالمقطع لا بالصفحة */
+function karimLines(c, page) {
+  if (c !== 'karim') return null;
+  const np = Store.events.filter(e => e.type === 'new_page' && e.child === c && e.page === page).pop();
+  return np ? [np.linesFrom, np.linesTo] : null;
+}
+/* ===== أداة التقييم الوصفي: الواقعة أولاً، واللون يُحسب لاحقاً ===== */
+function OutcomeCtl(c, page, step, extra, onRecord, compact) {
+  const today = todayKey();
+  if (!mayRecord('outcome', { step })) return requestBox(c, `تسجيل ${step === 'exam' ? 'الفحص' : 'النتيجة'} ${pageLabel(page)}`);
+  const seg = extra && extra.lines ? extra.lines : null;
+  const cur = effectiveOutcomes(e => e.child === c && e.page === page && e.step === step && e.day === today && sameSeg(e.lines, seg)).pop() || null;
+  const base = () => Object.assign({ type: 'outcome', child: c, page, step }, extra || {}, cur ? { prompts: cur.prompts, tajweed: cur.tajweed, meaning: cur.meaning, selfCorrect: cur.selfCorrect } : {});
+  const rec = (patch) => { const ev = Object.assign(base(), patch); for (const k of Object.keys(ev)) if (ev[k] == null) delete ev[k]; Store.add(ev); if (onRecord) onRecord(ev); UI.rerender(true); if (patch.result === 'yellow' && !cur) { /* تفاصيل المساعدة تُطلب فوراً */ } };
+  const mk = (r, cls, t) => el('button', { class: cls + (cur && cur.result === r ? ' on' : ''), style: compact ? 'padding:4px 10px' : '', onclick: () => rec({ result: r, prompts: r === 'clean' ? 0 : r === 'yellow' ? Math.max(1, (cur && cur.prompts) || 1) : r === 'red' ? Math.max(3, (cur && cur.prompts) || 3) : (cur ? cur.prompts : undefined) }) }, t);
+  const box = el('div', { class: 'ocl' });
+  box.append(el('div', { class: 'btns' }, mk('clean', 'btn-g', compact ? '✓' : 'مستقل'), mk('yellow', 'btn-y', compact ? 'مساعدة' : 'بمساعدة'), mk('red', 'btn-r', compact ? 'توقف' : 'توقف / 3+'), mk('partial', 'ghost', compact ? 'ناقص' : 'لم يُقيَّم كاملاً')));
+  if (cur && cur.result !== 'partial') {
+    const chip = (on, t, f) => el('button', { class: 'chip' + (on ? ' on' : ''), onclick: f }, t);
+    const det = el('div', { class: 'chips' });
+    if (cur.result !== 'clean') det.append(el('span', { class: 'muted small' }, 'تلقين: '), ...[1, 2, 3].map(n => chip(cur.prompts === n || (n === 3 && cur.prompts >= 3), n === 3 ? '3+' : String(n), () => rec({ prompts: n, result: n >= 3 ? 'red' : 'yellow' }))));
+    det.append(chip(cur.selfCorrect > 0, `زلة مصحَّحة ذاتياً${cur.selfCorrect ? ' ' + cur.selfCorrect : ''}`, () => rec({ selfCorrect: (cur.selfCorrect || 0) + 1 })));
+    det.append(chip(cur.tajweed === 'issue', 'تجويد ⚠', () => rec({ tajweed: cur.tajweed === 'issue' ? 'ok' : 'issue' })));
+    if (['gate', 'first', 'second', 'third'].includes(step)) det.append(el('span', { class: 'muted small' }, ' المعنى: '), chip(cur.meaning === 'ok', 'تحقق', () => rec({ meaning: 'ok' })), chip(cur.meaning === 'support', 'يحتاج دعماً', () => rec({ meaning: 'support' })), chip(!cur.meaning || cur.meaning === 'untested', 'لم يُختبر', () => rec({ meaning: 'untested' })));
+    det.append(el('button', { class: 'chip', style: 'border-color:var(--red);color:var(--red)', onclick: () => errorModal(c, page, seg) }, '+ خطأ بموضعه'));
+    box.append(det);
+  }
+  return box;
+}
+function pagesText(st, page, lines) { return st && st.id === 'karim' && lines ? `${pageLabel(page)} · الأسطر ${lines[0]}–${lines[1]}` : pageLabel(page); }
+
+Views.now = function () {
+  const d = App.now(); const { list, current, next } = currentSession(App.role.id, d);
+  const wrap = el('div');
+  const active = Store.settings.active && Store.settings.active.dayK === todayKey() && Store.settings.active.role === App.role.id ? Store.settings.active : null;
+  if (active) { const s = PLAN.find(x => sessionKey(x, active.dayK) === active.key); if (s) return SessionView(s, active); }
+  const noInv = CHILD_ORDER.filter(c => !Store.events.some(e => e.type === 'layer' && e.child === c));
+  if (noInv.length && App.role.id !== 'asst') wrap.append(el('div', { class: 'card', style: 'border:2px solid var(--yellow)' }, el('h2', null, 'قبل أول جلسة: الجرد الأولي'), el('p', { class: 'small' }, `لم يُسجَّل المحفوظ الحالي لـ${noInv.map(c => CHILDREN[c].name).join(' و')}. بدونه يقترح البرنامج صفحات خاطئة ولا تعمل حصة البعيد.`), el('button', { class: 'primary', onclick: () => { App.view = 'settings'; UI.rerender(); } }, 'تسجيل الجرد من الإعدادات')));
+  if (d.getDay() === 5) wrap.append(el('div', { class: 'card' }, el('h2', null, 'الجمعة إجازة'), el('p', { class: 'muted' }, 'لا تسميع ولا سؤال اليوم. يستأنف البرنامج السبت 7:00.')));
+  if (current) {
+    const sd = sessionStatus(current, todayKey());
+    wrap.append(el('div', { class: 'card' },
+      el('div', { class: 'row between' }, el('span', { class: 'now-badge' }, 'الآن'), el('span', { class: 'muted small' }, `${timePair(current.start)} – ${fmtTime12(current.end)}`)),
+      el('div', { class: 'big', style: 'margin:6px 0' }, `${childName(current.child)} · ${SESSION_KINDS[current.kind].name}`),
+      sd ? el('p', { class: 'muted' }, `سُجّلت هذه الجلسة: ${statusName(sd.status)}.`, sd.status && sd.status !== 'complete' && current.teacher === App.role.id ? el('button', { class: 'ghost small', style: 'margin-right:8px', onclick: () => startSession(current, sd) }, 'استكمال') : null) : el('button', { class: 'primary', onclick: () => startSession(current) }, 'ابدئي الجلسة')));
+  } else if (list.length) {
+    wrap.append(el('div', { class: 'card' }, el('h2', null, next ? 'لا جلسة الآن' : 'انتهت جلسات اليوم'), next ? el('p', null, `التالية: ${childName(next.child)} · ${SESSION_KINDS[next.kind].name} في ${timePair(next.start)}`) : el('p', { class: 'muted' }, 'سجّلي أي خطأ أو ملاحظة متأخرة من زر التسجيل الحر.')));
+  }
+  wrap.append(DayList(list, true));
+  if (App.role.id !== 'parent' && d.getDay() !== 5) wrap.append(el('div', { class: 'card' }, el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, 'يوم غير عادي؟'), el('button', { class: 'ghost small', onclick: () => cancelModal() }, 'إلغاء جلسات اليوم بسبب'))));
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'تسجيل حر'), el('p', { class: 'muted small' }, 'خطأ أو ملاحظة خارج الجلسات.'), el('div', { class: 'btns' }, CHILD_ORDER.map(c => el('button', { onclick: () => errorModal(c) }, `خطأ · ${CHILDREN[c].name}`)), el('button', { class: 'ghost', onclick: () => noteModal() }, 'ملاحظة'), el('button', { class: 'ghost', onclick: undoLast }, '↶ تراجع'))));
+  wrap.append(HandoffsCard());
+  wrap.append(AlertsCard());
+  return wrap;
+};
+
+Views.today = function () {
+  const d = App.now(); const list = sessionsFor(App.role.id, d);
+  return el('div', null, el('div', { class: 'card' }, el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, `جلسات ${DAY_NAMES[d.getDay()]}`), el('button', { class: 'ghost small', onclick: () => { App.view = 'thursday'; UI.rerender(); } }, '🗓 أدوات الخميس')), el('p', { class: 'muted small' }, 'اضغطي أي جلسة لتسجيلها، في وقتها أو بعده.')), DayList(list, false));
+};
+
+function DayList(list, compact) {
+  const dayK = todayKey(); const d = App.now(); const nowM = d.getHours() * 60 + d.getMinutes();
+  if (!list.length) return el('div');
+  return el('div', { class: 'card' }, compact ? el('h2', null, 'جدول اليوم') : null,
+    el('table', null, el('tbody', null, list.map(s => {
+      const sd = sessionStatus(s, dayK); const done = !!sd; const isNow = toMin(s.start) <= nowM && nowM < toMin(s.end);
+      return el('tr', { style: isNow ? 'background:var(--soft)' : '' },
+        el('td', { style: 'white-space:nowrap' }, fmtTime12(s.start), sameTz() ? null : el('div', { class: 'muted small' }, localOf(dayK, s.start))),
+        el('td', null, el('b', null, childName(s.child)), ' · ', SESSION_KINDS[s.kind].name, App.role.id === 'parent' ? el('span', { class: 'muted small' }, ` (${ROLES[s.teacher].name})`) : null),
+        el('td', { style: 'white-space:nowrap' }, done ? el('span', null, el('span', { class: 'pill ' + (sd.status === 'complete' ? 'g' : sd.status === 'partial' ? 'y' : sd.status === 'cancelled' ? 'n' : 'r'), title: sd.reason || '' }, statusName(sd.status)), sd.conflicts.length ? el('span', { class: 'pill r', style: 'margin-right:4px', title: sd.conflicts.join('؛ ') }, '⚠ تعارض') : null, sd.status === 'cancelled' ? el('div', { class: 'muted small' }, sd.reason) : null, ['partial', 'stopped'].includes(sd.status) && s.teacher === App.role.id ? el('button', { class: 'ghost small', style: 'margin-right:4px', onclick: () => startSession(s, sd) }, 'استكمال') : null) : (App.role.id !== 'parent' ? el('button', { class: 'ghost small', onclick: () => startSession(s) }, s.teacher === App.role.id ? 'افتحي' : 'نيابة') : el('span', { class: 'pill n' }, 'لم تُسجَّل'))));
+    }))));
+}
+
+function saveActive() { Store.saveSettings(); }
+function startSession(s, prev, proxy) {
+  const dayK = todayKey(); const key = sessionKey(s, dayK);
+  if (s.teacher !== App.role.id && !proxy) {
+    if (App.role.id === 'parent') { UI.toast('هذه جلسة ' + ROLES[s.teacher].name); return; }
+    UI.prompt(`هذه جلسة ${ROLES[s.teacher].name}. أخذها نيابةً؟ اكتبي السبب (يُوثَّق)`, 'سبب النيابة', why => { if (!why) return; startSession(s, prev, { orig: s.teacher, reason: why }); });
+    return;
+  }
+  /* تحذير التزامن: معلمة أخرى فتحت الجلسة نفسها ولم تُنهِها */
+  const opens = Store.events.filter(e => e.type === 'session_start' && e.key === key && e.by !== App.role.id);
+  const open = opens.find(o => !Store.events.some(e => e.type === 'session_done' && e.sid === o.sid));
+  const go = () => {
+    const sid = prev && prev.sid ? prev.sid : (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    Store.settings.active = { key, dayK, role: App.role.id, sid, started: App.realNow().getTime(), steps: prev ? (prev.steps || []).slice() : [], note: prev ? (prev.note || '') : '', half: false, resumed: !!prev, round: prev ? ((prev.round || 1) + 1) : 1, proxy: proxy || null };
+    Store.saveSettings();
+    try { Store.add({ type: 'session_start', key, sid, child: s.child === 'both' || s.child === 'all' ? undefined : s.child, kind: s.kind, proxyFor: proxy ? proxy.orig : undefined, reason: proxy ? proxy.reason : undefined }); } catch (e) {}
+    UI.rerender();
+  };
+  if (open) UI.confirm(`فتحت ${ROLES[open.by].name} هذه الجلسة (${chinaHHMM(open.ts)}) ولم تُنهِها بعد. المتابعة قد تسجل الجلسة مرتين. أتابعين؟`, go); else go();
+}
+function endSession(s, note) {
+  const a = Store.settings.active; const kind = SESSION_KINDS[s.kind];
+  const remaining = kind.steps.filter(st => !a.steps.includes(st.id));
+  let status = remaining.length ? 'partial' : 'complete';
+  const opts = el('div', { class: 'btns', style: 'flex-direction:column;align-items:stretch' });
+  const reasonSel = el('select', null, ['تعب الطفل', 'انقطاع الاتصال', 'طال التسميع', 'سبب آخر'].map(x => el('option', { value: x }, x)));
+  const reasonTxt = el('input', { placeholder: 'تفصيل مختصر (اختياري)' });
+  const reasonBox = el('div', { style: 'display:none' }, label('السبب'), reasonSel, reasonTxt);
+  const remBox = el('div', { class: 'small muted', style: 'display:none' }, 'الباقي: ' + (remaining.length ? remaining.map(x => x.text).join('؛ ') : 'لا شيء'));
+  const mk = (v, t, sub) => { const b = el('button', { class: 'ghost' + (status === v ? ' on' : ''), style: 'text-align:right', onclick: () => { status = v; [...opts.children].forEach(x => x.classList.remove('on')); b.classList.add('on'); reasonBox.style.display = v === 'stopped' ? '' : 'none'; remBox.style.display = v === 'partial' ? '' : 'none'; } }, el('b', null, t), el('div', { class: 'small muted' }, sub)); return b; };
+  opts.append(mk('complete', 'اكتملت', remaining.length ? `${remaining.length} خطوة غير مُعلَّمة؛ سيُطلب تأكيد أنها نُفّذت` : 'نُفّذت البنود المطلوبة'),
+    mk('partial', 'انتهى الوقت وبقي جزء', 'يُحدَّد الباقي ويظهر لآية؛ لا يُحسب على الطفل'),
+    mk('stopped', 'توقفت', 'تعب الطفل أو انقطاع أو غيره'));
+  remBox.style.display = status === 'partial' ? '' : 'none';
+  const bg = UI.modal('إنهاء الجلسة', el('div', null, opts, remBox, reasonBox), [el('button', { class: 'primary', onclick: () => {
+    const reason = status === 'stopped' ? (reasonSel.value + (reasonTxt.value.trim() ? ': ' + reasonTxt.value.trim() : '')) : null;
+    const go = () => { bg.remove(); commitEnd(s, a, status, status === 'complete' ? [] : remaining.map(x => x.id), reason, note); };
+    if (status === 'complete' && remaining.length) UI.confirm(`تأكيد: نُفّذت فعلاً هذه الخطوات دون تعليمها؟\n${remaining.map(x => '• ' + x.text).join('\n')}\nستُعلَّم منفَّذة. لا تُنشأ أي نتيجة تسميع تلقائياً.`, () => { a.steps = kind.steps.map(x => x.id); a.confirmedSteps = remaining.map(x => x.id); saveActive(); go(); });
+    else go();
+  } }, 'تسجيل')]);
+}
+/* تسجيل الإنهاء وبطاقة التسليم بمعرّفات ثابتة: إعادة المحاولة بعد فشل الحفظ لا تكرر ولا تفقد */
+function commitEnd(s, a, status, rem, reason, note) {
+  const round = a.round || 1;
+  try {
+    for (const c of childrenOf(s)) {
+      const sdId = `sd_${a.sid}_${c}_${round}`;
+      if (!Store.events.some(e => e.id === sdId)) Store.add({ id: sdId, type: 'session_done', key: a.key, sid: a.sid, round, child: c, kind: s.kind, start: s.start, proxyFor: a.proxy ? a.proxy.orig : undefined, proxyReason: a.proxy ? a.proxy.reason : undefined, steps: a.steps, confirmedSteps: a.confirmedSteps || [], status, remaining: rem, reason, minutes: Math.round((App.realNow().getTime() - a.started) / 60000), note: note || '' });
+      if (App.role.id === 'asst') { /* بطاقة التسليم من المساعدة، سواء جلستها أو جلسة أخذتها نيابة عن آية */
+        const prev = handoffFor(a.key, c);
+        const items = handoffItems(s, a, c, status, rem, reason, note);
+        if (!prev) { const hoId = `ho_${a.sid}_${c}`; if (!Store.events.some(e => e.id === hoId)) Store.add({ id: hoId, type: 'handoff', child: c, key: a.key, sid: a.sid, kind: s.kind, to: 'aya', items }); }
+        else { const upId = `hu_${a.sid}_${c}_${round}`; if (!Store.events.some(e => e.id === upId)) Store.add({ id: upId, type: 'handoff_update', handoff: prev.id, child: c, round, items: [{ k: 'update', text: `استُكملت الجلسة (جولة ${round}): ${statusName(status)}` }].concat(items.filter(i => i.k !== 'done' || true)) }); }
+      }
+    }
+  } catch (e) { a.pendingEnd = { status, rem, reason, note }; saveActive(); UI.toast('لم يكتمل التسجيل: ' + e.message + ' — أعيدي المحاولة من «إنهاء الجلسة»'); UI.rerender(true); return false; }
+  Store.settings.active = null; Store.saveSettings(); UI.toast('سُجّلت الجلسة'); UI.rerender(); return true;
+}
+/* بنود بطاقة التسليم من سجلات هذه الجلسة (بمعرّف الجلسة sid، لا بالتوقيت) */
+function handoffItems(s, a, c, status, rem, reason, note) {
+  const kind = SESSION_KINDS[s.kind]; const round = a.round || 1;
+  const mine = e => e.child === c && e.sid === a.sid && e.by === a.role;
+  const errs = Store.events.filter(e => e.type === 'error' && mine(e));
+  const outs = effectiveOutcomes(e => e.type === 'outcome' && mine(e));
+  const items = [];
+  const done = kind.steps.filter(st => a.steps.includes(st.id)).map(st => st.text);
+  if (done.length && round === 1) items.push({ k: 'done', text: done.join('؛ ') });
+  const bad = outs.filter(o => o.result !== 'clean' && o.result !== 'partial');
+  if (bad.length) items.push({ k: 'followup', text: bad.map(o => `${pagesText(deriveChild(c), o.page, o.lines)} ${resultName(o.result)}${o.prompts ? ' (تلقين ' + o.prompts + ')' : ''}`).join('، ') });
+  const inc = outs.filter(o => o.result === 'partial');
+  if (inc.length) items.push({ k: 'remaining', text: 'لم يُسمَّع كاملاً: ' + inc.map(o => pageLabel(o.page)).join('، ') });
+  for (const e of errs) {
+    if (e.etype === 'jump') { const js = jumpStats(c, e.surah, e.ayah); items.push({ k: 'jump', text: `انتقال إلى موضع مشابه — يحتاج متابعة: ${SURAH_NAMES[e.surah - 1]} ${e.ayah} ← ${e.target ? SURAH_NAMES[e.target.surah - 1] + ' ' + (e.target.ayah || '') : 'موضع غير مسجل'}`, surah: e.surah, ayah: e.ayah, n: js.n }); }
+    else items.push({ k: 'error', text: `${ERROR_TYPES.find(t => t.id === e.etype).name}: ${SURAH_NAMES[e.surah - 1]} ${e.ayah}${e.note ? ' — ' + e.note : ''}` });
+  }
+  if (status !== 'complete') items.push({ k: 'remaining', text: status === 'stopped' ? `توقفت: ${reason}` : 'بقي: ' + rem.map(id => kind.steps.find(x => x.id === id).text).join('؛ ') });
+  if (note) items.push({ k: 'note', text: note });
+  return items;
+}
+
+/* ===== شاشة الجلسة ===== */
+/* هل يستطيع الحساب الحالي تسجيل هذا النوع؟ وإن لا: طلب اعتماد يُرسل لآية عبر ملاحظة تدخل بطاقة التسليم */
+function mayRecord(type, extra) { return Store.roleAllows(App.role.id, Object.assign({ type }, extra || {})); }
+function requestBox(c, what) {
+  const sent = Store.events.some(e => e.type === 'note' && e.child === c && e.day === todayKey() && e.text.startsWith('طلب اعتماد: ' + what));
+  return el('div', { class: 'alert' }, `لا يُسمح لحسابك بتسجيل ${what} (حتى في النيابة). `, sent ? el('span', { class: 'pill g' }, 'أُرسل الطلب لآية') : el('button', { class: 'ghost small', onclick: () => UI.prompt(`طلب اعتماد ${what} من آية`, 'ما الذي أُنجز فعلاً؟', t => { if (!t) return; Store.add({ type: 'note', child: c, text: `طلب اعتماد: ${what} — ${t}` }); UI.toast('أُرسل الطلب ضمن بطاقة التسليم'); UI.rerender(true); }) }, 'طلب اعتماد من آية'));
+}
+/* ورد النظر والسماع: تسجيل الصفحات المقروءة فعلاً (قراءة لا تسميع؛ لا تغيّر لوناً ولا تاريخ مراجعة) */
+function TilawaBox(c, a, st) {
+  const d = deriveChild(c); const kind = st.id === 'listen' ? 'listen' : 'nazar';
+  const last = lastTilawa(c, kind);
+  const dflt = st.id === 'tomorrow' ? (d.nextNew || 582) : st.id === 'listen' ? (d.todayNew[0] || d.nextNew || 582) : (last ? Math.max(...last.pages) + 1 : (d.nextNew || 582));
+  const from = el('input', { type: 'number', min: 1, max: 604, value: dflt, style: 'width:80px' });
+  const to = el('input', { type: 'number', min: 1, max: 604, value: st.id === 'listen' && st.text.includes('الخمس') ? Math.min(604, dflt + 4) : dflt, style: 'width:80px' });
+  const times = el('input', { type: 'number', min: 1, max: 10, value: st.text.includes('3 مرات') ? 3 : st.text.includes('مرتين') ? 2 : 1, style: 'width:60px' });
+  const todayRec = Store.events.filter(e => e.type === 'tilawa' && e.child === c && e.day === todayKey() && e.kind === kind);
+  const box = el('div', { class: 'small' }, el('div', { class: 'muted' }, `${CHILDREN[c].name} · ${kind === 'listen' ? 'سماع' : 'قراءة نظراً'} — ${last ? `آخر مرة: ص${Math.min(...last.pages)}–${Math.max(...last.pages)} (${fmtDay(last.day)})` : 'لا تسجيل سابق'}`),
+    el('div', { class: 'row' }, 'من ص', from, 'إلى ص', to, 'مرات', times, el('button', { class: 'btn-g', onclick: () => { const f = Number(from.value), t = Number(to.value); if (!(f >= 1 && t <= 604 && f <= t && t - f < 30)) { UI.toast('نطاق غير صالح (حتى 30 صفحة)'); return; } const pages = []; for (let p = f; p <= t; p++) pages.push(p); Store.add({ type: 'tilawa', child: c, pages, kind, times: Number(times.value) || 1, step: st.id }); if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.toast('سُجّلت القراءة'); UI.rerender(true); } }, 'تسجيل')));
+  if (todayRec.length) box.append(el('div', { class: 'muted' }, 'اليوم: ' + todayRec.map(r => `ص${Math.min(...r.pages)}–${Math.max(...r.pages)} ×${r.times || 1}`).join('، ')));
+  return box;
+}
+/* خطوة لا ينطبق عليها شيء اليوم (مثل بوابة الأمس في أول يوم) تُعلَّم «لا ينطبق» تلقائياً */
+function stepNA(s, st) {
+  const kids = childrenOf(s);
+  if (st.outcome === 'gate' || st.outcome === 'awael') return kids.every(c => !lastNewFor(c, true));
+  if (st.outcome === 'near') return kids.every(c => deriveChild(c).near.length === 0);
+  if (st.outcome === 'far' || st.outcome === 'exam') return kids.every(c => deriveChild(c).far.length === 0);
+  if (st.outcome === 'yellow') return kids.every(c => yellowList(c).active.length === 0);
+  if (st.mutashabih) return kids.every(c => mutashabihat(c, weekStartKey(App.now())).length === 0);
+  return false;
+}
+function SessionView(s, a) {
+  const kind = SESSION_KINDS[s.kind]; const kids = childrenOf(s);
+  const wrap = el('div');
+  a.na = a.na || [];
+  for (const st of kind.steps) if (!a.steps.includes(st.id) && !a.na.includes(st.id) && stepNA(s, st)) { a.na.push(st.id); a.steps.push(st.id); }
+  if (a.na.length) saveActive();
+  const curIdx = a.cur != null && a.cur < kind.steps.length ? a.cur : Math.max(0, kind.steps.findIndex(st => !a.steps.includes(st.id)));
+  const cur = kind.steps[curIdx] || kind.steps[kind.steps.length - 1];
+  /* بطاقة الرأس: الطفل والجلسة، المطلوب، آخر ملاحظة، قرار آية الجاري */
+  const head = el('div', { class: 'card' },
+    a.pendingEnd ? el('div', { class: 'alert red' }, 'لم يكتمل تسجيل الإنهاء. ', el('button', { class: 'btn-r', onclick: () => commitEnd(s, a, a.pendingEnd.status, a.pendingEnd.rem, a.pendingEnd.reason, a.pendingEnd.note) }, 'إعادة محاولة التسجيل')) : null,
+    a.resumed ? el('div', { class: 'alert small' }, `استكمال جلسة سبق إنهاؤها (جولة ${a.round}).`) : null,
+    a.proxy ? el('div', { class: 'alert small' }, `نيابةً عن ${ROLES[a.proxy.orig].name}: ${a.proxy.reason}. صلاحيات الاعتماد والقرارات تبقى بحسب حسابك.`) : null,
+    el('div', { class: 'row between' }, el('span', { class: 'now-badge' }, 'جلسة جارية'), el('span', { class: 'muted small' }, `${timePair(s.start)} – ${fmtTime12(s.end)}`)),
+    el('div', { class: 'big', style: 'margin:6px 0' }, `${childName(s.child)} · ${kind.name}`),
+    Countdown(s),
+    ContextBox(s));
+  for (const c of kids) {
+    const d = deriveChild(c);
+    const dec = [];
+    if (d.paused) dec.push('الجديد متوقف'); if (d.reduced) dec.push('المقدار نصف صفحة');
+    const rep = Store.events.filter(e => e.type === 'decision' && e.child === c && e.kind === 'repair' && e.day === todayKey()).pop(); if (rep) dec.push('صباح إصلاح اليوم');
+    if (dec.length) head.append(el('div', { class: 'alert small' }, el('b', null, `قرار آية الجاري · ${CHILDREN[c].name}: `), dec.join(' · ')));
+    const ln = lastNote(c); if (ln) { const full = el('div', { class: 'small', style: 'display:none;white-space:pre-wrap' }, ln.details || ln.text); head.append(el('div', { class: 'small muted' }, el('b', null, `آخر ملاحظة مهمة · ${CHILDREN[c].name}: `), ln.text.length > 70 ? ln.text.slice(0, 70) + '…' : ln.text, ln.details || ln.text.length > 70 ? el('button', { class: 'ghost small', style: 'margin-right:6px', onclick: () => { full.style.display = full.style.display === 'none' ? '' : 'none'; } }, 'التفاصيل') : null), full); }
+  }
+  head.append(el('div', { class: 'row between', style: 'margin-top:8px' }, el('span', { class: 'small' }, el('b', null, 'الخطوة الحالية: '), cur.text), el('button', { class: 'ghost small', onclick: () => openPresent(s) }, '🖥 عرض')));
+  wrap.append(head);
+  /* الخطوات: الحالية مفتوحة، والباقي سطر واحد قابل للفتح */
+  const steps = el('ul', { class: 'steps' });
+  kind.steps.forEach((st, i) => {
+    const done = a.steps.includes(st.id); const na = a.na && a.na.includes(st.id); const open = a.all || i === curIdx;
+    const li = el('li', { class: (done ? 'done' : '') + (open ? ' open' : ' closed') },
+      el('div', { class: 'chk', onclick: () => { if (done) a.steps = a.steps.filter(x => x !== st.id); else { a.steps.push(st.id); a.cur = Math.min(kind.steps.length - 1, i + 1); } saveActive(); UI.rerender(true); } }, done ? '✓' : ''),
+      el('div', { class: 'body' }, el('div', { class: 'row between', style: 'cursor:pointer', onclick: () => { a.cur = i; saveActive(); UI.rerender(true); } }, el('span', null, open ? el('b', null, st.text) : st.text, st.min ? el('span', { class: 'min' }, ` · ${st.min} د`) : null, na ? el('span', { class: 'pill n', style: 'margin-right:6px' }, 'لا ينطبق اليوم') : null), el('span', { class: 'muted small' }, open ? '' : '▾')),
+        open ? StepControls(s, st, a) : null,
+        open ? el('div', { class: 'small muted', style: 'margin-top:6px' }, 'الإجراء التالي: ', nextAction(st, done, i, kind)) : null));
+    steps.append(li);
+  });
+  wrap.append(el('div', { class: 'card' }, el('div', { class: 'row between' }, el('span', { class: 'muted small' }, 'الخطوات'), el('button', { class: 'ghost small', onclick: () => { a.all = !a.all; saveActive(); UI.rerender(true); } }, a.all ? 'الخطوة الحالية فقط' : 'فتح جميع الخطوات')), steps));
+  const note = el('textarea', { placeholder: 'ملاحظة على الجلسة (اختياري)', oninput: e => { a.note = e.target.value; saveActive(); } }); note.value = a.note || '';
+  wrap.append(el('div', { class: 'card' }, el('div', { class: 'btns' }, kids.map(c => el('button', { class: 'btn-r', onclick: () => { const pg = contextPage(s, c); errorModal(c, pg, c === 'karim' ? (['far', 'cards'].includes((SESSION_KINDS[s.kind].steps[a.cur || 0] || {}).id) ? null : undefined) : undefined); } }, `تسجيل خطأ · ${CHILDREN[c].name}`))), note,
+    el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: () => endSession(s, note.value) }, 'إنهاء الجلسة'), el('button', { class: 'ghost', onclick: undoLast }, '↶ تراجع عن آخر تسجيل'), el('button', { class: 'ghost', onclick: () => UI.confirm('إلغاء الجلسة دون تسجيل؟ تبقى الأخطاء والنتائج التي سُجّلت.', () => { Store.settings.active = null; Store.saveSettings(); UI.rerender(); }) }, 'إغلاق بلا تسجيل'))));
+  return wrap;
+}
+function nextAction(st, done, i, kind) {
+  if (done) return i + 1 < kind.steps.length ? `افتحي «${kind.steps[i + 1].text}»` : 'اضغطي «إنهاء الجلسة»';
+  if (st.outcome) return 'سجّلي الواقعة (مستقل / بمساعدة / توقف / لم يُقيَّم كاملاً)؛ اللون تحسبه اللوحة وتعتمده آية';
+  if (st.timer) return mayRecord('new_page') ? 'ابدئي المؤقت، وعند انتهاء الطفل اضغطي «تم الحفظ»' : 'لقّني الصفحة ثم أرسلي طلب اعتماد الحفظ لآية';
+  if (st.color) return 'اعتمدي لون كل صفحة';
+  return 'علّمي الخطوة ✓ عند إتمامها';
+}
+/* آخر ملاحظة مهمة للطفل بترتيب الأهمية: متشابه مفتوح، ثم متابعة غير معالجة، ثم باقٍ، ثم آخر خطأ/ملاحظة */
+function lastNote(c) {
+  const hs = handoffs(x => x.child === c && x.state !== 'handled');
+  for (const k of ['jump', 'followup', 'remaining']) {
+    for (const h of hs.slice().reverse()) { const it = h.items.find(i => i.k === k); if (it) return { text: `${it.text} (${fmtDay(h.day)})`, details: h.items.map(i => '• ' + i.text).join('\n') }; }
+  }
+  const e = Store.events.filter(e => e.child === c && (e.type === 'error' || e.type === 'note')).pop();
+  if (!e) return null;
+  if (e.type === 'note') return { text: `${e.text} (${fmtDay(e.day)})` };
+  return { text: `${ERROR_TYPES.find(t => t.id === e.etype).name} في ${SURAH_NAMES[e.surah - 1]} ${e.ayah} (${fmtDay(e.day)})` };
+}
+
+
+function Countdown(s) {
+  const d = App.now(); const nowM = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60; const a = toMin(s.start), b = toMin(s.end);
+  const total = b - a; const left = Math.max(0, b - nowM); const pct = Math.min(100, Math.max(0, 100 * (nowM - a) / total));
+  const txt = nowM < a ? `تبدأ بعد ${Math.ceil(a - nowM)} د` : nowM >= b ? 'انتهى وقت الجلسة؛ سجّلي ما بقي ثم «تمت الجلسة»' : `بقي ${Math.ceil(left)} د من ${total}`;
+  return el('div', { class: 'small', style: 'margin-top:6px' }, el('div', { style: 'height:6px;border-radius:4px;background:#eee;overflow:hidden' }, el('div', { style: `height:100%;width:${pct}%;background:${left <= 2 && nowM < b ? 'var(--red)' : 'var(--brand)'}` })), el('div', { class: 'muted' }, txt));
+}
+
+function contextPage(s, c) {
+  const st = deriveChild(c);
+  if (['gate_new', 'karim_new'].includes(s.kind)) return st.nextNew;
+  if (['near_review', 'thu_yellow'].includes(s.kind)) { const g = lastNewFor(c, true); return g ? g.page : st.nextNew; }
+  if (st.todayNew.length) return st.todayNew[st.todayNew.length - 1];
+  const g = lastNewFor(c, false); return g ? g.page : st.nextNew;
+}
+
+function ContextBox(s) {
+  const box = el('div', { class: 'small', style: 'margin-top:8px' });
+  for (const c of childrenOf(s)) {
+    const st = deriveChild(c); const gate = lastNewFor(c, true);
+    const lines = [];
+    if (['gate_new', 'karim_new'].includes(s.kind)) {
+      lines.push(`بوابة الأمس: ${gate ? pagesText(st, gate.page, gate.lines) : 'لا صفحة أمس (أول يوم)'}`);
+      lines.push(`الجديد اليوم: ${st.nextNew ? pagesText(st, st.nextNew, st.nextLines) : 'لم يُحدَّد'}`);
+    }
+    if (s.kind === 'near_review') { lines.push(`أوائل الآيات لصفحة: ${gate ? pageLabel(gate.page) : '—'}`); lines.push(`القريب (${st.near.length} صفحة): ${st.near.length ? st.near.join('، ') : 'لا صفحات بعد'}`); }
+    if (['noon', 'karim_asr'].includes(s.kind)) { lines.push(`صفحة اليوم: ${st.todayNew.length ? pageLabel(st.todayNew[st.todayNew.length - 1]) : 'لم تُسجَّل صباحاً'}`); lines.push(`حصة البعيد (${st.quota}): ${st.todayFar.length ? st.todayFar.join('، ') : 'لا بعيد بعد'}`); }
+    if (['third', 'karim_evening', 'circle'].includes(s.kind)) { lines.push(`صفحة اليوم: ${st.todayNew.length ? pageLabel(st.todayNew[st.todayNew.length - 1]) : '—'}`); if (s.kind !== 'third') lines.push(`صفحة الغد: ${st.nextNew ? pagesText(st, st.nextNew, st.nextLines) : '—'}`); }
+    if (s.kind === 'fluency') lines.push(`صفحة الطلاقة الحالية: ${fluencyPage(c)}`);
+    if (s.kind.startsWith('thu')) lines.push(`المحفوظ البعيد: ${st.far.length} صفحة · القريب: ${st.near.length}`);
+    if (lines.length) box.append(el('div', null, el('b', null, CHILDREN[c].name + ': '), lines.join(' · ')));
+  }
+  return box;
+}
+
+/* أدوات كل خطوة */
+function StepControls(s, st, a) {
+  const kids = childrenOf(s); const box = el('div');
+  const mark = () => { if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } };
+  const outcomeBtns = (c, page, step, extra) => OutcomeCtl(c, page, step, extra, mark, false);
+  if (st.outcome === 'gate') for (const c of kids) { const g = lastNewFor(c, true); if (!g) { box.append(el('div', { class: 'muted small' }, 'لا صفحة أمس.')); continue; } box.append(el('div', { class: 'small' }, pagesText(deriveChild(c), g.page, g.lines)), outcomeBtns(c, g.page, 'gate', c === 'karim' && g.lines ? { lines: g.lines } : null)); }
+  if (['first', 'second', 'third'].includes(st.outcome)) for (const c of kids) { const d = deriveChild(c); const p = d.todayNew.length ? d.todayNew[d.todayNew.length - 1] : null; if (!p) { box.append(el('div', { class: 'muted small' }, 'لم تُسجَّل صفحة اليوم بعد (تُسجَّل في خطوة الحفظ).')); continue; } const kl = karimLines(c, p); box.append(el('div', { class: 'small' }, pagesText(d, p, kl)), outcomeBtns(c, p, st.outcome, kl ? { lines: kl } : null)); }
+  if (st.outcome === 'awael') for (const c of kids) { const g = lastNewFor(c, true); if (g) box.append(outcomeBtns(c, g.page, 'awael')); }
+  if (st.outcome === 'near') for (const c of kids) box.append(PageListOutcome(c, deriveChild(c).near, 'near', a, st));
+  if (st.outcome === 'far') for (const c of kids) box.append(PageListOutcome(c, deriveChild(c).todayFar, 'far', a, st));
+  if (st.outcome === 'week') for (const c of kids) { const ws = weekStartKey(App.now()); const pages = [...new Set(Store.events.filter(e => e.type === 'new_page' && e.child === c && e.day >= ws).map(e => e.page))]; box.append(PageListOutcome(c, pages, 'week', a, st)); }
+  if (st.outcome === 'exam') for (const c of kids) box.append(ExamBox(c, a, st, s));
+  if (st.outcome === 'yellow') for (const c of kids) box.append(YellowBox(c, a, st));
+  if (st.outcome === 'cards') for (const c of kids) box.append(CardsBox(c));
+  if (st.outcome === 'fluency') for (const c of kids) box.append(FluencyBox(c, a, st));
+  if (st.timer) for (const c of kids) box.append(MemorizeBox(c, a, st));
+  if (['tilawa', 'tomorrow', 'listen'].includes(st.id)) for (const c of kids) box.append(TilawaBox(c, a, st));
+  if (st.card) for (const c of kids) { const d = deriveChild(c); if (d.nextNew) box.append(el('button', { class: 'ghost', onclick: () => cardModal(c, d.nextNew) }, `بطاقة ${CHILDREN[c].name}: ${pageLabel(d.nextNew)}`)); }
+  if (st.color) box.append(ColorBox());
+  if (st.mutashabih) for (const c of kids) box.append(MutashabihBox(c));
+  if (st.lottery && s.kind === 'thu_karim') { /* القرعة تُدار في ExamBox */ }
+  return box;
+}
+
+function PageListOutcome(c, pages, step, a, st) {
+  if (!pages.length) return el('div', { class: 'muted small' }, 'لا صفحات.');
+  const today = todayKey();
+  const wrap = el('div', { class: 'small' }, el('div', { class: 'row between' }, el('b', null, CHILDREN[c].name), el('button', { class: 'btn-g', onclick: () => { for (const p of pages) { const has = Store.events.some(e => e.type === 'outcome' && e.child === c && e.page === p && e.step === step && e.day === today); if (!has) Store.add({ type: 'outcome', child: c, page: p, step, result: 'clean' }); } if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.rerender(true); } }, 'الباقي مستقل')));
+  const list = el('div');
+  for (const p of pages) {
+    list.append(el('div', { class: 'ayahrow', style: 'flex-wrap:wrap' }, el('span', null, pageLabel(p)), OutcomeCtl(c, p, step, null, ev => { if (ev.result === 'red' || (ev.result === 'yellow' && ev.prompts === 1 && !Store.events.some(x => x.type === 'error' && x.child === c && x.page === p && x.day === today))) errorModal(c, p, c === 'karim' ? null : undefined); }, true)));
+  }
+  wrap.append(list); return wrap;
+}
+
+function ExamBox(c, a, st, s) {
+  const d = deriveChild(c); const key = 'draw_' + c;
+  const box = el('div', { class: 'small' });
+  if (!mayRecord('outcome', { step: 'exam' })) return requestBox(c, 'فحص الخميس');
+  if (!a[key]) {
+    box.append(el('button', { class: 'primary', onclick: () => {
+      let pool = d.far.slice(); const pick = [];
+      if (c === 'karim') { const surahs = [...new Set(pool.flatMap(p => surahsOfPage(p)))]; for (let i = 0; i < 2 && surahs.length; i++) { const sIdx = Math.floor(Math.random() * surahs.length); const sNum = surahs.splice(sIdx, 1)[0]; for (const p of pool) if (surahsOfPage(p).includes(sNum) && !pick.includes(p)) pick.push(p); } }
+      else for (let i = 0; i < 5 && pool.length; i++) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+      a[key] = pick.sort((x, y) => x - y); saveActive(); UI.rerender(true);
+    } }, c === 'karim' ? 'قرعة سورتَين' : 'قرعة 5 صفحات'));
+    if (!d.far.length) box.append(el('div', { class: 'muted' }, 'لا محفوظ بعيد بعد.'));
+    return box;
+  }
+  box.append(el('div', { class: 'muted' }, 'ابدئي بعض الصفحات من وسطها.'), PageListOutcome(c, a[key], 'exam', a, st));
+  return box;
+}
+
+function YellowBox(c, a, st) {
+  const y = yellowList(c); const box = el('div', { class: 'small' });
+  if (!y.active.length) return el('div', { class: 'muted small' }, `لا آيات صفراء لـ${CHILDREN[c].name}.`);
+  box.append(el('b', null, `${CHILDREN[c].name}: ${y.active.length} آية`));
+  for (const it of y.active) {
+    box.append(el('div', { class: 'ayahrow' }, el('span', null, `${SURAH_NAMES[it.surah - 1]} ${it.ayah} · ص${it.page}`, el('span', { class: 'muted' }, ` · سالمة ${it.passes.length}/3`)),
+      el('span', { class: 'row' }, el('button', { class: 'btn-g', style: 'padding:4px 10px', onclick: () => { Store.add({ type: 'yellow_pass', child: c, surah: it.surah, ayah: it.ayah, page: it.page }); UI.rerender(true); } }, '✓'), el('button', { class: 'btn-r', style: 'padding:4px 10px', onclick: () => { Store.add({ type: 'error', child: c, page: it.page, surah: it.surah, ayah: it.ayah, etype: 'prompt', step: 'yellow' }); UI.toast('سُجّل الخطأ'); UI.rerender(true); } }, '✗'))));
+  }
+  return box;
+}
+
+function CardsBox(c) {
+  const d = deriveChild(c); const cards = cardsFor(c); const box = el('div', { class: 'small' });
+  const pages = c === 'karim' ? d.todayFar : d.todayFar;
+  let n = 0;
+  for (const p of pages) { const key = c === 'karim' ? ('s' + (surahsOfPage(p)[0])) : ('p' + p); const card = cards[key]; if (card) { n++; box.append(el('details', null, el('summary', null, (c === 'karim' ? SURAH_NAMES[surahsOfPage(p)[0] - 1] : pageLabel(p))), el('div', { html: cardHtml(card) }))); } }
+  if (!n) box.append(el('div', { class: 'muted' }, 'لا بطاقات لصفحات اليوم بعد؛ تُكتب مساءً من آية.'));
+  return box;
+}
+function cardHtml(card) {
+  if (card.kind === 'surah') return `<div>القصة: ${esc(card.story)}</div><div>الغريب: ${esc(card.words)}</div><div>موقف: ${esc(card.situation)}</div><div>حركة/صورة: ${esc(card.gesture)}</div>`;
+  return `<div>١ غريب: ${esc(card.q1)}</div><div>٢ موضوع: ${esc(card.q2)}</div><div>٣ موضع: ${esc(card.q3)}</div><div>٤ تدبر: ${esc(card.q4)}</div>`;
+}
+
+function FluencyBox(c, a, st) {
+  const page = fluencyPage(c);
+  const sec = el('input', { type: 'number', placeholder: 'ثوانٍ', style: 'width:110px' });
+  return el('div', { class: 'small row' }, el('span', null, pageLabel(page)), sec, el('button', { onclick: () => { const v = Number(sec.value); if (!v) return; Store.add({ type: 'fluency_time', child: c, page, seconds: v }); if (v < 180) { Store.add({ type: 'fluency_page', child: c, page: page + 1, why: 'نزلت تحت 3 دقائق' }); UI.toast('نزلت تحت 3 دقائق؛ الصفحة التالية غداً'); } if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.rerender(true); } }, 'تسجيل الزمن'), el('button', { class: 'ghost', onclick: () => UI.prompt('رقم صفحة الطلاقة', 'رقم الصفحة', v => { const n = Number(v); if (n >= 1 && n <= 604) { Store.add({ type: 'fluency_page', child: c, page: n, why: 'تغيير يدوي' }); UI.rerender(true); } }, String(page)) }, 'تغيير الصفحة'));
+}
+
+function MemorizeBox(c, a, st) {
+  const d = deriveChild(c); const box = el('div', { class: 'small' });
+  if (!d.nextNew) return el('div', { class: 'muted small' }, 'لا صفحة جديدة محددة.');
+  if (!mayRecord('new_page')) return el('div', { class: 'small' }, el('div', null, `الجديد: ${pagesText(d, d.nextNew, d.nextLines)}`), requestBox(c, `حفظ ${pagesText(d, d.nextNew, d.nextLines)}`));
+  const already = d.todayNew.includes(d.nextNew) || (d.todayNew.length && c !== 'karim');
+  const tKey = 'timer_' + c;
+  const timerEl = el('span', { class: 'timer' }, a[tKey] ? fmtDur(Date.now() - a[tKey]) : '00:00');
+  if (a[tKey]) setTimeout(function tick() { if (!document.body.contains(timerEl) || !a[tKey]) return; timerEl.textContent = fmtDur(Date.now() - a[tKey]); setTimeout(tick, 1000); }, 1000);
+  /* المعايرة: نصف صفحة افتراضياً في أول 10 أيام حفظ لدلال وفرح، ويمكن تغييره */
+  const daysSoFar = c === 'karim' ? 99 : new Set(Store.events.filter(e => e.type === 'new_page' && e.child === c).map(e => e.day)).size;
+  if (a['half_' + c] == null) a['half_' + c] = daysSoFar < 10;
+  const half = el('input', { type: 'checkbox', onchange: e => { a['half_' + c] = e.target.checked; saveActive(); } }); half.checked = !!a['half_' + c];
+  const linesIn = el('input', { type: 'number', min: d.nextLines[0] + 3, max: 15, value: a['lines_' + c] || d.nextLines[1], style: 'width:70px', onchange: e => { a['lines_' + c] = Number(e.target.value); saveActive(); } });
+  box.append(el('div', { class: 'row between' }, el('span', null, `الجديد: ${pagesText(d, d.nextNew, c === 'karim' ? [d.nextLines[0], Number(linesIn.value)] : d.nextLines)}`), timerEl));
+  if (c === 'karim') box.append(el('div', { class: 'row small' }, 'إلى السطر ', linesIn, el('span', { class: 'muted' }, ' (4 أسطر على الأقل؛ تزيد آية عند الاستطاعة)')));
+  if (c !== 'karim' && daysSoFar < 10) box.append(el('div', { class: 'muted' }, `أيام المعايرة: ${daysSoFar + 1} من 10 — نصف صفحة افتراضياً.`));
+  if (d.paused && !a['override_' + c]) {
+    box.append(el('div', { class: 'alert red' }, 'قرار آية: الجديد متوقف لهذا الطفل. تُسمَّع المراجعة فقط.'), App.can('canDecide') ? el('button', { class: 'ghost', onclick: () => UI.prompt('سبب تجاوز قرار التوقف اليوم', 'السبب (يُوثَّق)', why => { if (!why) return; Store.add({ type: 'decision', child: c, kind: 'override', text: why }); a['override_' + c] = true; saveActive(); UI.rerender(true); }) }, 'تجاوز اليوم بسبب مسجّل') : null);
+    return box;
+  }
+  if (d.reduced) box.append(el('div', { class: 'alert' }, 'قرار آية: المقدار مخفَّض إلى نصف صفحة حتى قرار «استعادة المقدار».'));
+  const partial = d.pages[d.nextNew].linesDone > 0;
+  if (!already) box.append(el('div', { class: 'btns' },
+    !a[tKey] ? el('button', { onclick: () => { a[tKey] = Date.now(); saveActive(); UI.rerender(true); } }, 'بدء المؤقت') : null,
+    el('button', { class: 'primary', onclick: () => {
+      const mins = a[tKey] ? Math.round((Date.now() - a[tKey]) / 60000) : null;
+      let lines = d.nextLines.slice();
+      if (c !== 'karim' && !partial && (half.checked || d.reduced)) lines = [1, 8];
+      if (c === 'karim') { const to = Math.min(15, Math.max(d.nextLines[0] + 3, Number(linesIn.value) || d.nextLines[1])); lines = [d.nextLines[0], to]; }
+      Store.add({ type: 'new_page', child: c, page: d.nextNew, linesFrom: lines[0], linesTo: lines[1], minutes: mins });
+      a[tKey] = null; if (!a.steps.includes(st.id)) a.steps.push(st.id); saveActive(); UI.toast('سُجّل الحفظ الجديد'); UI.rerender(true);
+    } }, partial ? 'تم إكمال الصفحة' : 'تم الحفظ'),
+    c !== 'karim' && !partial && !d.reduced ? el('label', { class: 'row', style: 'margin:0' }, half, ' نصف صفحة (المعايرة)') : null));
+  else box.append(el('div', { class: 'muted' }, 'سُجّل حفظ اليوم.'));
+  return box;
+}
+function fmtDur(ms) { const s = Math.floor(ms / 1000); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); }
+
+function ColorBox() {
+  if (!App.can('canColor')) return el('div', { class: 'muted small' }, 'التلوين لآية وحدها.');
+  const today = todayKey(); const box = el('div', { class: 'small' });
+  for (const c of CHILD_ORDER) {
+    const pages = [...new Set(Store.events.filter(e => e.child === c && e.day === today && (e.type === 'outcome' || e.type === 'error' || e.type === 'new_page')).map(e => e.page))].sort((a, b) => a - b);
+    if (!pages.length) continue;
+    box.append(el('b', null, CHILDREN[c].name));
+    for (const p of pages) {
+      /* كريم: لون لكل مقطع سُمّع فعلاً؛ الكبيران: الصفحة */
+      const segs = c === 'karim' ? [...new Set(effectiveOutcomes(e => e.child === c && e.day === today && e.page === p).map(e => segKey(e.lines)))].map(k => k ? k.split('-').map(Number) : null) : [null];
+      for (const kl of segs) {
+      const sg = suggestColor(c, p, today, kl);
+      const cur = Store.events.filter(e => e.child === c && e.type === 'color' && e.page === p && e.day === today && sameSeg(e.lines, kl)).pop();
+      const mk = (col, cls, t) => el('button', { class: cls + ((cur ? cur.color : null) === col ? ' on' : ''), style: 'padding:4px 10px', onclick: () => {
+        const ev = { type: 'color', child: c, page: p, color: col, suggested: sg.pending ? 'pending' : sg.color }; if (kl) ev.lines = kl;
+        const need = (col !== sg.color && sg.color !== 'none') ? `اللون المقترح ${colorName(sg.color)}؛ سبب الاعتماد المختلف` : (sg.pending && col === 'green') ? 'المعنى لم يُختبر؛ سبب اعتماد الأخضر رغم ذلك' : null;
+        if (need) UI.prompt(need, 'السبب (يُوثَّق)', why => { if (!why) return; ev.why = why; Store.add(ev); UI.rerender(true); });
+        else { Store.add(ev); UI.rerender(true); } } }, t);
+      box.append(el('div', { class: 'ayahrow', style: 'flex-wrap:wrap' }, el('span', null, pagesText(deriveChild(c), p, kl), el('span', { class: 'muted' }, ` · ${sg.n} تسميع · مقترح: `), sg.pending ? el('span', { class: 'pill n', style: 'border:1px dashed var(--brand)' }, 'بانتظار الاعتماد') : sg.color === 'none' ? el('span', { class: 'pill n' }, sg.incomplete ? 'غير مكتمل' : 'لم يُقيَّم') : el('span', { class: 'pill ' + { green: 'g', yellow: 'y', red: 'r' }[sg.color] }, colorName(sg.color)), sg.reasons.length ? el('span', { class: 'muted' }, ` (${sg.reasons.join('، ')})`) : null, cur && cur.why ? el('span', { class: 'muted' }, ` · سبب: ${cur.why}`) : null), el('span', { class: 'row' }, mk('green', 'btn-g', 'أخضر'), mk('yellow', 'btn-y', 'أصفر'), mk('red', 'btn-r', 'أحمر'))));
+      }
+    }
+  }
+  if (!box.children.length) box.append(el('div', { class: 'muted' }, 'لا تسميعات اليوم.'));
+  return box;
+}
+function colorName(c) { return { green: 'أخضر', yellow: 'أصفر', red: 'أحمر', none: 'لم يُقيَّم' }[c] || c; }
+
+/* ===== التراجع عن آخر تسجيل (يبقى أثر التصحيح في السجل) ===== */
+function undoLast() {
+  const mine = Store.events.filter(e => Store.canUndo(App.role.id, e) && e.by === App.role.id && e.day === todayKey() && !['undo', 'session_done', 'handoff', 'handoff_update', 'handoff_status', 'layer'].includes(e.type));
+  const last = mine[mine.length - 1];
+  if (!last) { UI.toast('لا تسجيل للتراجع عنه اليوم'); return; }
+  UI.confirm(`التراجع عن: ${eventText(last)}؟ يُلغى أثره في الحسابات ويبقى أثر التصحيح في السجل.`, () => { Store.add({ type: 'undo', target: last.id, child: last.child || undefined, reason: 'تراجع ' + ROLES[App.role.id].name }); UI.toast('تم التراجع'); UI.rerender(true); });
+}
+function MutashabihBox(c) {
+  const ws = weekStartKey(App.now()); const list = mutashabihat(c, ws); const box = el('div', { class: 'small' });
+  if (!list.length) return el('div', { class: 'muted small' }, `لا متشابهات مسجلة هذا الأسبوع لـ${CHILDREN[c].name}.`);
+  box.append(el('b', null, CHILDREN[c].name));
+  for (const e of list) box.append(el('div', { class: 'ayahrow' }, el('span', null, `${SURAH_NAMES[e.surah - 1]} ${e.ayah} ← انتقل إلى ${e.target ? SURAH_NAMES[e.target.surah - 1] + ' ' + e.target.ayah : 'موضع غير مسجل'}`), el('span', { class: 'muted' }, fmtDay(e.day))));
+  return box;
+}
+
+/* ===== نافذة تسجيل الخطأ ===== */
+function errorModal(c, page, lines) {
+  const d = deriveChild(c); page = page || d.nextNew || 1;
+  if (c === 'karim' && lines === undefined) lines = karimLines(c, page) || null;
+  const pageIn = el('input', { type: 'number', min: 1, max: 604, value: page, style: 'width:100px' });
+  const surahSel = el('select'); const ayahIn = el('input', { type: 'number', min: 1, placeholder: 'رقم الآية', style: 'width:120px' });
+  const fillSurahs = () => { surahSel.innerHTML = ''; for (const s of surahsOfPage(Number(pageIn.value) || 1)) surahSel.append(el('option', { value: s }, SURAH_NAMES[s - 1])); };
+  fillSurahs(); pageIn.addEventListener('input', fillSurahs);
+  let etype = null; const typeBtns = el('div', { class: 'btns' });
+  const target = el('div', { style: 'display:none' });
+  const tSurah = el('input', { type: 'number', min: 1, max: 114, placeholder: 'رقم السورة', style: 'width:120px' }); const tAyah = el('input', { type: 'number', min: 1, placeholder: 'الآية', style: 'width:100px' });
+  target.append(label('الموضع الذي انتقل إليه'), el('div', { class: 'row' }, tSurah, tAyah));
+  for (const t of ERROR_TYPES) typeBtns.append(el('button', { class: 'ghost', onclick: e => { etype = t.id; [...typeBtns.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); target.style.display = t.id === 'jump' ? '' : 'none'; } }, t.name));
+  const note = el('input', { placeholder: 'ملاحظة (اختياري)' });
+  const segBox = c === 'karim' ? el('div', { class: 'small' }, label('المقطع (الأسطر)'), el('div', { class: 'row' }, (lines ? el('span', { class: 'pill n' }, `الأسطر ${lines[0]}–${lines[1]}`) : el('span', { class: 'muted' }, 'غير محدد — سيُعرض للمراجعة ولا يُنسب لكل المقاطع')))) : null;
+  const body = el('div', null, el('div', { class: 'row' }, el('div', null, label('الصفحة'), pageIn), el('div', { style: 'flex:1' }, label('السورة'), surahSel), el('div', null, label('الآية'), ayahIn)), segBox, label('نوع الخطأ'), typeBtns, target, label('ملاحظة'), note);
+  const bg = UI.modal(`خطأ · ${CHILDREN[c].name}`, body, [el('button', { class: 'primary', onclick: () => {
+    if (!etype) { UI.toast('اختاري نوع الخطأ'); return; }
+    const pg = Number(pageIn.value), su = Number(surahSel.value), ay = Number(ayahIn.value);
+    if (!(pg >= 1 && pg <= 604)) { UI.toast('رقم الصفحة بين 1 و604'); return; }
+    if (!(su >= 1 && su <= 114)) { UI.toast('اختاري السورة'); return; }
+    if (!(ay >= 1 && ay <= SURAH_AYAT[su - 1])) { UI.toast(`رقم الآية بين 1 و${SURAH_AYAT[su - 1]}`); return; }
+    const ev = { type: 'error', child: c, page: pg, surah: su, ayah: ay, etype, note: note.value }; if (lines && pg === page) ev.lines = lines;
+    if (etype === 'jump') { const ts = Number(tSurah.value), ta = Number(tAyah.value); if (!(ts >= 1 && ts <= 114)) { UI.toast('اكتبي رقم السورة التي انتقل إليها'); return; } ev.target = { surah: ts, ayah: ta || null }; }
+    Store.add(ev); bg.remove(); UI.toast('سُجّل الخطأ'); UI.rerender(true);
+  } }, 'حفظ')]);
+}
+
+function noteModal(c) {
+  const sel = el('select', null, el('option', { value: '' }, 'عام'), CHILD_ORDER.map(k => el('option', { value: k }, CHILDREN[k].name)));
+  if (c) sel.value = c;
+  const t = el('textarea', { placeholder: 'الملاحظة' });
+  const bg = UI.modal('ملاحظة', el('div', null, label('الطفل'), sel, label('النص'), t), [el('button', { class: 'primary', onclick: () => { if (!t.value.trim()) return; Store.add({ type: 'note', child: sel.value || null, text: t.value.trim() }); bg.remove(); UI.toast('حُفظت'); } }, 'حفظ')]);
+}
+
+/* ===== بطاقات ===== */
+function cardModal(c, page) {
+  const isSurah = c === 'karim'; const key = isSurah ? 's' + surahsOfPage(page)[0] : 'p' + page;
+  const cur = cardsFor(c)[key] || {};
+  const f = {};
+  const fields = isSurah ? [['story', 'قصة السورة في جملة'], ['words', 'كلمتان أو ثلاث من غريبها بمعناها'], ['situation', 'سؤال موقف: ماذا نفعل عندما…؟'], ['gesture', 'حركة أو صورة ذهنية']]
+    : [['q1', '١ غريب: ما معنى …؟'], ['q2', '٢ موضوع: ما الذي تتحدث عنه الآيات من … إلى …؟'], ['q3', '٣ موضع: في أي سورة وبعد أي قصة تأتي آية …؟'], ['q4', '٤ تدبر: ما القاعدة التي أخذناها من …؟']];
+  const body = el('div', null, el('p', { class: 'muted small' }, isSurah ? `سورة ${SURAH_NAMES[surahsOfPage(page)[0] - 1]}` : pageLabel(page)));
+  for (const [k, lab] of fields) { f[k] = el('textarea', { style: 'min-height:48px' }); f[k].value = cur[k] || ''; body.append(label(lab), f[k]); }
+  const bg = UI.modal('بطاقة', body, [el('button', { class: 'primary', onclick: () => { const ev = { type: 'card', child: c, key, kind: isSurah ? 'surah' : 'page', page }; for (const k in f) ev[k] = f[k].value.trim(); Store.add(ev); bg.remove(); UI.toast('حُفظت البطاقة'); UI.rerender(true); } }, 'حفظ')]);
+}
+
+/* ===== تنبيهات ===== */
+function alertsList() {
+  const out = [];
+  if (Store.storageError) out.push({ level: 'red', child: null, text: Store.storageError });
+  for (const c of CHILD_ORDER) {
+    const h = healthOf(c);
+    if (h.gateFails >= 2) out.push({ level: 'red', child: c, text: `سقطت بوابة الصباح ${h.gateFails} مرات هذا الأسبوع؛ القاعدة: تخفيض المقدار وإبلاغ ولي الأمر.` });
+    if (h.maxGap > 12 && h.st.maxGapPage) out.push({ level: 'red', child: c, text: `الصفحة ${h.st.maxGapPage} بلا تسميع منذ ${h.maxGap} يوماً (الحد 12).` });
+    else if (h.maxGap > 10 && h.st.maxGapPage) out.push({ level: 'yellow', child: c, text: `الصفحة ${h.st.maxGapPage} تقترب من حد الـ12 يوماً (${h.maxGap}).` });
+    if (h.examGreen != null && h.examGreen < 85) out.push({ level: h.examGreen < 70 ? 'red' : 'yellow', child: c, text: `آخر فحص خميس: ${h.examClean}/${h.examN} أخضر.` });
+    if (h.examN && h.examN < (c === 'karim' ? 2 : 5)) out.push({ level: 'yellow', child: c, text: `فحص ${fmtDay(h.examDay)} غير مكتمل (${h.examN} من ${c === 'karim' ? 2 : 5}).` });
+    const d = h.st; if (d.far.length && d.nextNew && !cardsFor(c)[c === 'karim' ? 's' + surahsOfPage(d.nextNew)[0] : 'p' + d.nextNew]) out.push({ level: 'yellow', child: c, text: `بطاقة ${c === 'karim' ? 'سورة' : 'صفحة'} الغد (${d.nextNew}) لم تُكتب.` });
+  }
+  const ws = weekStartKey(App.now());
+  for (const s of PLAN) { for (const dk of lastDays(7)) { const st = sessionStatus(s, dk); if (st && st.conflicts.length) out.push({ level: 'red', child: s.child === 'both' || s.child === 'all' ? null : s.child, text: `${fmtDay(dk)} ${childName(s.child)} · ${SESSION_KINDS[s.kind].name}: ${st.conflicts.join('؛ ')} — لم تُحذف أي نتيجة؛ راجعي السجل.` }); } }
+  for (const e of Store.events.filter(e => e.type === 'session_done' && e.day >= ws && e.status && e.status !== 'complete')) out.push({ level: 'yellow', child: e.child, text: `${fmtDay(e.day)} ${SESSION_KINDS[e.kind] ? SESSION_KINDS[e.kind].name : e.kind}: ${e.status === 'stopped' ? 'توقفت (' + e.reason + ')' : 'بقي جزء: ' + (e.remaining || []).map(id => { const k = SESSION_KINDS[e.kind]; const st = k && k.steps.find(x => x.id === id); return st ? st.text : id; }).join('؛ ')} — تقرر آية كيف يُستدرك.` });
+  for (const e of Store.events.filter(e => e.type === 'decision' && e.day >= ws)) out.push({ level: 'yellow', child: e.child, text: `قرار آية (${fmtDay(e.day)}): ${decisionName(e.kind)} — ${e.text || ''}` });
+  return out;
+}
+function decisionName(k) { return { repair: 'صباح إصلاح', reduce: 'تخفيض المقدار', restore: 'استعادة المقدار', pause: 'توقف الجديد', resume: 'استئناف الجديد', override: 'تجاوز التوقف ليوم', juz: 'إجازة جزء', surah: 'اعتماد سورة' }[k] || k; }
+function AlertsCard() {
+  const list = alertsList(); if (!list.length) return el('div');
+  return el('div', { class: 'card' }, el('h2', null, 'تنبيهات'), list.map(a => el('div', { class: 'alert' + (a.level === 'red' ? ' red' : '') }, el('b', null, CHILDREN[a.child] ? CHILDREN[a.child].name + ': ' : ''), a.text)));
+}
+
+/* ===== بطاقات التسليم ===== */
+function handoffCard(h, full) {
+  const stName = { new: 'جديدة', seen: 'اطلعت عليها آية', handled: 'عولجت', reopened: 'أُعيد فتحها' }[h.state];
+  const cls = { new: 'pill y', seen: 'pill n', handled: 'pill g', reopened: 'pill r' }[h.state];
+  const box = el('div', { class: 'alert' + (h.items.some(i => i.k === 'jump') && h.state !== 'handled' ? ' red' : ''), style: 'margin:6px 0' },
+    el('div', { class: 'row between' }, el('b', null, `${CHILDREN[h.child].name} — إلى آية · ${SESSION_KINDS[h.kind] ? SESSION_KINDS[h.kind].name : h.kind} · ${fmtDay(h.day)}`), el('span', { class: cls }, stName)));
+  const lab = { done: 'أُنجز', followup: 'يحتاج متابعة', jump: 'متشابه', error: 'خطأ', remaining: 'الباقي', note: 'ملاحظة', update: 'تحديث' };
+  for (const it of h.items) box.append(el('div', { class: 'small' }, el('b', null, (lab[it.k] || it.k) + ': '), it.text, it.k === 'jump' && it.n > 1 ? el('span', { class: 'muted' }, ` · تكرر ${it.n} مرات`) : null, it.addedDay ? el('span', { class: 'muted' }, ` (${fmtDay(it.addedDay)})`) : null));
+  if (App.role.id === 'aya') {
+    const b = el('div', { class: 'btns' });
+    if (h.state === 'new' || h.state === 'reopened') b.append(el('button', { class: 'ghost', onclick: () => { Store.add({ type: 'handoff_status', handoff: h.id, child: h.child, status: 'seen' }); UI.rerender(); } }, 'اطلعتُ'));
+    if (h.state !== 'handled') b.append(el('button', { class: 'btn-g', onclick: () => { Store.add({ type: 'handoff_status', handoff: h.id, child: h.child, status: 'handled' }); UI.rerender(); } }, 'عولجت'));
+    else b.append(el('button', { class: 'ghost', onclick: () => { Store.add({ type: 'handoff_status', handoff: h.id, child: h.child, status: 'reopened' }); UI.rerender(); } }, 'عاد الخطأ — إعادة فتح'));
+    box.append(b);
+  }
+  return box;
+}
+function HandoffsCard() {
+  if (App.role.id === 'asst') return el('div');
+  const open = handoffs(h => h.state !== 'handled');
+  if (!open.length) return el('div');
+  return el('div', { class: 'card' }, el('h2', null, `بطاقات التسليم (${open.length})`), open.slice(-6).reverse().map(h => handoffCard(h)));
+}
+
+function lastDays(n) { const out = []; const d = App.now(); for (let i = 0; i < n; i++) { const x = new Date(d.getTime() - i * 86400000); out.push(dayKey(x)); } return out; }
+
+/* إلغاء جلسات اليوم (غير المنفذة) بسبب موثَّق؛ لا يُحذف أي سجل */
+function cancelModal() {
+  const d = App.now(); const dayK = todayKey();
+  const list = sessionsFor(App.role.id, d).filter(s => !sessionStatus(s, dayK));
+  const act = Store.settings.active;
+  if (!list.length) { UI.toast('لا جلسات متبقية اليوم'); return; }
+  const checks = list.map(s => { const c = el('input', { type: 'checkbox' }); c.checked = true; return [s, c]; });
+  const reasonSel = el('select', null, ['مرض طفل', 'سفر أو ظرف عائلي', 'انقطاع الإنترنت', 'غياب معلمة', 'سبب آخر'].map(x => el('option', { value: x }, x)));
+  const txt = el('input', { placeholder: 'تفصيل (اختياري)' });
+  const bg = UI.modal('إلغاء جلسات اليوم', el('div', null, el('p', { class: 'small muted' }, 'تُلغى الجلسات المختارة غير المنفذة فقط. النتائج المسجلة سابقاً تبقى. الجلسة الجارية تُحفظ بما أُنجز ويظهر الباقي.'), checks.map(([s, c]) => el('label', { class: 'row', style: 'margin:4px 0' }, c, ` ${fmtTime12(s.start)} ${childName(s.child)} · ${SESSION_KINDS[s.kind].name}`)), label('السبب'), reasonSel, txt),
+    [el('button', { class: 'danger', onclick: () => { const reason = reasonSel.value + (txt.value.trim() ? ': ' + txt.value.trim() : ''); let ok = 0, fail = 0; const failed = [];
+      for (const [s, c] of checks) { if (!c.checked) continue; const key = sessionKey(s, dayK);
+        try {
+          if (act && act.key === key) { if (commitEnd(s, act, 'stopped', SESSION_KINDS[s.kind].steps.filter(st => !act.steps.includes(st.id)).map(st => st.id), 'إلغاء: ' + reason, act.note || '')) ok++; else { fail++; failed.push(s); } continue; }
+          for (const ch of childrenOf(s)) if (!Store.events.some(e => e.type === 'session_cancel' && e.key === key && e.child === ch)) Store.add({ type: 'session_cancel', key, child: ch, kind: s.kind, start: s.start, reason });
+          ok++; c.disabled = true; c.checked = false;
+        } catch (e) { fail++; failed.push(s); }
+      }
+      if (fail) { UI.toast(`أُلغيت ${ok} جلسة، وتعذّر ${fail}: ${failed.map(s => childName(s.child) + ' ' + fmtTime12(s.start)).join('، ')} — أعيدي المحاولة`); UI.rerender(true); return; }
+      bg.remove(); UI.toast(`أُلغيت ${ok} جلسة`); UI.rerender(); } }, 'تأكيد الإلغاء')]);
+}
+
+/* ===== الأطفال، السجلات، الخميس ===== */
+Views.children = function () {
+  const c = App.sub.child || 'dalal'; const tab = App.sub.ctab || 'summary';
+  const wrap = el('div');
+  wrap.append(el('div', { class: 'tabs' }, CHILD_ORDER.map(k => el('button', { class: c === k ? 'active' : '', onclick: () => { App.sub.child = k; UI.rerender(); } }, CHILDREN[k].name))));
+  const tabs = [['summary', 'الخلاصة'], ['map', 'خريطة المصحف'], ['yellow', 'القائمة الصفراء'], ['mut', 'المتشابهات'], ['cards', 'البطاقات'], ['history', 'سجل الطفل']];
+  wrap.append(el('div', { class: 'tabs' }, tabs.map(([k, n]) => el('button', { class: tab === k ? 'active' : '', onclick: () => { App.sub.ctab = k; UI.rerender(); } }, n))));
+  if (tab === 'summary') wrap.append(ChildSummary(c));
+  if (tab === 'map') wrap.append(MushafMap(c));
+  if (tab === 'yellow') wrap.append(YellowView(c));
+  if (tab === 'mut') wrap.append(MutView(c));
+  if (tab === 'cards') wrap.append(CardsView(c));
+  if (tab === 'history') wrap.append(HistoryView(c));
+  return wrap;
+};
+
+function ChildSummary(c) {
+  const h = healthOf(c); const d = h.st; const wrap = el('div');
+  const greens = d.far.filter(p => d.pages[p].color === 'green').length;
+  wrap.append(el('div', { class: 'card' }, el('div', { class: 'row between' }, el('h2', null, CHILDREN[c].name), el('span', null, el('span', { class: 'light ' + h.light }), ' ', lightText(h))),
+    el('div', { class: 'kpi' }, el('div', null, el('div', { class: 'v' }, d.far.length), el('div', { class: 'k' }, 'صفحة في البعيد')), el('div', null, el('div', { class: 'v' }, d.near.length), el('div', { class: 'k' }, 'صفحة في القريب')), el('div', null, el('div', { class: 'v' }, d.quota), el('div', { class: 'k' }, 'حصة البعيد اليومية'))),
+    el('div', { class: 'kpi', style: 'margin-top:10px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? `أخضر في فحص ${fmtDay(h.examDay)}` : 'لم يُفحص بعد')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة هذا الأسبوع')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, 'أطول صفحة بلا تسميع (يوم)')))));
+  wrap.append(el('div', { class: 'card' }, el('h3', null, 'الآن'),
+    el('div', null, 'الجديد التالي: ', el('b', null, d.nextNew ? pagesText(d, d.nextNew, d.nextLines) : '—')),
+    el('div', null, 'الجزء الحالي: ', el('b', null, d.currentJuz ? juzLabel(d.currentJuz) : '—'), d.near.length ? ` · القريب: ${d.near[0]}–${d.near[d.near.length - 1]}` : ''),
+    el('div', null, 'حصة البعيد اليوم: ', el('b', null, d.todayFar.length ? d.todayFar.join('، ') : '—')),
+    el('div', null, 'آخر صفحة جديدة: ', el('b', null, d.lastNewPage ? pageLabel(d.lastNewPage) : '—'))));
+  const hs = handoffs(h => h.child === c); if (hs.length) wrap.append(el('div', { class: 'card' }, el('h3', null, 'بطاقات التسليم'), hs.slice(-5).reverse().map(h => handoffCard(h))));
+  if (d.paused || d.reduced) wrap.append(el('div', { class: 'alert' }, d.paused ? 'الجديد متوقف بقرار آية. ' : '', d.reduced ? 'المقدار مخفَّض إلى نصف صفحة بقرار آية.' : ''));
+  if (App.can('canDecide')) wrap.append(el('div', { class: 'card' }, el('h3', null, 'قرارات آية'), el('p', { class: 'small muted' }, 'القرار يغيّر ما يقترحه البرنامج في الجلسة التالية، ويبقى حتى يُلغى بقرار آخر.'), el('div', { class: 'btns' },
+    el('button', { class: 'btn-y', onclick: () => decisionModal(c, 'repair') }, 'صباح إصلاح'),
+    d.reduced ? el('button', { class: 'btn-g', onclick: () => decisionModal(c, 'restore') }, 'استعادة المقدار') : (c !== 'karim' ? el('button', { class: 'btn-y', onclick: () => decisionModal(c, 'reduce') }, 'تخفيض إلى نصف صفحة') : null),
+    d.paused ? el('button', { class: 'btn-g', onclick: () => decisionModal(c, 'resume') }, 'استئناف الجديد') : el('button', { class: 'btn-r', onclick: () => decisionModal(c, 'pause') }, 'توقف الجديد'),
+    el('button', { class: 'btn-g', onclick: () => juzPassModal(c) }, c === 'karim' ? 'اعتماد سورة' : 'إجازة جزء'))));
+  const decisions = Store.events.filter(e => e.type === 'decision' && e.child === c).slice(-5).reverse();
+  if (decisions.length) wrap.append(el('div', { class: 'card' }, el('h3', null, 'آخر القرارات'), decisions.map(e => el('div', { class: 'small' }, `${fmtDay(e.day)} · ${decisionName(e.kind)}: ${e.text || ''}`))));
+  return wrap;
+}
+
+function decisionModal(c, kind) {
+  const t = el('textarea', { placeholder: 'السبب بإيجاز' });
+  const bg = UI.modal(decisionName(kind), el('div', null, el('p', { class: 'muted small' }, `${CHILDREN[c].name}`), t), [el('button', { class: 'primary', onclick: () => { Store.add({ type: 'decision', child: c, kind, text: t.value.trim() }); bg.remove(); UI.toast('سُجّل القرار'); UI.rerender(); } }, 'تسجيل')]);
+}
+function juzPassModal(c) {
+  const d = deriveChild(c);
+  if (c === 'karim') {
+    const surahs = [...new Set(d.near.flatMap(p => surahsOfPage(p)))];
+    const sel = el('select', null, surahs.map(s => el('option', { value: s }, SURAH_NAMES[s - 1])));
+    const bg = UI.modal('اعتماد سورة', el('div', null, el('p', { class: 'small muted' }, 'تُعتمد السورة بعد تسميعها خضراء مرتين في يومين متباعدين. تنتقل الصفحة إلى البعيد حين تُعتمد كل السور التي فيها.'), sel), [el('button', { class: 'primary', onclick: () => { const s = Number(sel.value); Store.add({ type: 'surah_passed', child: c, surah: s }); Store.add({ type: 'decision', child: c, kind: 'surah', text: SURAH_NAMES[s - 1] }); bg.remove(); UI.rerender(); } }, 'اعتماد')]);
+    return;
+  }
+  const juzs = [...new Set(d.near.map(p => juzOfPage(p)))].sort((a, b) => b - a);
+  if (!juzs.length) { UI.toast('لا صفحات في القريب'); return; }
+  const sel = el('select', null, juzs.map(j => el('option', { value: j }, `${juzLabel(j)} · ${d.near.filter(p => juzOfPage(p) === j).length} صفحة في القريب`)));
+  /* اختبار الإجازة: خطوة اختيارية تُسجَّل نتيجتها حين تُنفَّذ؛ عدم تنفيذها ليس فشلاً.
+     الإجازة تستند إلى اختبار سابق يُختار صراحةً، أو تُسجَّل «بلا اختبار» صراحةً. */
+  const basis = el('select');
+  const refreshBasis = () => { const ex = juzExams(c, Number(sel.value)).slice().reverse(); basis.innerHTML = ''; basis.append(el('option', { value: '' }, 'إجازة بلا الاستناد إلى اختبار (تُوثَّق كذلك)')); for (const x of ex) basis.append(el('option', { value: x.id }, `اختبار ${fmtDay(x.day)}: ${resultName(x.result)}${x.prompts != null ? ' · تلقين ' + x.prompts : ''}${x.note ? ' — ' + x.note : ''}`)); if (ex.length) basis.value = ex[0].id; };
+  sel.addEventListener('change', refreshBasis); refreshBasis();
+  const exRes = el('select', null, [['', 'لا تسجيل اختبار جديد'], ['clean', 'مستقل — بلا تلقين'], ['yellow', 'بمساعدة (تلقين 1–2)'], ['red', 'توقف / 3 تلقينات+']].map(([v, n]) => el('option', { value: v }, n)));
+  const exPrompts = el('input', { type: 'number', min: 0, max: 99, placeholder: 'عدد التلقينات', style: 'width:130px' });
+  const exNote = el('input', { placeholder: 'ملاحظة الاختبار (اختياري)' });
+  const syncPrompts = () => { if (exRes.value === 'clean') { exPrompts.value = '0'; exPrompts.disabled = true; } else if (exRes.value === 'yellow') { exPrompts.disabled = false; exPrompts.min = 1; exPrompts.max = 2; if (!(Number(exPrompts.value) >= 1 && Number(exPrompts.value) <= 2)) exPrompts.value = '1'; } else { exPrompts.disabled = exRes.value === ''; exPrompts.min = 0; exPrompts.max = 99; } };
+  exRes.addEventListener('change', syncPrompts); syncPrompts();
+  const newExam = () => { if (!exRes.value) return null; const pr = exPrompts.value === '' ? undefined : Number(exPrompts.value); if (exRes.value === 'yellow' && !(pr >= 1 && pr <= 2)) { UI.toast('«بمساعدة» تعني تلقيناً أو اثنين'); return false; } if (exRes.value === 'clean' && pr > 0) { UI.toast('«مستقل» يعني بلا تلقين'); return false; } return { type: 'juz_exam', child: c, juz: Number(sel.value), result: exRes.value, prompts: exRes.value === 'clean' ? 0 : pr, note: exNote.value.trim() || undefined }; };
+  const bg = UI.modal('إجازة جزء', el('div', null, el('p', { class: 'small' }, 'يُجاز الجزء بعد تسميعه كاملاً لآية يوم الخميس بلا تلقين، فتنتقل صفحاته إلى البعيد.'), sel,
+      label('الاستناد إلى اختبار إجازة سابق'), basis,
+      label('أو تسجيل اختبار جديد الآن'), el('div', { class: 'row' }, exRes, exPrompts), exNote),
+    [el('button', { class: 'ghost', onclick: () => { const ex = newExam(); if (!ex) { if (ex === null) UI.toast('اختاري نتيجة الاختبار'); return; } Store.add(ex); UI.toast('سُجّل الاختبار دون إجازة'); bg.remove(); UI.rerender(); } }, 'تسجيل الاختبار فقط'),
+     el('button', { class: 'primary', onclick: () => { const juz = Number(sel.value);
+      const ex = newExam(); if (ex === false) return;
+      let basisEv = null, exId;
+      if (ex) { basisEv = Store.add(ex); exId = basisEv.id; } else if (basis.value) { basisEv = Store.events.find(e => e.id === basis.value); exId = basis.value; }
+      const go = () => { Store.add({ type: 'juz_passed', child: c, juz, exam: exId }); Store.add({ type: 'decision', child: c, kind: 'juz', text: juzLabel(juz) + (basisEv ? ` — استناداً إلى اختبار ${fmtDay(basisEv.day)}: ${resultName(basisEv.result)}` : ' — بلا الاستناد إلى اختبار') }); bg.remove(); UI.rerender(); };
+      if (!basisEv) UI.confirm('إجازة الجزء بلا الاستناد إلى اختبار مسجل؟ (تُوثَّق)', go);
+      else if (basisEv.result !== 'clean') UI.confirm(`الاختبار المستند إليه (${fmtDay(basisEv.day)}) نتيجته «${resultName(basisEv.result)}». إجازة الجزء رغم ذلك؟ (تُوثَّق)`, go);
+      else go(); } }, 'إجازة')]);
+}
+
+function MushafMap(c) {
+  const d = deriveChild(c); const today = todayKey();
+  const grid = el('div', { class: 'map' });
+  const cell = p => {
+    const pg = d.pages[p]; let cls = 'c ' + (pg.layer === 'none' ? '' : pg.layer);
+    if (pg.layer === 'far' && pg.color) cls = 'c ' + pg.color;
+    const gap = pg.layer === 'far' ? ((pg.lastFar || pg.lastReview) ? daysBetween(pg.lastFar || pg.lastReview, today) : 99) : 0;
+    if (pg.layer === 'far' && gap > 12) cls += ' stale';
+    if (d.todayNew.includes(p) || d.todayFar.includes(p)) cls += ' today';
+    return el('div', { class: cls, title: `ص${p}`, onclick: () => pageModal(c, p) }, p);
+  };
+  /* الأجزاء المحفوظة أو الجارية أولاً (مفصّلة)، ثم الباقي مطوي */
+  const touched = new Set(); for (let p = 1; p <= 604; p++) if (d.pages[p].layer !== 'none') for (let j = 1; j <= 30; j++) if (p >= JUZ_START[j - 1] && p < (JUZ_START[j] || 605)) touched.add(j);
+  const showAll = App.sub.mapAll;
+  for (let j = 30; j >= 1; j--) {
+    if (!touched.has(j) && !showAll) continue;
+    const from = JUZ_START[j - 1], to = (JUZ_START[j] || 605) - 1;
+    grid.append(el('div', { class: 'jl' }, `الجزء ${j} · ص${from}–${to}`));
+    const g = el('div', { class: 'juz' }); for (let p = from; p <= to; p++) g.append(cell(p)); grid.append(g);
+  }
+  grid.append(el('button', { class: 'ghost small', style: 'margin-top:8px', onclick: () => { App.sub.mapAll = !showAll; UI.rerender(); } }, showAll ? 'إخفاء الأجزاء غير المحفوظة' : 'إظهار كل الأجزاء الثلاثين'));
+  return el('div', { class: 'card' }, el('h2', null, `خريطة المصحف · ${CHILDREN[c].name}`),
+    el('div', { class: 'legend', style: 'margin-bottom:8px' }, lg('#2e9e5b', 'بعيد أخضر'), lg('#e0a800', 'أصفر'), lg('#d14b3f', 'أحمر'), lg('#cfe9d7', 'بعيد بلا لون'), lg('#cfe0f5', 'قريب'), lg('#f3e3b8', 'جديد'), lg('#ececec', 'لم يُحفظ')),
+    el('p', { class: 'small muted' }, 'الإطار الأحمر: تجاوزت 12 يوماً بلا تسميع. الإطار الأزرق: صفحات اليوم. اضغطي أي صفحة لتاريخها.'), grid);
+}
+function lg(color, t) { return el('span', null, el('i', { style: 'background:' + color }), t); }
+
+function pageModal(c, p) {
+  const evs = Store.events.filter(e => e.child === c && e.page === p).slice().reverse();
+  const d = deriveChild(c); const pg = d.pages[p];
+  const body = el('div', null, el('p', null, `الطبقة: ${({ far: 'البعيد', near: 'القريب', new: 'الجديد', none: 'لم تُحفظ' })[pg.layer]} · اللون: `, pg.color ? resultPill(pg.color === 'green' ? 'clean' : pg.color) : '—', ` · آخر تسميع: ${pg.lastReview ? fmtDay(pg.lastReview) : '—'}`));
+  if (App.can('canColor')) {
+    const layerSel = el('select', null, [['none', 'لم تُحفظ'], ['near', 'القريب'], ['far', 'البعيد']].map(([v, n]) => el('option', { value: v }, n))); layerSel.value = pg.layer === 'new' ? 'near' : pg.layer;
+    const colSel = el('select', null, [['', 'بلا لون'], ['green', 'أخضر'], ['yellow', 'أصفر'], ['red', 'أحمر']].map(([v, n]) => el('option', { value: v }, n))); colSel.value = pg.color || '';
+    body.append(el('details', null, el('summary', null, 'تعديل الطبقة أو اللون (الجرد الأولي)'), el('div', { class: 'row' }, layerSel, colSel, el('button', { onclick: () => { Store.add({ type: 'layer', child: c, page: p, layer: layerSel.value, color: colSel.value || null }); UI.toast('حُفظ'); bg.remove(); UI.rerender(); } }, 'حفظ'))));
+  }
+  const tbl = el('table', null, el('tbody', null, evs.slice(0, 40).map(e => el('tr', null, el('td', { style: 'white-space:nowrap' }, fmtDay(e.day)), el('td', null, eventText(e)), el('td', { class: 'muted small' }, ROLES[e.by] ? ROLES[e.by].name : e.by)))));
+  body.append(evs.length ? tbl : el('p', { class: 'muted' }, 'لا أحداث لهذه الصفحة.'));
+  const bg = UI.modal(pageLabel(p), body);
+}
+
+function eventText(e) {
+  const stepN = { gate: 'بوابة', first: 'تسميع أول', second: 'تسميع ثانٍ', third: 'تسميع ثالث', near: 'قريب', far: 'بعيد', exam: 'فحص', week: 'سرد الأسبوع', awael: 'أوائل الآيات', yellow: 'صفراء', cards: 'بطاقات', fluency: 'طلاقة' };
+  switch (e.type) {
+    case 'outcome': return ['', stepN[e.step] || e.step, e.lines ? ` (الأسطر ${e.lines[0]}–${e.lines[1]})` : '', ': ', resultPill(e.result), e.prompts ? ` · تلقين ${e.prompts}` : '', e.tajweed === 'issue' ? ' · تجويد ⚠' : '', e.meaning === 'ok' ? ' · المعنى ✓' : e.meaning === 'support' ? ' · المعنى يحتاج دعماً' : ''];
+    case 'error': { const t = ERROR_TYPES.find(x => x.id === e.etype); return `خطأ ${t ? t.name : e.etype}${e.surah ? ' · ' + SURAH_NAMES[e.surah - 1] + (e.ayah ? ' ' + e.ayah : '') : ''}${e.target ? ' ← ' + SURAH_NAMES[e.target.surah - 1] + ' ' + (e.target.ayah || '') : ''}${e.note ? ' · ' + e.note : ''}`; }
+    case 'color': return ['لون: ', resultPill(e.color === 'green' ? 'clean' : e.color)];
+    case 'new_page': return `حفظ جديد${e.linesFrom && e.linesTo < 15 ? ` (الأسطر ${e.linesFrom}–${e.linesTo})` : ''}${e.minutes ? ` · ${e.minutes} د` : ''}`;
+    case 'layer': return `جرد: ${({ far: 'بعيد', near: 'قريب', none: 'غير محفوظ' })[e.layer]}${e.color ? ' ' + e.color : ''}`;
+    case 'yellow_pass': return `آية سالمة ${SURAH_NAMES[e.surah - 1]} ${e.ayah}`;
+    case 'session_done': return `جلسة: ${SESSION_KINDS[e.kind] ? SESSION_KINDS[e.kind].name : e.kind} · ${{ complete: 'اكتملت', partial: 'بقي جزء', stopped: 'توقفت' }[e.status] || 'اكتملت'}${e.proxyFor ? ' · نيابةً عن ' + ROLES[e.proxyFor].name : ''}${e.reason ? ' (' + e.reason + ')' : ''}${e.note ? ' · ' + e.note : ''}`;
+    case 'decision': return `قرار: ${decisionName(e.kind)} ${e.text || ''}`;
+    case 'card': return 'بطاقة';
+    case 'note': return `ملاحظة: ${e.text}`;
+    case 'handoff': return `بطاقة تسليم إلى آية (${e.items.length} بند)`;
+    case 'juz_exam': return `اختبار إجازة ${juzLabel(e.juz)}: ${resultName(e.result)}${e.prompts ? ' · تلقين ' + e.prompts : ''}${e.note ? ' — ' + e.note : ''}`;
+    case 'tilawa': return `${e.kind === 'listen' ? 'سماع' : 'قراءة نظراً'} ص${Math.min(...e.pages)}–${Math.max(...e.pages)}${e.times ? ' ×' + e.times : ''}`;
+    case 'session_start': return `فتح جلسة ${SESSION_KINDS[e.kind] ? SESSION_KINDS[e.kind].name : e.kind}${e.proxyFor ? ' نيابةً عن ' + ROLES[e.proxyFor].name + ' (' + e.reason + ')' : ''}`;
+    case 'session_cancel': return `إلغاء جلسة ${SESSION_KINDS[e.kind] ? SESSION_KINDS[e.kind].name : e.kind}: ${e.reason}`;
+    case 'fluency_page': return `صفحة الطلاقة → ص${e.page}${e.why ? ' (' + e.why + ')' : ''}`;
+    case 'undo': { const t = Store.raw.find(x => x.id === e.target); return `↶ تراجع عن: ${t ? eventText(t) : e.target}${e.reason ? ' — ' + e.reason : ''}`; }
+    case 'handoff_update': return `تحديث بطاقة تسليم (${e.items.length} بند)`;
+    case 'handoff_status': return `بطاقة تسليم: ${{ seen: 'اطلعت', handled: 'عولجت', reopened: 'أُعيد فتحها' }[e.status]}`;
+    case 'fluency_time': return `طلاقة ص${e.page}: ${e.seconds} ث`;
+    case 'juz_passed': return `إجازة ${juzLabel(e.juz)}${e.exam ? ' (باختبار مسجل)' : ' (بلا اختبار مسجل)'}`;
+    case 'surah_passed': return `اعتماد سورة ${SURAH_NAMES[e.surah - 1]}`;
+    case 'parent_exam': return `فحص ولي الأمر: ${e.pages.join('، ')} · أخضر ${e.green}/${e.pages.length}`;
+    default: return e.type;
+  }
+}
+
+function YellowView(c) {
+  const y = yellowList(c);
+  const row = it => el('div', { class: 'ayahrow' }, el('span', null, `${SURAH_NAMES[it.surah - 1]} ${it.ayah} · ص${it.page}`, el('span', { class: 'muted small' }, ` · ${it.count} خطأ · ${Object.entries(it.types).map(([k, v]) => (ERROR_TYPES.find(t => t.id === k) || {}).short + ' ' + v).join('، ')}`)), el('span', { class: 'pill ' + (it.passes.length >= 3 ? 'g' : 'y') }, `سالمة ${it.passes.length}/3`));
+  return el('div', null, el('div', { class: 'card' }, el('h2', null, `القائمة الصفراء · ${y.active.length}`), y.active.length ? y.active.map(row) : el('p', { class: 'muted' }, 'لا آيات.')), el('div', { class: 'card' }, el('details', null, el('summary', null, `مشطوبة · ${y.cleared.length}`), y.cleared.map(row))));
+}
+function MutView(c) {
+  const list = mutashabihat(c).slice().reverse();
+  return el('div', { class: 'card' }, el('h2', null, 'المتشابهات'), list.length ? list.map(e => el('div', { class: 'ayahrow' }, el('span', null, `${SURAH_NAMES[e.surah - 1]} ${e.ayah} (ص${e.page}) ← ${e.target ? SURAH_NAMES[e.target.surah - 1] + ' ' + (e.target.ayah || '') : 'موضع غير مسجل'}`), el('span', { class: 'muted small' }, fmtDay(e.day)))) : el('p', { class: 'muted' }, 'لا متشابهات مسجلة.'));
+}
+function CardsView(c) {
+  const cards = Object.values(cardsFor(c)).sort((a, b) => (a.page || 0) - (b.page || 0));
+  const d = deriveChild(c);
+  return el('div', { class: 'card' }, el('h2', null, 'البطاقات'), App.can('canDecide') && d.nextNew ? el('button', { onclick: () => cardModal(c, d.nextNew) }, `بطاقة الغد: ${pageLabel(d.nextNew)}`) : null,
+    cards.length ? cards.map(cd => el('details', null, el('summary', null, cd.kind === 'surah' ? 'سورة ' + SURAH_NAMES[Number(cd.key.slice(1)) - 1] : pageLabel(cd.page)), el('div', { class: 'small', html: cardHtml(cd) }), App.can('canDecide') ? el('button', { class: 'ghost small', onclick: () => cardModal(c, cd.page) }, 'تعديل') : null)) : el('p', { class: 'muted' }, 'لا بطاقات بعد.'));
+}
+function HistoryView(c) {
+  const days = {}; for (const e of Store.events.filter(e => e.child === c)) (days[e.day] = days[e.day] || []).push(e);
+  const keys = Object.keys(days).sort().reverse().slice(0, 30);
+  return el('div', { class: 'card' }, el('h2', null, 'آخر 30 يوماً'), keys.length ? keys.map(k => { const evs = days[k]; const news = evs.filter(e => e.type === 'new_page').map(e => e.page); const outs = evs.filter(e => e.type === 'outcome'); const errs = evs.filter(e => e.type === 'error').length; return el('div', { class: 'ayahrow' }, el('span', null, fmtDay(k)), el('span', { class: 'small muted' }, `جديد: ${news.join('،') || '—'} · تسميعات: ${outs.length} · أخطاء: ${errs} · أخضر: ${outs.filter(o => o.result === 'clean').length}`)); }) : el('p', { class: 'muted' }, 'لا سجل بعد.'));
+}
+
+/* ===== السجلات والبحث ===== */
+Views.logs = function () {
+  const f = App.sub.logf || (App.sub.logf = { child: '', type: '', q: '', day: '' });
+  const wrap = el('div');
+  const childSel = el('select', { onchange: e => { f.child = e.target.value; UI.rerender(); } }, el('option', { value: '' }, 'كل الأطفال'), CHILD_ORDER.map(k => el('option', { value: k }, CHILDREN[k].name))); childSel.value = f.child;
+  const typeSel = el('select', { onchange: e => { f.type = e.target.value; UI.rerender(); } }, [['', 'كل الأنواع'], ['error', 'أخطاء'], ['outcome', 'تسميعات'], ['color', 'ألوان'], ['new_page', 'حفظ جديد'], ['decision', 'قرارات'], ['session_done', 'جلسات'], ['note', 'ملاحظات'], ['card', 'بطاقات'], ['handoff', 'تسليم'], ['undo', 'تراجع']].map(([v, n]) => el('option', { value: v }, n))); typeSel.value = f.type;
+  const q = el('input', { placeholder: 'بحث: رقم صفحة، اسم سورة، كلمة من ملاحظة', value: f.q, oninput: e => { f.q = e.target.value; render(); } });
+  const dayIn = el('input', { type: 'date', value: f.day, onchange: e => { f.day = e.target.value; render(); } });
+  wrap.append(el('div', { class: 'card' }, el('div', { class: 'row' }, childSel, typeSel, dayIn), q));
+  const list = el('div', { class: 'card' }); wrap.append(list);
+  function render() {
+    list.innerHTML = '';
+    let evs = Store.raw.slice().reverse(); const undone = new Set(Store.raw.filter(e => e.type === 'undo').map(e => e.target));
+    evs = evs.map(e => undone.has(e.id) ? Object.assign({}, e, { _undone: true }) : e);
+    if (f.child) evs = evs.filter(e => e.child === f.child);
+    if (f.type) evs = evs.filter(e => e.type === f.type);
+    if (f.day) evs = evs.filter(e => e.day === f.day);
+    if (f.q.trim()) { const ql = f.q.trim(); evs = evs.filter(e => { const s = JSON.stringify(e) + ' ' + (e.page ? pageLabel(e.page) : '') + ' ' + (e.surah ? SURAH_NAMES[e.surah - 1] : ''); return s.includes(ql); }); }
+    list.append(el('div', { class: 'muted small' }, `${evs.length} سجل`), el('table', null, el('tbody', null, evs.slice(0, 200).map(e => el('tr', { style: e._undone ? 'opacity:.5;text-decoration:line-through' : '' }, el('td', { style: 'white-space:nowrap' }, fmtDay(e.day), el('div', { class: 'muted small' }, chinaHHMM(e.ts))), el('td', null, e.child && CHILDREN[e.child] ? el('b', null, CHILDREN[e.child].name + ' · ') : null, e.page ? `ص${e.page} · ` : '', eventText(e)), el('td', { class: 'muted small' }, ROLES[e.by] ? ROLES[e.by].name : e.by))))));
+  }
+  render(); return wrap;
+};
+
+/* ===== الخميس ===== */
+Views.thursday = function () {
+  const wrap = el('div'); const ws = weekStartKey(App.now());
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'أدوات الخميس'), el('p', { class: 'muted small' }, 'الجلسات نفسها تُفتح من جدول اليوم. هنا الأدوات المساعدة وخلاصة الأسبوع.')));
+  for (const c of CHILD_ORDER) {
+    const d = deriveChild(c); const y = yellowList(c); const mut = mutashabihat(c, ws);
+    const weekPages = [...new Set(Store.events.filter(e => e.type === 'new_page' && e.child === c && e.day >= ws).map(e => e.page))];
+    wrap.append(el('div', { class: 'card' }, el('h3', null, CHILDREN[c].name),
+      el('div', { class: 'small' }, `صفحات الأسبوع: ${weekPages.join('، ') || '—'} · الصفراء النشطة: ${y.active.length} · متشابهات الأسبوع: ${mut.length} · البعيد: ${d.far.length}`),
+      mut.length ? el('details', null, el('summary', null, 'قائمة المتشابهات للمجلس'), MutashabihBox(c)) : null,
+      y.active.length ? el('details', null, el('summary', null, 'الصفراء للكتابة والتصفية'), y.active.map(it => el('div', { class: 'small' }, `• ${SURAH_NAMES[it.surah - 1]} ${it.ayah} (ص${it.page})${it.target ? ' ← ' + SURAH_NAMES[it.target.surah - 1] + ' ' + (it.target.ayah || '') : ''}`))) : null));
+  }
+  wrap.append(el('div', { class: 'card' }, el('h3', null, 'خلاصة الأسبوع'), el('pre', { style: 'direction:rtl;text-align:right' }, weeklySummaryText()), el('button', { onclick: () => { navigator.clipboard && navigator.clipboard.writeText(weeklySummaryText()); UI.toast('نُسخت'); } }, 'نسخ الخلاصة')));
+  return wrap;
+};
+
+function weeklySummaryText() {
+  const ws = weekStartKey(App.now()); const lines = [`خلاصة الأسبوع من ${fmtDay(ws)}`];
+  for (const c of CHILD_ORDER) {
+    const h = healthOf(c); const d = h.st; const evs = Store.events.filter(e => e.child === c && e.day >= ws);
+    const news = [...new Set(evs.filter(e => e.type === 'new_page').map(e => e.page))];
+    const outs = effectiveOutcomes(e => e.child === c && e.day >= ws); const errs = evs.filter(e => e.type === 'error');
+    const sess = new Set(evs.filter(e => e.type === 'session_done').map(e => e.key)).size;
+    const decisions = evs.filter(e => e.type === 'decision').map(e => decisionName(e.kind));
+    lines.push(`\n${CHILDREN[c].name} — ${lightText(h)}`);
+    lines.push(`• الجديد: ${news.length} ${c === 'karim' ? 'مقطع' : 'صفحة'} (${news.join('، ') || '—'})`);
+    lines.push(`• التسميعات: ${outs.length}، منها سالم ${outs.filter(o => o.result === 'clean').length} · الأخطاء المسجلة: ${errs.length}`);
+    lines.push(`• البوابة: ${h.gateN} تسميع، سقط ${h.gateFails} · آخر فحص خميس: ${h.examGreen == null ? 'لم يُفحص' : `${h.examClean}/${h.examN} أخضر`}`);
+    lines.push(`• البعيد ${d.far.length} صفحة، أطول صفحة بلا تسميع ${d.far.length ? d.maxGap + ' يوم' : '—'} · القريب ${d.near.length} · الصفراء النشطة ${yellowList(c).active.length}`);
+    lines.push(`• الجلسات المسجلة: ${sess}${decisions.length ? ' · قرارات: ' + decisions.join('، ') : ''}`);
+  }
+  return lines.join('\n');
+}
+
+/* ثلاث حالات مختلفة الإجراء: «لم يُقيَّم بعد» = لا بوابة ولا فحص؛ «لم يُقيَّم كاملاً» = تسميع ناقص لصفحة؛ «بانتظار اعتماد آية» = لون مقترح لم يُعتمد */
+function lightText(h) { return h.light === 'grey' ? 'لم يُقيَّم بعد: لا بوابة ولا فحص خميس' : h.light === 'green' ? 'سليم' : h.light === 'yellow' ? 'يحتاج انتباهاً' : 'يحتاج قراراً'; }
+
+/* ===== لوحة ولي الأمر، التقارير، الإعدادات ===== */
+Views.dash = function () {
+  const wrap = el('div');
+  wrap.append(el('div', { class: 'grid2' }, CHILD_ORDER.map(c => { const h = healthOf(c); const d = h.st; return el('div', { class: 'card', style: 'margin:0;cursor:pointer', onclick: () => { App.sub.child = c; App.sub.ctab = 'summary'; App.view = 'children'; UI.rerender(); } },
+    el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, CHILDREN[c].name), el('span', { class: 'light ' + h.light })),
+    el('div', { class: 'kpi', style: 'margin-top:8px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? 'أخضر في الفحص' : 'لم يُفحص')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, 'أقدم صفحة (يوم)'))),
+    el('div', { class: 'small muted', style: 'margin-top:8px' }, `البعيد ${d.far.length} · القريب ${d.near.length} · التالي: ${d.nextNew ? pageLabel(d.nextNew) : '—'}`)); })));
+  wrap.append(el('div', { style: 'height:14px' }), BriefCard(), GroupedAlerts());
+  const today = todayKey(); const todays = Store.events.filter(e => e.day === today && ['outcome', 'error', 'new_page', 'session_done', 'decision'].includes(e.type));
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'اليوم'), DayList(sessionsFor('parent', App.now()), true).querySelector('table') || el('p', { class: 'muted' }, 'لا جلسات اليوم'), el('div', { class: 'small muted', style: 'margin-top:8px' }, `${todays.filter(e => e.type === 'session_done').length} جلسة مسجلة · ${todays.filter(e => e.type === 'outcome').length} تسميع · ${todays.filter(e => e.type === 'error').length} خطأ`)));
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'فحصك الشهري'), el('p', { class: 'muted small' }, 'خمس صفحات بالقرعة من البعيد لكل طفل، تُسمَّع لك وتُسجَّل نتيجتها وتُقارن بألوان آية.'), el('div', { class: 'btns' }, CHILD_ORDER.map(c => el('button', { onclick: () => parentExam(c) }, CHILDREN[c].name)))));
+  return wrap;
+};
+/* تنبيهات ولي الأمر مجمَّعة بحسب الطفل والإجراء، تُفتح عند الطلب */
+function GroupedAlerts() {
+  const list = alertsList(); if (!list.length) return el('div');
+  const groups = {};
+  for (const a of list) { const k = a.child || 'all'; (groups[k] = groups[k] || []).push(a); }
+  const card = el('div', { class: 'card' }, el('h2', null, `تنبيهات (${list.length})`));
+  for (const k of [...CHILD_ORDER, 'all']) {
+    const g = groups[k]; if (!g) continue;
+    const reds = g.filter(a => a.level === 'red').length;
+    const body = el('div', { style: 'display:none' }, g.map(a => el('div', { class: 'alert' + (a.level === 'red' ? ' red' : '') }, a.text)));
+    const kinds = {}; for (const a of g) { const t = a.text.includes('بطاقة') ? 'بطاقات لم تُكتب' : a.text.includes('بقي جزء') || a.text.includes('توقفت') ? 'جلسات لم تكتمل' : a.text.includes('تعارض') ? 'تعارض تسجيل' : a.text.includes('فحص') ? 'الفحص' : a.text.includes('بوابة') ? 'البوابة' : a.text.includes('بلا تسميع') || a.text.includes('حد الـ12') ? 'تأخر مراجعة' : a.text.includes('قرار') ? 'قرارات' : 'أخرى'; kinds[t] = (kinds[t] || 0) + 1; }
+    card.append(el('div', { style: 'border-top:1px solid var(--line);padding:6px 0' }, el('div', { class: 'row between', style: 'cursor:pointer', onclick: () => { body.style.display = body.style.display === 'none' ? '' : 'none'; } }, el('span', null, el('b', null, k === 'all' ? 'عام' : CHILDREN[k].name), el('span', { class: 'muted small' }, ' · ' + Object.entries(kinds).map(([t, n]) => `${t} ${n}`).join(' · ')), reds ? el('span', { class: 'pill r', style: 'margin-right:6px' }, `${reds} أحمر`) : null), el('span', { class: 'muted small' }, '▾')), body));
+  }
+  return card;
+}
+
+function parentExam(c) {
+  const d = deriveChild(c); if (d.far.length < 1) { UI.toast('لا محفوظ بعيد'); return; }
+  const pool = d.far.slice(); const pick = []; for (let i = 0; i < 5 && pool.length; i++) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]); pick.sort((a, b) => a - b);
+  const res = {}; const body = el('div');
+  for (const p of pick) { const row = el('div', { class: 'ayahrow' }, el('span', null, pageLabel(p), ' ', d.pages[p].color ? resultPill(d.pages[p].color === 'green' ? 'clean' : d.pages[p].color) : el('span', { class: 'pill n' }, 'بلا لون')), el('span', { class: 'row' }, ['clean', 'yellow', 'red'].map(r => el('button', { class: ({ clean: 'btn-g', yellow: 'btn-y', red: 'btn-r' })[r], style: 'padding:4px 10px', onclick: e => { res[p] = r; [...e.currentTarget.parentNode.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } }, ({ clean: '✓', yellow: 'أصفر', red: 'أحمر' })[r])))); body.append(row); }
+  const bg = UI.modal(`فحص ${CHILDREN[c].name}`, body, [el('button', { class: 'primary', onclick: () => { const done = Object.keys(res).length; if (done < pick.length) { UI.toast('سجّل كل الصفحات'); return; } for (const p of pick) Store.add({ type: 'outcome', child: c, page: Number(p), step: 'exam', result: res[p], parent: true }); Store.add({ type: 'parent_exam', child: c, pages: pick, green: pick.filter(p => res[p] === 'clean').length }); bg.remove(); UI.toast('سُجّل الفحص'); UI.rerender(); } }, 'حفظ')]);
+}
+
+Views.reports = function () {
+  const f = App.sub.rep || (App.sub.rep = { child: 'dalal', from: dayKey(new Date(App.now().getTime() - 13 * 86400000)), to: todayKey() });
+  const wrap = el('div');
+  const childSel = el('select', { onchange: e => { f.child = e.target.value; UI.rerender(); } }, CHILD_ORDER.map(k => el('option', { value: k }, CHILDREN[k].name))); childSel.value = f.child;
+  const from = el('input', { type: 'date', value: f.from, onchange: e => { f.from = e.target.value; UI.rerender(); } });
+  const to = el('input', { type: 'date', value: f.to, onchange: e => { f.to = e.target.value; UI.rerender(); } });
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'تقرير حسب الطلب'), el('div', { class: 'row' }, childSel, from, to)));
+  const evs = Store.events.filter(e => e.child === f.child && e.day >= f.from && e.day <= f.to);
+  const days = [...new Set(evs.map(e => e.day))].sort();
+  const news = evs.filter(e => e.type === 'new_page'); const outs = effectiveOutcomes(e => e.child === f.child && e.day >= f.from && e.day <= f.to); const errs = evs.filter(e => e.type === 'error');
+  const gates = outs.filter(o => o.step === 'gate'); const fars = outs.filter(o => o.step === 'far'); const exams = outs.filter(o => o.step === 'exam');
+  const byType = {}; for (const e of errs) byType[e.etype] = (byType[e.etype] || 0) + 1;
+  const memMins = news.filter(n => n.minutes).map(n => n.minutes);
+  wrap.append(el('div', { class: 'card' }, el('h3', null, `${CHILDREN[f.child].name} · ${days.length} يوم عمل`),
+    el('table', null, el('tbody', null,
+      tr('الجديد', `${news.length} ${f.child === 'karim' ? 'مقطع' : 'صفحة'}${memMins.length ? ` · متوسط زمن الحفظ ${Math.round(memMins.reduce((a, b) => a + b, 0) / memMins.length)} د` : ''}`),
+      tr('البوابة', `${gates.length} تسميع · سالم ${gates.filter(g => g.result === 'clean').length} · سقوط ${gates.filter(g => g.result !== 'clean').length}`),
+      tr('البعيد', `${fars.length} صفحة سُمّعت · سالم ${pct(fars)}`),
+      tr('فحص الخميس', exams.length ? `${exams.length} صفحة · أخضر ${pct(exams)}` : '—'),
+      tr('كل التسميعات', `${outs.length} · سالم ${pct(outs)}`),
+      tr('الأخطاء', `${errs.length}${errs.length ? ' · ' + Object.entries(byType).map(([k, v]) => (ERROR_TYPES.find(t => t.id === k) || {}).name + ' ' + v).join('، ') : ''}`),
+      tr('الجلسات المسجلة', `${new Set(evs.filter(e => e.type === 'session_done').map(e => e.key)).size}`),
+      tr('القرارات', evs.filter(e => e.type === 'decision').map(e => `${fmtDay(e.day)} ${decisionName(e.kind)}`).join('؛ ') || '—')))));
+  // اتساق تسجيل المساعدة مع فحص آية
+  const asstFar = fars.filter(o => o.by === 'asst'); const ayaExam = exams.filter(o => o.by === 'aya');
+  if (asstFar.length && ayaExam.length) wrap.append(el('div', { class: 'card' }, el('h3', null, 'اتساق التسجيل'), el('p', { class: 'small' }, `سالم عند المساعدة في البعيد: ${pct(asstFar)} · أخضر عند آية في الفحص: ${pct(ayaExam)}. فرق كبير مستمر يعني تساهلاً في التسجيل اليومي.`)));
+  // أزمنة الطلاقة لكريم
+  if (f.child === 'karim') { const fl = evs.filter(e => e.type === 'fluency_time'); if (fl.length) wrap.append(el('div', { class: 'card' }, el('h3', null, 'الطلاقة'), el('table', null, el('tbody', null, fl.slice(-15).map(e => tr(fmtDay(e.day), `ص${e.page}: ${e.seconds} ث`)))))); }
+  wrap.append(el('div', { class: 'card' }, el('h3', null, 'الأيام'), el('table', null, el('tbody', null, days.slice().reverse().map(k => { const de = evs.filter(e => e.day === k); return tr(fmtDay(k), `جديد ${de.filter(e => e.type === 'new_page').map(e => e.page).join('،') || '—'} · تسميعات ${de.filter(e => e.type === 'outcome').length} · أخطاء ${de.filter(e => e.type === 'error').length} · جلسات ${new Set(de.filter(e => e.type === 'session_done').map(e => e.key)).size}`); })))));
+  wrap.append(el('div', { class: 'card' }, el('h3', null, 'خلاصة الأسبوع (نص للنسخ)'), el('pre', { style: 'direction:rtl;text-align:right;white-space:pre-wrap' }, weeklySummaryText())));
+  return wrap;
+};
+function tr(a, b) { return el('tr', null, el('th', null, a), el('td', null, b)); }
+function pct(list) { if (!list.length) return '—'; return Math.round(100 * list.filter(o => o.result === 'clean').length / list.length) + '%'; }
+
+/* ===== الإعدادات ===== */
+Views.settings = function () {
+  const wrap = el('div'); const s = Store.settings;
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'الحساب'), el('p', null, `الدخول الحالي: ${App.role.title}`), el('button', { class: 'ghost', onclick: () => App.logout() }, 'خروج')));
+  if (App.role.id === 'aya' || App.role.id === 'parent') {
+    const inv = el('div', { class: 'card' }, el('h2', null, 'الجرد الأولي'), el('p', { class: 'small muted' }, 'يُنفَّذ مرة واحدة بعد تسميع المحفوظ الحالي. يضع الصفحات في البعيد؛ ثم تُعدَّل ألوان صفحات مفردة من خريطة المصحف.'),
+      el('div', { class: 'btns' },
+        el('button', { onclick: () => UI.confirm('وضع جزءي عمّ وتبارك (562–604) في البعيد لدلال وفرح باللون الأخضر؟', () => { for (const c of ['dalal', 'farah']) for (let p = 562; p <= 604; p++) Store.add({ type: 'layer', child: c, page: p, layer: 'far', color: 'green' }); UI.toast('تم'); UI.rerender(); }) }, 'دلال وفرح: عمّ وتبارك'),
+        el('button', { onclick: () => UI.prompt('كريم: من أي صفحة إلى 604 في البعيد؟ (نصف جزء عمّ ≈ من 595)', 'رقم الصفحة', v => { const n = Number(v); if (!(n >= 562 && n <= 604)) return; for (let p = n; p <= 604; p++) Store.add({ type: 'layer', child: 'karim', page: p, layer: 'far', color: 'green' }); UI.toast('تم'); UI.rerender(); }, '595') }, 'كريم: نصف عمّ')));
+    wrap.append(inv);
+  }
+  if (App.role.id === 'aya' || App.role.id === 'parent') {
+    const pins = el('div', { class: 'card' }, el('h2', null, 'رموز الدخول المحلي'));
+    for (const r of Object.values(ROLES)) { const i = el('input', { value: s.pins[r.id], inputmode: 'numeric', style: 'width:120px' }); pins.append(el('div', { class: 'row', style: 'margin:6px 0' }, el('span', { style: 'min-width:110px' }, r.name), i, el('button', { onclick: () => { s.pins[r.id] = i.value; Store.saveSettings(); UI.toast('حُفظ'); } }, 'حفظ'))); }
+    wrap.append(pins);
+  }
+  // الخادم
+  const url = el('input', { value: s.sbUrl || '', placeholder: 'https://xxxx.supabase.co', dir: 'ltr' }); const key = el('input', { value: s.sbKey || '', placeholder: 'anon public key', dir: 'ltr' });
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'الخادم (الحسابات الثلاثة عبر الإنترنت)'), el('p', { class: 'small muted' }, 'اختياري. بدونه يعمل البرنامج محلياً على هذا الجهاز مع تبادل بالملفات. مع الخادم تتزامن الأجهزة فوراً وتعمل بلا إنترنت ثم ترفع.'),
+    label('رابط المشروع'), url, label('المفتاح العام'), key, el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: () => { s.sbUrl = url.value.trim(); s.sbKey = key.value.trim(); Store.saveSettings(); UI.toast('حُفظ؛ أعيدي الدخول بالبريد'); } }, 'حفظ'), el('button', { class: 'ghost', onclick: () => UI.modal('إعداد الخادم', el('div', null, el('p', { class: 'small' }, 'أنشئ مشروعاً في supabase.com، ثم نفّذ هذا في SQL Editor، ثم أنشئ المستخدمين الثلاثة وضع لكل منهم الدور في User Metadata.'), el('pre', null, SETUP_SQL))) }, 'تعليمات الإعداد')),
+    Sync.cfg() ? el('p', { class: 'small muted' }, Sync.lastOk ? `آخر تزامن ${hhmm(new Date(Sync.lastOk))}` : 'لم يتزامن بعد', Sync.lastError ? ` · ${Sync.lastError}` : '', ' ', el('button', { class: 'ghost small', onclick: () => Sync.run() }, 'تزامن الآن')) : null));
+  // التنبيهات والتقويم
+  const rej = Store.settings.syncRejected || [];
+  const rp = App.sub.rejPage || 0; const RP = 20; const rejPages = Math.ceil(rej.length / RP);
+  if (rej.length) wrap.append(el('div', { class: 'card' }, el('h2', null, `المرفوضات من المزامنة (${rej.length})`), el('p', { class: 'small muted' }, 'سجلات وصلت من الخادم ورُفضت محلياً. تبقى هنا كلها حتى تُعالَج: إعادة محاولة (إن أصلحت الشرط) أو تجاهل موثَّق.'),
+    rejPages > 1 ? el('div', { class: 'row between' }, el('button', { class: 'ghost small', disabled: rp <= 0, onclick: () => { App.sub.rejPage = rp - 1; UI.rerender(); } }, 'السابق'), el('span', { class: 'small muted' }, `صفحة ${rp + 1} من ${rejPages}`), el('button', { class: 'ghost small', disabled: rp >= rejPages - 1, onclick: () => { App.sub.rejPage = rp + 1; UI.rerender(); } }, 'التالي')) : null,
+    rej.slice().reverse().slice(rp * RP, rp * RP + RP).map(r => el('div', { class: 'alert red' }, el('div', null, el('b', null, `${r.type} · ${ROLES[r.by] ? ROLES[r.by].name : r.by} · ${r.child && CHILDREN[r.child] ? CHILDREN[r.child].name : ''} · ${fmtDay(r.day)}`)), el('div', { class: 'small' }, r.reason), el('div', { class: 'btns' },
+      el('button', { class: 'ghost', onclick: () => { if (r.direction === 'push') { const e = Store.raw.find(x => x.id === r.id); if (e) { e.synced = false; delete e.pushRejected; Store.saveEvents(); } Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Sync.schedule(); UI.toast('سيُعاد رفعه'); UI.rerender(); return; } try { Store.importEvents([r.payload]); Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); UI.toast('أُدرج السجل'); } catch (e) { UI.toast('ما زال مرفوضاً: ' + e.message); } UI.rerender(); } }, 'إعادة المحاولة'),
+      el('button', { class: 'ghost', onclick: () => UI.confirm('تجاهل هذا السجل نهائياً على هذا الجهاز؟ (يبقى على الخادم)', () => { Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Store.add({ type: 'note', child: r.child || null, text: `تجاهل سجل مرفوض من المزامنة: ${r.id} (${r.reason})` }); UI.rerender(); }) }, 'تجاهل موثَّق'))))));
+  if (App.role.id !== 'parent') {
+    const chk = el('input', { type: 'checkbox' }); chk.checked = Alarms.on();
+    const chk2 = el('input', { type: 'checkbox' }); chk2.checked = Store.settings.endAlarm !== false;
+    wrap.append(el('div', { class: 'card' }, el('h2', null, 'التنبيهات'),
+      el('label', { class: 'row', style: 'margin:0' }, chk, ' نغمة واهتزاز عند بداية كل جلسة وعند الاستراحة (تنبيه واحد)'),
+      el('label', { class: 'row', style: 'margin:0' }, chk2, ' نغمة هادئة عند نهاية الجلسة (تُدمج مع بداية التالية إن تلاصقتا)'),
+      el('p', { class: 'small muted' }, 'أثناء جلسة مفتوحة تُكتم الأصوات تلقائياً وتظهر إشارة 🔇 في الرأس؛ وعند العودة بعد غياب لا تُطلق التنبيهات الفائتة.'),
+      el('div', { class: 'btns' }, el('button', { onclick: () => { Store.settings.sounds = chk.checked; Store.settings.endAlarm = chk2.checked; Store.saveSettings(); Alarms.unlock(); Alarms.beep('start'); UI.toast('حُفظ'); } }, 'حفظ وتجربة النغمة')),
+      el('p', { class: 'small muted' }, 'التنبيه الداخلي يعمل ما دام البرنامج مفتوحاً على الشاشة. للتنبيه ولو كان مغلقاً: استوردي جدولك مرة واحدة في تقويم هاتفك (يرنّ قبل كل جلسة بخمس دقائق بتوقيتك المحلي).'),
+      el('button', { class: 'ghost', onclick: () => downloadIcs(App.role.id) }, 'تنزيل جدولي كتقويم (.ics)')));
+  }
+  // تصدير واستيراد
+  const fileIn = el('input', { type: 'file', accept: '.json' });
+  fileIn.addEventListener('change', async () => { const f = fileIn.files[0]; if (!f) return; try { const j = JSON.parse(await f.text()); const list = j.events || j; const n = Store.importEvents(list); UI.toast(`أُضيف ${n} سجلاً من ${list.length}`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } });
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'تبادل البيانات بالملفات'), el('p', { class: 'small muted' }, 'صدّري ملف الأحداث وأرسليه؛ الاستيراد يضيف ما ليس موجوداً ولا يكرر.'), el('div', { class: 'btns' }, el('button', { onclick: () => { const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), by: App.role.id, events: Store.events }, null, 0)], { type: 'application/json' }); const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-${todayKey()}-${App.role.id}.json` }); document.body.append(a); a.click(); a.remove(); } }, `تصدير (${Store.events.length} سجل)`), fileIn)));
+  // محاكاة الوقت
+  if (App.role.id !== 'asst') {
+    const off = el('input', { type: 'datetime-local' });
+    if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
+  }
+  if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', () => { Store.reset(); Store.settings.active = null; Store.settings.sbCursor = null; Store.settings.syncRejected = []; Store.saveSettings(); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
+  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, 'لوحة المعلمة · الإصدار 0.9.4 · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً'));
+  return wrap;
+};
+
+
+/* ===== تصدير التقويم ===== */
+function downloadIcs(role) {
+  const byday = { 6: 'SA', 0: 'SU', 1: 'MO', 2: 'TU', 3: 'WE', 4: 'TH' };
+  const pad = n => String(n).padStart(2, '0');
+  // أول حدوث: أقرب يوم مطابق من الأسبوع الحالي
+  const base = App.now();
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//lawhat-muallima//AR', 'CALSCALE:GREGORIAN', 'BEGIN:VTIMEZONE', 'TZID:Asia/Shanghai', 'BEGIN:STANDARD', 'DTSTART:19700101T000000', 'TZOFFSETFROM:+0800', 'TZOFFSETTO:+0800', 'TZNAME:CST', 'END:STANDARD', 'END:VTIMEZONE'];
+  const items = PLAN.filter(s => s.teacher === role).map(s => ({ day: s.day, start: s.start, end: s.end, title: `${childName(s.child)} · ${SESSION_KINDS[s.kind].name}` }));
+  for (const d of WORKDAYS) items.push({ day: d, start: '11:40', end: '12:10', title: 'الاستراحة الرئيسية' });
+  let i = 0;
+  for (const it of items) {
+    const first = new Date(base); first.setDate(first.getDate() + ((it.day - first.getDay() + 7) % 7));
+    const ds = `${first.getFullYear()}${pad(first.getMonth() + 1)}${pad(first.getDate())}`;
+    const t = hm => hm.replace(':', '') + '00';
+    lines.push('BEGIN:VEVENT', `UID:lm-${role}-${i++}@lawhat`, `DTSTAMP:${ds}T000000Z`, `DTSTART;TZID=Asia/Shanghai:${ds}T${t(it.start)}`, `DTEND;TZID=Asia/Shanghai:${ds}T${t(it.end)}`, `RRULE:FREQ=WEEKLY;BYDAY=${byday[it.day]}`, `SUMMARY:${it.title}`, 'BEGIN:VALARM', 'TRIGGER:-PT5M', 'ACTION:DISPLAY', `DESCRIPTION:${it.title}`, 'END:VALARM', 'END:VEVENT');
+  }
+  lines.push('END:VCALENDAR');
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar' });
+  const a = el('a', { href: URL.createObjectURL(blob), download: `jadwal-${role}.ics` }); document.body.append(a); a.click(); a.remove();
+}
+
+/* ===== الموجز لولي الأمر: أُنجز / تحسّن / يحتاج متابعة / قرار الأسبوع ===== */
+function briefFor(c) {
+  const ws = weekStartKey(App.now()); const d = deriveChild(c);
+  const wk = e => e.child === c && e.day >= ws;
+  const newPages = [...new Set(Store.events.filter(e => e.type === 'new_page' && wk(e)).map(e => e.page))];
+  const farHeard = [...new Set(effectiveOutcomes(e => wk(e) && e.step === 'far' && e.result !== 'partial').map(e => e.page))];
+  const colors = Store.events.filter(e => e.type === 'color' && e.child === c);
+  const prevColor = {}; const improved = [];
+  for (const e of colors) { if (e.day >= ws && prevColor[e.page] && prevColor[e.page] !== 'green' && e.color === 'green') improved.push(e.page); prevColor[e.page] = e.color; }
+  const redNow = d.far.concat(d.near).filter(p => d.pages[p].color === 'red');
+  const openHand = handoffs(h => h.child === c && h.state !== 'handled');
+  const jumps = openHand.flatMap(h => h.items.filter(i => i.k === 'jump'));
+  const partials = Store.events.filter(e => e.type === 'session_done' && wk(e) && e.status && e.status !== 'complete');
+  const dec = Store.events.filter(e => e.type === 'decision' && e.child === c).pop();
+  return { newPages, farHeard, improved: [...new Set(improved)], redNow, openHand, jumps, partials, dec, d };
+}
+function BriefCard() {
+  const card = el('div', { class: 'card' }, el('h2', null, 'الموجز الأسبوعي'), el('p', { class: 'muted small' }, 'ما أُنجز، ما تحسّن، ما يحتاج متابعة، وقرار الأسبوع. التفاصيل في صفحة كل طفل.'));
+  for (const c of CHILD_ORDER) {
+    const b = briefFor(c);
+    card.append(el('div', { style: 'border-top:1px solid var(--line);padding:8px 0' },
+      el('div', { class: 'row between' }, el('b', null, CHILDREN[c].name), el('button', { class: 'ghost small', onclick: () => { App.sub.child = c; App.sub.ctab = 'summary'; App.view = 'children'; UI.rerender(); } }, 'التفاصيل')),
+      el('div', { class: 'small' }, el('b', null, 'أُنجز: '), `${b.newPages.length} ${c === 'karim' ? 'مقطع' : 'صفحة'} جديدة هذا الأسبوع${b.newPages.length ? ' (' + b.newPages.join('، ') + ')' : ''} · سُمّع من البعيد ${b.farHeard.length} صفحة`),
+      el('div', { class: 'small' }, el('b', null, 'تحسّن: '), b.improved.length ? `صفحات صارت خضراء: ${b.improved.join('، ')}` : 'لا تغيّر في الألوان هذا الأسبوع'),
+      el('div', { class: 'small' }, el('b', null, 'يحتاج متابعة: '), [b.redNow.length ? `${b.redNow.length} صفحة حمراء (${b.redNow.slice(0, 6).join('، ')}${b.redNow.length > 6 ? '…' : ''})` : null, b.jumps.length ? `${b.jumps.length} متشابه مفتوح` : null, b.openHand.length ? `${b.openHand.length} بطاقة تسليم لم تُعالَج` : null, b.partials.length ? `${b.partials.length} جلسة لم تكتمل` : null].filter(Boolean).join(' · ') || 'لا شيء معلّق'),
+      el('div', { class: 'small' }, el('b', null, 'قرار الأسبوع: '), b.dec ? `${decisionName(b.dec.kind)} (${fmtDay(b.dec.day)})${b.dec.text ? ' — ' + b.dec.text : ''}` : 'لا قرار مسجل')));
+  }
+  return card;
+}
+
+/* ===== وضع العرض: شاشة نظيفة تُشارك مع الأطفال في برنامج الاجتماع ===== */
+function openPresent(s) {
+  const kids = childrenOf(s); let child = kids[0]; let mode = 'page';
+  const bg = el('div', { class: 'present' });
+  const render = () => {
+    bg.innerHTML = '';
+    const d = deriveChild(child); const cards = cardsFor(child);
+    const page = contextPage(s, child);
+    const top = el('div', { class: 'ptop' },
+      el('div', { class: 'row' }, kids.length > 1 ? kids.map(k => el('button', { class: child === k ? 'primary' : 'ghost', onclick: () => { child = k; render(); } }, CHILDREN[k].name)) : el('span', { class: 'big' }, CHILDREN[child].name)),
+      el('div', { class: 'row' }, [['page', 'الصفحة'], ['far', 'حصة البعيد'], ['card', 'البطاقة'], ['mut', 'المتشابهات'], ['yellow', 'الصفراء']].map(([m, n]) => el('button', { class: mode === m ? 'primary' : 'ghost', onclick: () => { mode = m; render(); } }, n)), el('button', { class: 'danger', onclick: () => bg.remove() }, '✕ إغلاق')));
+    const body = el('div', { class: 'pbody' }); const add = (...x) => body.append(...x.flat().filter(v => v !== null && v !== false && v !== undefined));
+    if (mode === 'page') add(el('div', { class: 'phuge' }, page ? `صفحة ${page}` : '—'), el('div', { class: 'pbig' }, page ? surahsOfPage(page).map(n => SURAH_NAMES[n - 1]).join(' · ') : ''), child === 'karim' && d.nextLines && page === d.nextNew ? el('div', { class: 'pbig' }, `الأسطر ${d.nextLines[0]}–${d.nextLines[1]}`) : null, el('div', { class: 'muted' }, `${juzLabel(juzOfPage(page || 1))} · مصحف المدينة`));
+    if (mode === 'far') add(el('div', { class: 'pbig' }, 'صفحات المراجعة اليوم'), el('div', { class: 'pchips' }, d.todayFar.length ? d.todayFar.map(p => el('span', { class: 'pchip' }, p)) : el('span', { class: 'muted' }, 'لا صفحات')));
+    if (mode === 'card') { const key = child === 'karim' ? 's' + surahsOfPage(page || 1)[0] : 'p' + page; const c = cards[key]; add(el('div', { class: 'pbig' }, child === 'karim' ? 'سورة ' + SURAH_NAMES[surahsOfPage(page || 1)[0] - 1] : `بطاقة صفحة ${page}`), c ? el('div', { class: 'pcard', html: cardHtml(c) }) : el('div', { class: 'muted' }, 'لا بطاقة لهذه الصفحة بعد')); }
+    if (mode === 'mut') { const list = mutashabihat(child, weekStartKey(App.now())); add(el('div', { class: 'pbig' }, 'المتشابهات'), list.length ? list.map(e => el('div', { class: 'pline' }, `${SURAH_NAMES[e.surah - 1]} ${e.ayah} (ص${e.page})  ⟷  ${e.target ? SURAH_NAMES[e.target.surah - 1] + ' ' + (e.target.ayah || '') : '؟'}`)) : el('div', { class: 'muted' }, 'لا متشابهات هذا الأسبوع')); }
+    if (mode === 'yellow') { const y = yellowList(child).active; add(el('div', { class: 'pbig' }, 'آيات نعيدها'), y.length ? y.map(it => el('div', { class: 'pline' }, `${SURAH_NAMES[it.surah - 1]} ${it.ayah} · صفحة ${it.page}`)) : el('div', { class: 'muted' }, 'لا آيات')); }
+    bg.append(top, body);
+  };
+  render(); document.body.append(bg);
+}
+
+
+Store.load(); UI.init(); Sync.start();
+
+</script>
+</body>
+</html>

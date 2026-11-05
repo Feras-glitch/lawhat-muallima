@@ -1,0 +1,177 @@
+/* ===== لوحة ولي الأمر، التقارير، الإعدادات ===== */
+Views.dash = function () {
+  const wrap = el('div');
+  wrap.append(el('div', { class: 'grid2' }, CHILD_ORDER.map(c => { const h = healthOf(c); const d = h.st; return el('div', { class: 'card', style: 'margin:0;cursor:pointer', onclick: () => { App.sub.child = c; App.sub.ctab = 'summary'; App.view = 'children'; UI.rerender(); } },
+    el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, CHILDREN[c].name), el('span', { class: 'light ' + h.light })),
+    el('div', { class: 'kpi', style: 'margin-top:8px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? 'أخضر في الفحص' : 'لم يُفحص')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, 'أقدم صفحة (يوم)'))),
+    el('div', { class: 'small muted', style: 'margin-top:8px' }, `البعيد ${d.far.length} · القريب ${d.near.length} · التالي: ${d.nextNew ? pageLabel(d.nextNew) : '—'}`)); })));
+  wrap.append(el('div', { style: 'height:14px' }), BriefCard(), GroupedAlerts());
+  const today = todayKey(); const todays = Store.events.filter(e => e.day === today && ['outcome', 'error', 'new_page', 'session_done', 'decision'].includes(e.type));
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'اليوم'), DayList(sessionsFor('parent', App.now()), true).querySelector('table') || el('p', { class: 'muted' }, 'لا جلسات اليوم'), el('div', { class: 'small muted', style: 'margin-top:8px' }, `${todays.filter(e => e.type === 'session_done').length} جلسة مسجلة · ${todays.filter(e => e.type === 'outcome').length} تسميع · ${todays.filter(e => e.type === 'error').length} خطأ`)));
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'فحصك الشهري'), el('p', { class: 'muted small' }, 'خمس صفحات بالقرعة من البعيد لكل طفل، تُسمَّع لك وتُسجَّل نتيجتها وتُقارن بألوان آية.'), el('div', { class: 'btns' }, CHILD_ORDER.map(c => el('button', { onclick: () => parentExam(c) }, CHILDREN[c].name)))));
+  return wrap;
+};
+/* تنبيهات ولي الأمر مجمَّعة بحسب الطفل والإجراء، تُفتح عند الطلب */
+function GroupedAlerts() {
+  const list = alertsList(); if (!list.length) return el('div');
+  const groups = {};
+  for (const a of list) { const k = a.child || 'all'; (groups[k] = groups[k] || []).push(a); }
+  const card = el('div', { class: 'card' }, el('h2', null, `تنبيهات (${list.length})`));
+  for (const k of [...CHILD_ORDER, 'all']) {
+    const g = groups[k]; if (!g) continue;
+    const reds = g.filter(a => a.level === 'red').length;
+    const body = el('div', { style: 'display:none' }, g.map(a => el('div', { class: 'alert' + (a.level === 'red' ? ' red' : '') }, a.text)));
+    const kinds = {}; for (const a of g) { const t = a.text.includes('بطاقة') ? 'بطاقات لم تُكتب' : a.text.includes('بقي جزء') || a.text.includes('توقفت') ? 'جلسات لم تكتمل' : a.text.includes('تعارض') ? 'تعارض تسجيل' : a.text.includes('فحص') ? 'الفحص' : a.text.includes('بوابة') ? 'البوابة' : a.text.includes('بلا تسميع') || a.text.includes('حد الـ12') ? 'تأخر مراجعة' : a.text.includes('قرار') ? 'قرارات' : 'أخرى'; kinds[t] = (kinds[t] || 0) + 1; }
+    card.append(el('div', { style: 'border-top:1px solid var(--line);padding:6px 0' }, el('div', { class: 'row between', style: 'cursor:pointer', onclick: () => { body.style.display = body.style.display === 'none' ? '' : 'none'; } }, el('span', null, el('b', null, k === 'all' ? 'عام' : CHILDREN[k].name), el('span', { class: 'muted small' }, ' · ' + Object.entries(kinds).map(([t, n]) => `${t} ${n}`).join(' · ')), reds ? el('span', { class: 'pill r', style: 'margin-right:6px' }, `${reds} أحمر`) : null), el('span', { class: 'muted small' }, '▾')), body));
+  }
+  return card;
+}
+
+function parentExam(c) {
+  const d = deriveChild(c); if (d.far.length < 1) { UI.toast('لا محفوظ بعيد'); return; }
+  const pool = d.far.slice(); const pick = []; for (let i = 0; i < 5 && pool.length; i++) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]); pick.sort((a, b) => a - b);
+  const res = {}; const body = el('div');
+  for (const p of pick) { const row = el('div', { class: 'ayahrow' }, el('span', null, pageLabel(p), ' ', d.pages[p].color ? resultPill(d.pages[p].color === 'green' ? 'clean' : d.pages[p].color) : el('span', { class: 'pill n' }, 'بلا لون')), el('span', { class: 'row' }, ['clean', 'yellow', 'red'].map(r => el('button', { class: ({ clean: 'btn-g', yellow: 'btn-y', red: 'btn-r' })[r], style: 'padding:4px 10px', onclick: e => { res[p] = r; [...e.currentTarget.parentNode.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } }, ({ clean: '✓', yellow: 'أصفر', red: 'أحمر' })[r])))); body.append(row); }
+  const bg = UI.modal(`فحص ${CHILDREN[c].name}`, body, [el('button', { class: 'primary', onclick: () => { const done = Object.keys(res).length; if (done < pick.length) { UI.toast('سجّل كل الصفحات'); return; } for (const p of pick) Store.add({ type: 'outcome', child: c, page: Number(p), step: 'exam', result: res[p], parent: true }); Store.add({ type: 'parent_exam', child: c, pages: pick, green: pick.filter(p => res[p] === 'clean').length }); bg.remove(); UI.toast('سُجّل الفحص'); UI.rerender(); } }, 'حفظ')]);
+}
+
+Views.reports = function () {
+  const f = App.sub.rep || (App.sub.rep = { child: 'dalal', from: dayKey(new Date(App.now().getTime() - 13 * 86400000)), to: todayKey() });
+  const wrap = el('div');
+  const childSel = el('select', { onchange: e => { f.child = e.target.value; UI.rerender(); } }, CHILD_ORDER.map(k => el('option', { value: k }, CHILDREN[k].name))); childSel.value = f.child;
+  const from = el('input', { type: 'date', value: f.from, onchange: e => { f.from = e.target.value; UI.rerender(); } });
+  const to = el('input', { type: 'date', value: f.to, onchange: e => { f.to = e.target.value; UI.rerender(); } });
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'تقرير حسب الطلب'), el('div', { class: 'row' }, childSel, from, to)));
+  const evs = Store.events.filter(e => e.child === f.child && e.day >= f.from && e.day <= f.to);
+  const days = [...new Set(evs.map(e => e.day))].sort();
+  const news = evs.filter(e => e.type === 'new_page'); const outs = effectiveOutcomes(e => e.child === f.child && e.day >= f.from && e.day <= f.to); const errs = evs.filter(e => e.type === 'error');
+  const gates = outs.filter(o => o.step === 'gate'); const fars = outs.filter(o => o.step === 'far'); const exams = outs.filter(o => o.step === 'exam');
+  const byType = {}; for (const e of errs) byType[e.etype] = (byType[e.etype] || 0) + 1;
+  const memMins = news.filter(n => n.minutes).map(n => n.minutes);
+  wrap.append(el('div', { class: 'card' }, el('h3', null, `${CHILDREN[f.child].name} · ${days.length} يوم عمل`),
+    el('table', null, el('tbody', null,
+      tr('الجديد', `${news.length} ${f.child === 'karim' ? 'مقطع' : 'صفحة'}${memMins.length ? ` · متوسط زمن الحفظ ${Math.round(memMins.reduce((a, b) => a + b, 0) / memMins.length)} د` : ''}`),
+      tr('البوابة', `${gates.length} تسميع · سالم ${gates.filter(g => g.result === 'clean').length} · سقوط ${gates.filter(g => g.result !== 'clean').length}`),
+      tr('البعيد', `${fars.length} صفحة سُمّعت · سالم ${pct(fars)}`),
+      tr('فحص الخميس', exams.length ? `${exams.length} صفحة · أخضر ${pct(exams)}` : '—'),
+      tr('كل التسميعات', `${outs.length} · سالم ${pct(outs)}`),
+      tr('الأخطاء', `${errs.length}${errs.length ? ' · ' + Object.entries(byType).map(([k, v]) => (ERROR_TYPES.find(t => t.id === k) || {}).name + ' ' + v).join('، ') : ''}`),
+      tr('الجلسات المسجلة', `${new Set(evs.filter(e => e.type === 'session_done').map(e => e.key)).size}`),
+      tr('القرارات', evs.filter(e => e.type === 'decision').map(e => `${fmtDay(e.day)} ${decisionName(e.kind)}`).join('؛ ') || '—')))));
+  // اتساق تسجيل المساعدة مع فحص آية
+  const asstFar = fars.filter(o => o.by === 'asst'); const ayaExam = exams.filter(o => o.by === 'aya');
+  if (asstFar.length && ayaExam.length) wrap.append(el('div', { class: 'card' }, el('h3', null, 'اتساق التسجيل'), el('p', { class: 'small' }, `سالم عند المساعدة في البعيد: ${pct(asstFar)} · أخضر عند آية في الفحص: ${pct(ayaExam)}. فرق كبير مستمر يعني تساهلاً في التسجيل اليومي.`)));
+  // أزمنة الطلاقة لكريم
+  if (f.child === 'karim') { const fl = evs.filter(e => e.type === 'fluency_time'); if (fl.length) wrap.append(el('div', { class: 'card' }, el('h3', null, 'الطلاقة'), el('table', null, el('tbody', null, fl.slice(-15).map(e => tr(fmtDay(e.day), `ص${e.page}: ${e.seconds} ث`)))))); }
+  wrap.append(el('div', { class: 'card' }, el('h3', null, 'الأيام'), el('table', null, el('tbody', null, days.slice().reverse().map(k => { const de = evs.filter(e => e.day === k); return tr(fmtDay(k), `جديد ${de.filter(e => e.type === 'new_page').map(e => e.page).join('،') || '—'} · تسميعات ${de.filter(e => e.type === 'outcome').length} · أخطاء ${de.filter(e => e.type === 'error').length} · جلسات ${new Set(de.filter(e => e.type === 'session_done').map(e => e.key)).size}`); })))));
+  wrap.append(el('div', { class: 'card' }, el('h3', null, 'خلاصة الأسبوع (نص للنسخ)'), el('pre', { style: 'direction:rtl;text-align:right;white-space:pre-wrap' }, weeklySummaryText())));
+  return wrap;
+};
+function tr(a, b) { return el('tr', null, el('th', null, a), el('td', null, b)); }
+function pct(list) { if (!list.length) return '—'; return Math.round(100 * list.filter(o => o.result === 'clean').length / list.length) + '%'; }
+
+/* ===== الإعدادات ===== */
+Views.settings = function () {
+  const wrap = el('div'); const s = Store.settings;
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'الحساب'), el('p', null, `الدخول الحالي: ${App.role.title}`), el('button', { class: 'ghost', onclick: () => App.logout() }, 'خروج')));
+  if (App.role.id === 'aya' || App.role.id === 'parent') {
+    const inv = el('div', { class: 'card' }, el('h2', null, 'الجرد الأولي'), el('p', { class: 'small muted' }, 'يُنفَّذ مرة واحدة بعد تسميع المحفوظ الحالي. يضع الصفحات في البعيد؛ ثم تُعدَّل ألوان صفحات مفردة من خريطة المصحف.'),
+      el('div', { class: 'btns' },
+        el('button', { onclick: () => UI.confirm('وضع جزءي عمّ وتبارك (562–604) في البعيد لدلال وفرح باللون الأخضر؟', () => { for (const c of ['dalal', 'farah']) for (let p = 562; p <= 604; p++) Store.add({ type: 'layer', child: c, page: p, layer: 'far', color: 'green' }); UI.toast('تم'); UI.rerender(); }) }, 'دلال وفرح: عمّ وتبارك'),
+        el('button', { onclick: () => UI.prompt('كريم: من أي صفحة إلى 604 في البعيد؟ (نصف جزء عمّ ≈ من 595)', 'رقم الصفحة', v => { const n = Number(v); if (!(n >= 562 && n <= 604)) return; for (let p = n; p <= 604; p++) Store.add({ type: 'layer', child: 'karim', page: p, layer: 'far', color: 'green' }); UI.toast('تم'); UI.rerender(); }, '595') }, 'كريم: نصف عمّ')));
+    wrap.append(inv);
+  }
+  if (App.role.id === 'aya' || App.role.id === 'parent') {
+    const pins = el('div', { class: 'card' }, el('h2', null, 'رموز الدخول المحلي'));
+    for (const r of Object.values(ROLES)) { const i = el('input', { value: s.pins[r.id], inputmode: 'numeric', style: 'width:120px' }); pins.append(el('div', { class: 'row', style: 'margin:6px 0' }, el('span', { style: 'min-width:110px' }, r.name), i, el('button', { onclick: () => { s.pins[r.id] = i.value; Store.saveSettings(); UI.toast('حُفظ'); } }, 'حفظ'))); }
+    wrap.append(pins);
+  }
+  // الخادم
+  const url = el('input', { value: s.sbUrl || '', placeholder: 'https://xxxx.supabase.co', dir: 'ltr' }); const key = el('input', { value: s.sbKey || '', placeholder: 'anon public key', dir: 'ltr' });
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'الخادم (الحسابات الثلاثة عبر الإنترنت)'), el('p', { class: 'small muted' }, 'اختياري. بدونه يعمل البرنامج محلياً على هذا الجهاز مع تبادل بالملفات. مع الخادم تتزامن الأجهزة فوراً وتعمل بلا إنترنت ثم ترفع.'),
+    label('رابط المشروع'), url, label('المفتاح العام'), key, el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: () => { s.sbUrl = url.value.trim(); s.sbKey = key.value.trim(); Store.saveSettings(); UI.toast('حُفظ؛ أعيدي الدخول بالبريد'); } }, 'حفظ'), el('button', { class: 'ghost', onclick: () => UI.modal('إعداد الخادم', el('div', null, el('p', { class: 'small' }, 'أنشئ مشروعاً في supabase.com، ثم نفّذ هذا في SQL Editor، ثم أنشئ المستخدمين الثلاثة وضع لكل منهم الدور في User Metadata.'), el('pre', null, SETUP_SQL))) }, 'تعليمات الإعداد')),
+    Sync.cfg() ? el('p', { class: 'small muted' }, Sync.lastOk ? `آخر تزامن ${hhmm(new Date(Sync.lastOk))}` : 'لم يتزامن بعد', Sync.lastError ? ` · ${Sync.lastError}` : '', ' ', el('button', { class: 'ghost small', onclick: () => Sync.run() }, 'تزامن الآن')) : null));
+  // التنبيهات والتقويم
+  const rej = Store.settings.syncRejected || [];
+  const rp = App.sub.rejPage || 0; const RP = 20; const rejPages = Math.ceil(rej.length / RP);
+  if (rej.length) wrap.append(el('div', { class: 'card' }, el('h2', null, `المرفوضات من المزامنة (${rej.length})`), el('p', { class: 'small muted' }, 'سجلات وصلت من الخادم ورُفضت محلياً. تبقى هنا كلها حتى تُعالَج: إعادة محاولة (إن أصلحت الشرط) أو تجاهل موثَّق.'),
+    rejPages > 1 ? el('div', { class: 'row between' }, el('button', { class: 'ghost small', disabled: rp <= 0, onclick: () => { App.sub.rejPage = rp - 1; UI.rerender(); } }, 'السابق'), el('span', { class: 'small muted' }, `صفحة ${rp + 1} من ${rejPages}`), el('button', { class: 'ghost small', disabled: rp >= rejPages - 1, onclick: () => { App.sub.rejPage = rp + 1; UI.rerender(); } }, 'التالي')) : null,
+    rej.slice().reverse().slice(rp * RP, rp * RP + RP).map(r => el('div', { class: 'alert red' }, el('div', null, el('b', null, `${r.type} · ${ROLES[r.by] ? ROLES[r.by].name : r.by} · ${r.child && CHILDREN[r.child] ? CHILDREN[r.child].name : ''} · ${fmtDay(r.day)}`)), el('div', { class: 'small' }, r.reason), el('div', { class: 'btns' },
+      el('button', { class: 'ghost', onclick: () => { if (r.direction === 'push') { const e = Store.raw.find(x => x.id === r.id); if (e) { e.synced = false; delete e.pushRejected; Store.saveEvents(); } Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Sync.schedule(); UI.toast('سيُعاد رفعه'); UI.rerender(); return; } try { Store.importEvents([r.payload]); Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); UI.toast('أُدرج السجل'); } catch (e) { UI.toast('ما زال مرفوضاً: ' + e.message); } UI.rerender(); } }, 'إعادة المحاولة'),
+      el('button', { class: 'ghost', onclick: () => UI.confirm('تجاهل هذا السجل نهائياً على هذا الجهاز؟ (يبقى على الخادم)', () => { Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Store.add({ type: 'note', child: r.child || null, text: `تجاهل سجل مرفوض من المزامنة: ${r.id} (${r.reason})` }); UI.rerender(); }) }, 'تجاهل موثَّق'))))));
+  if (App.role.id !== 'parent') {
+    const chk = el('input', { type: 'checkbox' }); chk.checked = Alarms.on();
+    const chk2 = el('input', { type: 'checkbox' }); chk2.checked = Store.settings.endAlarm !== false;
+    wrap.append(el('div', { class: 'card' }, el('h2', null, 'التنبيهات'),
+      el('label', { class: 'row', style: 'margin:0' }, chk, ' نغمة واهتزاز عند بداية كل جلسة وعند الاستراحة (تنبيه واحد)'),
+      el('label', { class: 'row', style: 'margin:0' }, chk2, ' نغمة هادئة عند نهاية الجلسة (تُدمج مع بداية التالية إن تلاصقتا)'),
+      el('p', { class: 'small muted' }, 'أثناء جلسة مفتوحة تُكتم الأصوات تلقائياً وتظهر إشارة 🔇 في الرأس؛ وعند العودة بعد غياب لا تُطلق التنبيهات الفائتة.'),
+      el('div', { class: 'btns' }, el('button', { onclick: () => { Store.settings.sounds = chk.checked; Store.settings.endAlarm = chk2.checked; Store.saveSettings(); Alarms.unlock(); Alarms.beep('start'); UI.toast('حُفظ'); } }, 'حفظ وتجربة النغمة')),
+      el('p', { class: 'small muted' }, 'التنبيه الداخلي يعمل ما دام البرنامج مفتوحاً على الشاشة. للتنبيه ولو كان مغلقاً: استوردي جدولك مرة واحدة في تقويم هاتفك (يرنّ قبل كل جلسة بخمس دقائق بتوقيتك المحلي).'),
+      el('button', { class: 'ghost', onclick: () => downloadIcs(App.role.id) }, 'تنزيل جدولي كتقويم (.ics)')));
+  }
+  // تصدير واستيراد
+  const fileIn = el('input', { type: 'file', accept: '.json' });
+  fileIn.addEventListener('change', async () => { const f = fileIn.files[0]; if (!f) return; try { const j = JSON.parse(await f.text()); const list = j.events || j; const n = Store.importEvents(list); UI.toast(`أُضيف ${n} سجلاً من ${list.length}`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } });
+  wrap.append(el('div', { class: 'card' }, el('h2', null, 'تبادل البيانات بالملفات'), el('p', { class: 'small muted' }, 'صدّري ملف الأحداث وأرسليه؛ الاستيراد يضيف ما ليس موجوداً ولا يكرر.'), el('div', { class: 'btns' }, el('button', { onclick: () => { const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), by: App.role.id, events: Store.events }, null, 0)], { type: 'application/json' }); const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-${todayKey()}-${App.role.id}.json` }); document.body.append(a); a.click(); a.remove(); } }, `تصدير (${Store.events.length} سجل)`), fileIn)));
+  // محاكاة الوقت
+  if (App.role.id !== 'asst') {
+    const off = el('input', { type: 'datetime-local' });
+    if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
+  }
+  if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', () => { Store.reset(); Store.settings.active = null; Store.settings.sbCursor = null; Store.settings.syncRejected = []; Store.saveSettings(); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
+  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, 'لوحة المعلمة · الإصدار 0.9.4 · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً'));
+  return wrap;
+};
+
+
+/* ===== تصدير التقويم ===== */
+function downloadIcs(role) {
+  const byday = { 6: 'SA', 0: 'SU', 1: 'MO', 2: 'TU', 3: 'WE', 4: 'TH' };
+  const pad = n => String(n).padStart(2, '0');
+  // أول حدوث: أقرب يوم مطابق من الأسبوع الحالي
+  const base = App.now();
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//lawhat-muallima//AR', 'CALSCALE:GREGORIAN', 'BEGIN:VTIMEZONE', 'TZID:Asia/Shanghai', 'BEGIN:STANDARD', 'DTSTART:19700101T000000', 'TZOFFSETFROM:+0800', 'TZOFFSETTO:+0800', 'TZNAME:CST', 'END:STANDARD', 'END:VTIMEZONE'];
+  const items = PLAN.filter(s => s.teacher === role).map(s => ({ day: s.day, start: s.start, end: s.end, title: `${childName(s.child)} · ${SESSION_KINDS[s.kind].name}` }));
+  for (const d of WORKDAYS) items.push({ day: d, start: '11:40', end: '12:10', title: 'الاستراحة الرئيسية' });
+  let i = 0;
+  for (const it of items) {
+    const first = new Date(base); first.setDate(first.getDate() + ((it.day - first.getDay() + 7) % 7));
+    const ds = `${first.getFullYear()}${pad(first.getMonth() + 1)}${pad(first.getDate())}`;
+    const t = hm => hm.replace(':', '') + '00';
+    lines.push('BEGIN:VEVENT', `UID:lm-${role}-${i++}@lawhat`, `DTSTAMP:${ds}T000000Z`, `DTSTART;TZID=Asia/Shanghai:${ds}T${t(it.start)}`, `DTEND;TZID=Asia/Shanghai:${ds}T${t(it.end)}`, `RRULE:FREQ=WEEKLY;BYDAY=${byday[it.day]}`, `SUMMARY:${it.title}`, 'BEGIN:VALARM', 'TRIGGER:-PT5M', 'ACTION:DISPLAY', `DESCRIPTION:${it.title}`, 'END:VALARM', 'END:VEVENT');
+  }
+  lines.push('END:VCALENDAR');
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar' });
+  const a = el('a', { href: URL.createObjectURL(blob), download: `jadwal-${role}.ics` }); document.body.append(a); a.click(); a.remove();
+}
+
+/* ===== الموجز لولي الأمر: أُنجز / تحسّن / يحتاج متابعة / قرار الأسبوع ===== */
+function briefFor(c) {
+  const ws = weekStartKey(App.now()); const d = deriveChild(c);
+  const wk = e => e.child === c && e.day >= ws;
+  const newPages = [...new Set(Store.events.filter(e => e.type === 'new_page' && wk(e)).map(e => e.page))];
+  const farHeard = [...new Set(effectiveOutcomes(e => wk(e) && e.step === 'far' && e.result !== 'partial').map(e => e.page))];
+  const colors = Store.events.filter(e => e.type === 'color' && e.child === c);
+  const prevColor = {}; const improved = [];
+  for (const e of colors) { if (e.day >= ws && prevColor[e.page] && prevColor[e.page] !== 'green' && e.color === 'green') improved.push(e.page); prevColor[e.page] = e.color; }
+  const redNow = d.far.concat(d.near).filter(p => d.pages[p].color === 'red');
+  const openHand = handoffs(h => h.child === c && h.state !== 'handled');
+  const jumps = openHand.flatMap(h => h.items.filter(i => i.k === 'jump'));
+  const partials = Store.events.filter(e => e.type === 'session_done' && wk(e) && e.status && e.status !== 'complete');
+  const dec = Store.events.filter(e => e.type === 'decision' && e.child === c).pop();
+  return { newPages, farHeard, improved: [...new Set(improved)], redNow, openHand, jumps, partials, dec, d };
+}
+function BriefCard() {
+  const card = el('div', { class: 'card' }, el('h2', null, 'الموجز الأسبوعي'), el('p', { class: 'muted small' }, 'ما أُنجز، ما تحسّن، ما يحتاج متابعة، وقرار الأسبوع. التفاصيل في صفحة كل طفل.'));
+  for (const c of CHILD_ORDER) {
+    const b = briefFor(c);
+    card.append(el('div', { style: 'border-top:1px solid var(--line);padding:8px 0' },
+      el('div', { class: 'row between' }, el('b', null, CHILDREN[c].name), el('button', { class: 'ghost small', onclick: () => { App.sub.child = c; App.sub.ctab = 'summary'; App.view = 'children'; UI.rerender(); } }, 'التفاصيل')),
+      el('div', { class: 'small' }, el('b', null, 'أُنجز: '), `${b.newPages.length} ${c === 'karim' ? 'مقطع' : 'صفحة'} جديدة هذا الأسبوع${b.newPages.length ? ' (' + b.newPages.join('، ') + ')' : ''} · سُمّع من البعيد ${b.farHeard.length} صفحة`),
+      el('div', { class: 'small' }, el('b', null, 'تحسّن: '), b.improved.length ? `صفحات صارت خضراء: ${b.improved.join('، ')}` : 'لا تغيّر في الألوان هذا الأسبوع'),
+      el('div', { class: 'small' }, el('b', null, 'يحتاج متابعة: '), [b.redNow.length ? `${b.redNow.length} صفحة حمراء (${b.redNow.slice(0, 6).join('، ')}${b.redNow.length > 6 ? '…' : ''})` : null, b.jumps.length ? `${b.jumps.length} متشابه مفتوح` : null, b.openHand.length ? `${b.openHand.length} بطاقة تسليم لم تُعالَج` : null, b.partials.length ? `${b.partials.length} جلسة لم تكتمل` : null].filter(Boolean).join(' · ') || 'لا شيء معلّق'),
+      el('div', { class: 'small' }, el('b', null, 'قرار الأسبوع: '), b.dec ? `${decisionName(b.dec.kind)} (${fmtDay(b.dec.day)})${b.dec.text ? ' — ' + b.dec.text : ''}` : 'لا قرار مسجل')));
+  }
+  return card;
+}
