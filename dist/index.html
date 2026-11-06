@@ -116,7 +116,7 @@ header.top{flex-wrap:wrap}
 <body>
 <div id="app"></div>
 <script>
-const BUILD = {"version": "0.12", "commit": "9b0ffa1", "src": "49afcf534d", "built": "2026-11-06"};
+const BUILD = {"version": "0.12", "commit": "3559d53", "src": "2f27b496db", "built": "2026-11-06"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 const CHILDREN = {
   dalal: { id: 'dalal', name: 'دلال', age: 10, unit: 'page', unitLabel: 'صفحة' },
@@ -448,6 +448,9 @@ const Store = {
     clearTimeout(this.flushTimer); clearTimeout(this.retryTimer);
     this.gen++;
     this.raw = []; this.dirty = new Set(); this.refresh();
+    /* بلا سجلات محلية لا يصح مؤشر سحب ولا مرفوضات لأي خادم: يُسحب كل شيء من جديد وتُجرى مطابقة كاملة */
+    for (const st of Object.values(this.settings.servers || {})) Object.assign(st, { cursor: null, rejected: [], report: null, needReconcile: true });
+    try { this.saveSettings(); } catch (e) {}
     let lsOk = true; try { localStorage.removeItem(LS_EVENTS); } catch (e) { lsOk = false; }
     const cleared = this.idbOk ? this.clearDb() : Promise.resolve(true);
     return cleared.then(ok => { ok = ok && lsOk; if (ok && this.storageError) this.storageError = null; try { UI.renderStatus(); } catch (x) {} return ok; });
@@ -824,7 +827,7 @@ const PUSH_CHUNK = 500;
 const PAGE = 1000;
 
 const Sync = {
-  timer: null, busy: false, lastError: null, lastOk: null, incomplete: false, lastIds: null,
+  timer: null, busy: false, lastError: null, lastOk: null, incomplete: false, lastIds: null, RECHECK_MS: 60000,
   cfg() {
     const s = Store.settings;
     if (!s.sbUrl || !s.sbKey || s.localMode) return null;
@@ -917,8 +920,15 @@ const Sync = {
       if (full) await this.reconcile(c);
       await this.push(c);
       let n = await this.pull(c);
+      /* ما سُحب (أو عُلّم «على الخادم») قد يكون هدفاً لتراجع منتظر: يُرفع في الجولة نفسها. بلا منتظر = لا طلب */
+      await this.push(c);
       /* فحص رخيص كل جولة: خادم يحمل أقل مما ثبت رفعه إليه = استُعيد من نسخة أقدم أو فُقد منه شيء */
       if (!full && !this.incomplete && await this.countMismatch(c)) { await this.reconcile(c); await this.push(c); n += await this.pull(c); }
+      /* تقرير «لم تكتمل» يُعاد فحصه تلقائياً متى خلا الجهاز مما ينتظر، فيتحول إلى «اكتملت» دون تدخل */
+      if (!this.incomplete && st.report && !st.report.complete && Date.now() - (st.reconciledAt || 0) > this.RECHECK_MS) {
+        const k = this.counts(c.id);
+        if (!k.ownPending && !k.othersTotal && !st.rejected.length) { await this.reconcile(c); n += await this.pull(c); }
+      }
       if (this.lastIds && this.lastIds.sid === c.id) this.writeReport(c);
       this.guard(c);
       const rejN = st.rejected.length;
@@ -2515,7 +2525,7 @@ Views.settings = function () {
     const off = el('input', { type: 'datetime-local' });
     if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
   }
-  if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.settings.sbCursor = null; Store.settings.syncRejected = []; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
+  if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
   wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, `لوحة المعلمة · الإصدار ${BUILD.version} (${BUILD.commit}) · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً`));
   return wrap;
 };
