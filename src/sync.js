@@ -83,12 +83,14 @@ const Sync = {
   },
   /* عدد سجلات هذا الجهاز بحسب حالتها على خادم: سجلات الدور الحالي المنتظرة، وسجلات أدوار أخرى ليست عليه */
   counts(id) {
-    id = id || this.sid(); const me = this.role(); const r = { ownPending: 0, waitingTarget: 0, others: {}, othersTotal: 0, rejected: 0, conflicts: 0 };
+    id = id || this.sid(); const me = this.role(); const r = { ownPending: 0, waitingTarget: 0, others: {}, othersTotal: 0, rejected: 0, conflicts: 0, kept: 0 };
     if (!id) return r;
     let byId = null;
+    /* علامة التعارض مع تعارض مفتوح = ينتظر الحسم؛ وبلا مفتوح = اختلاف أُبقي عمداً (نسخة الجهاز) — كلاهما ليس «مطابقاً» */
+    const open = new Set(Store.openConflicts('server:' + id).map(x => x.id));
     for (const e of Store.raw) {
       if (hasIn(e.sv, id)) continue;
-      if (hasIn(e.cf, id)) { r.conflicts++; continue; }
+      if (hasIn(e.cf, id)) { if (open.has(e.id)) r.conflicts++; else r.kept++; continue; }
       if (hasIn(e.rj, id)) { r.rejected++; continue; }
       if (me && e.by === me) {
         r.ownPending++;
@@ -129,7 +131,8 @@ const Sync = {
       /* اختصار رخيص كل جولة (لا يكشف كل نقص؛ المطابقة الدورية أعلاه تكشف الباقي): خادم يحمل أقل مما ثبت رفعه إليه */
       if (!full && !this.incomplete && await this.countMismatch(c)) { await this.reconcile(c); await this.push(c); n += await this.pull(c); }
       /* تقرير «لم تكتمل» يُعاد فحصه تلقائياً متى خلا الجهاز مما ينتظر، فيتحول إلى «اكتملت» دون تدخل */
-      if (!this.incomplete && st.report && !st.report.complete && Date.now() - (st.reconciledAt || 0) > this.RECHECK_MS) {
+      const rp = st.report; const otherThanKept = rp && (rp.ownPending || rp.othersTotal || rp.rejected || rp.conflicts || rp.serverOnly || rp.incomplete);
+      if (!this.incomplete && rp && !rp.complete && otherThanKept && Date.now() - (st.reconciledAt || 0) > this.RECHECK_MS) {
         const k = this.counts(c.id);
         if (!k.ownPending && !k.othersTotal && !st.rejected.length && !Store.openConflicts('server:' + c.id).length) { await this.reconcile(c); n += await this.pull(c); }
       }
@@ -306,8 +309,9 @@ const Sync = {
     const local = new Set(Store.raw.map(e => e.id)); const rej = new Set(st.rejected.map(x => x.id));
     let serverOnly = 0; for (const id of this.lastIds.ids) if (!local.has(id) && !rej.has(id)) serverOnly++;
     const conflicts = Store.openConflicts('server:' + c.id).length;
-    const rep = { at: Date.now(), ownPending: k.ownPending, waitingTarget: k.waitingTarget, others: k.others, othersTotal: k.othersTotal, rejected: st.rejected.length, conflicts, serverOnly, incomplete: this.incomplete };
-    rep.complete = !rep.ownPending && !rep.othersTotal && !rep.rejected && !rep.conflicts && !rep.serverOnly && !rep.incomplete;
+    const rep = { at: Date.now(), ownPending: k.ownPending, waitingTarget: k.waitingTarget, others: k.others, othersTotal: k.othersTotal, rejected: st.rejected.length, conflicts, kept: k.kept, serverOnly, incomplete: this.incomplete };
+    /* اختلاف أُبقي عمداً ليس تطابقاً: يُذكر استثناءً صريحاً ولا تُعلن المطابقة كاملة (LM0131-R3-03) */
+    rep.complete = !rep.ownPending && !rep.othersTotal && !rep.rejected && !rep.conflicts && !rep.kept && !rep.serverOnly && !rep.incomplete;
     st.report = rep; this.lastIds = null;
   },
   started: false,

@@ -394,6 +394,27 @@ async def main():
         r = await full(rv)
         ok('C9 بعد إعادة الدور والدخول: يُرفع المنتظر، وتكتمل المطابقة بلا مرفوضات', 'RV_PEND' in pg.ids('srv_rv') and r['report']['complete'] is True and r['report']['rejected'] == 0 and r['err'] is None, {'report': r['report'], 'err': r['err']})
 
+        # ================= C10 (LM0131-R3-03) فرعا الحسم مع خادم حقيقي =================
+        pg.create_server('srv_kp')
+        k1, k2 = await device('kp1'), await device('kp2')
+        for d in (k1, k2):
+            await connect(d, 'srv_kp'); await login(d, 'aya')
+        await add(k1, {'id': 'K', 'type': 'note', 'child': 'dalal', 'text': 'نسخة الخادم'})
+        await sync(k1)
+        kv = await k1.evaluate("Store.clean(Store.raw.find(e => e.id === 'K'))")
+        await k2.evaluate(f"Store.importEvents([Object.assign({json.dumps(kv, ensure_ascii=False)}, {{ text: 'نسخة الجهاز' }})], {{ source: 'file' }})")
+        await sync(k2)
+        r = await k2.evaluate("(async () => { const ok = await Store.resolveConflict(Store.openConflicts('server:' + Sync.sid())[0], 'local', 'aya'); return ok; })()")
+        r = await full(k2)
+        srv = pg.psql('srv_kp', "select payload->>'text' from public.events where id = 'K';")[1].strip()
+        st = await k2.evaluate("({ text: Store.raw.find(e => e.id === 'K').text, status: UI.statusInner().map(n => typeof n === 'string' ? n : n.textContent).join('') })")
+        ok('C10 «إبقاء نسخة الجهاز»: لا «اكتملت»، والاختلاف المُبقى مذكور، والخادم لم يتغير',
+           r['report']['complete'] is False and r['report']['kept'] == 1 and r['report']['conflicts'] == 0 and srv == 'نسخة الخادم' and st['text'] == 'نسخة الجهاز' and 'يختلف عن الخادم' in st['status'], {'report': r['report'], 'srv': srv, **st})
+        await k2.evaluate("(async () => { await Store.resolveConflict(Store.keptDiffs()[0], 'other', 'aya'); })()")
+        r = await full(k2)
+        st = await k2.evaluate("({ text: Store.raw.find(e => e.id === 'K').text, kept: Store.keptDiffs().length })")
+        ok('C10 اعتماد نسخة الخادم بعدها: تطابق حقيقي و«اكتملت»', r['report']['complete'] is True and st == {'text': 'نسخة الخادم', 'kept': 0}, {'report': r['report'], **st})
+
         assert not errors, errors
         await b.close()
     shim.close(); pg.close()

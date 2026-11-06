@@ -252,6 +252,7 @@ function syncReportView(st) {
   for (const [by, n] of Object.entries(r.others || {})) items.push(`${n} من سجلات ${roleName(by)} ليست على الخادم — يرفعها جهاز ${roleName(by)} عند دخوله، أو «استعادة الخادم» من جهاز ولي الأمر`);
   if (r.rejected) items.push(`${r.rejected} سجلاً رفضها الخادم أو رفضها الجهاز — انظري المرفوضات`);
   if (r.conflicts) items.push(`${r.conflicts} تعارضاً: معرّف واحد بمحتوى مختلف بين الجهاز والخادم — انظري «التعارضات»`);
+  if (r.kept) items.push(`${r.kept} سجلاً أُبقيت فيه نسخة الجهاز عمداً فيختلف عن الخادم (استثناء مقصود، لا تطابق) — انظري «التعارضات»`);
   if (r.serverOnly) items.push(`${r.serverOnly} سجلاً على الخادم لم تصل هذا الجهاز بعد — تُسحب في الجولة التالية`);
   if (r.incomplete) items.push('السحب لم يكتمل (دفعة كبيرة) — يُستكمل تلقائياً');
   return el('div', { class: 'alert' }, el('div', null, el('b', null, `المطابقة لم تكتمل (${when}):`)), el('ul', { class: 'small', style: 'margin:4px 0' }, items.map(t => el('li', null, t))));
@@ -336,23 +337,27 @@ function ServerSwitchDialog(u, k) {
 /* التعارضات: النسختان محفوظتان؛ القرار صريح وموثَّق (آية أو ولي الأمر)، ولا تعديل صامت */
 function evSummary(e) { return `${e.type} · ${roleName(e.by)}${e.child && CHILDREN[e.child] ? ' · ' + CHILDREN[e.child].name : ''} · ${e.day || ''}${e.text ? ' · ' + String(e.text).slice(0, 40) : ''}${e.page ? ' · ص' + e.page : ''}${e.result ? ' · ' + e.result : ''}${e.kind ? ' · ' + e.kind : ''}`; }
 function ConflictsCard() {
-  const list = Store.openConflicts(); if (!list.length) return null;
+  const list = Store.openConflicts(); const kept = Store.keptDiffs();
+  if (!list.length && !kept.length) return null;
   const can = App.role && (App.role.id === 'aya' || App.role.id === 'parent');
-  const resolve = (x, choice) => UI.confirm(choice === 'other' ? 'اعتماد النسخة الأخرى بدل نسخة هذا الجهاز لهذا المعرّف؟ يُوثَّق القرار.' : 'إبقاء نسخة هذا الجهاز؟ تبقى الأخرى مختلفة ويُوثَّق القرار.', () => {
-    if (choice === 'other') {
-      const i = Store.raw.findIndex(e => e.id === x.id);
-      if (i >= 0) { const sid = x.source.startsWith('server:') ? x.source.slice(7) : null; const repl = Object.assign(Store.clean(x.other), { la: Date.now() }); if (sid) repl.sv = [sid]; Store.raw[i] = repl; Store.saveEvents([repl]); Store.refresh(); }
-    }
-    x.resolved = { at: Date.now(), by: App.role.id, choice };
-    Store.saveSettings();
+  const srcName = x => x.source === 'file' ? 'الملف' : 'الخادم';
+  /* الحسم لا يُعلن قبل ثبوت الاستبدال والقرار معاً؛ وإن فشل الحفظ يبقى التعارض كما كان */
+  const resolve = (x, choice) => UI.confirm(choice === 'other' ? `اعتماد نسخة ${srcName(x)} بدل نسخة هذا الجهاز لهذا المعرّف؟ يُوثَّق القرار.` : `إبقاء نسخة هذا الجهاز؟ ${x.source === 'file' ? 'لا يتغير شيء ويُوثَّق القرار.' : 'تبقى مختلفة عن الخادم، ويظهر ذلك استثناءً في تقرير المطابقة حتى تعتمدي نسخة الخادم.'}`, async () => {
+    UI.toast('جارٍ حفظ القرار…');
+    const ok = await Store.resolveConflict(x, choice, App.role.id);
+    if (!ok) { UI.toast('لم يُحسم التعارض: تعذّر الحفظ (' + (Store.storageError || 'الكتابة لم تثبت') + '). بقي كما كان؛ أعيدي المحاولة.'); UI.rerender(); return; }
     Store.add({ type: 'note', child: x.local.child || null, text: `حُسم تعارض المعرّف ${x.id} (${x.source}): ${choice === 'other' ? 'اعتُمدت النسخة الأخرى' : 'أُبقيت نسخة الجهاز'}` });
-    UI.rerender();
+    UI.savedToast('حُسم التعارض'); UI.rerender();
   });
-  return el('div', { class: 'card' }, el('h2', null, `التعارضات (${list.length})`),
-    el('p', { class: 'small muted' }, 'معرّف واحد بمحتويين مختلفين. لم يُغيَّر شيء تلقائياً، ولا تُعلن المطابقة مكتملة حتى يُحسم كل تعارض.'),
+  return el('div', { class: 'card' }, el('h2', null, `التعارضات (${list.length})${kept.length ? ` · اختلافات مُبقاة (${kept.length})` : ''}`),
+    list.length ? el('p', { class: 'small muted' }, 'معرّف واحد بمحتويين مختلفين. لم يُغيَّر شيء تلقائياً، ولا تُعلن المطابقة مكتملة حتى يُحسم كل تعارض.') : null,
     list.map(x => el('div', { class: 'alert red' }, el('div', { class: 'small' }, el('b', null, x.id), ` · المصدر: ${x.source === 'file' ? 'ملف' : 'الخادم'}`),
-      el('div', { class: 'small' }, 'هذا الجهاز: ', evSummary(x.local)), el('div', { class: 'small' }, (x.source === 'file' ? 'الملف' : 'الخادم') + ': ', evSummary(x.other)),
-      can ? el('div', { class: 'btns' }, el('button', { class: 'ghost', onclick: () => resolve(x, 'local') }, 'إبقاء نسخة الجهاز'), el('button', { class: 'ghost', onclick: () => resolve(x, 'other') }, x.source === 'file' ? 'اعتماد نسخة الملف' : 'اعتماد نسخة الخادم')) : el('div', { class: 'small muted' }, 'تحسمه آية أو ولي الأمر.'))));
+      el('div', { class: 'small' }, 'هذا الجهاز: ', evSummary(x.local)), el('div', { class: 'small' }, srcName(x) + ': ', evSummary(x.other)),
+      can ? el('div', { class: 'btns' }, el('button', { class: 'ghost', onclick: () => resolve(x, 'local') }, 'إبقاء نسخة الجهاز'), el('button', { class: 'ghost', onclick: () => resolve(x, 'other') }, x.source === 'file' ? 'اعتماد نسخة الملف' : 'اعتماد نسخة الخادم')) : el('div', { class: 'small muted' }, 'تحسمه آية أو ولي الأمر.'))),
+    kept.length ? el('p', { class: 'small muted' }, 'اختلافات أُبقيت فيها نسخة الجهاز عمداً: هذا الجهاز يختلف فيها عن الخادم، فلا تُعلن المطابقة كاملة ما بقيت. تُحسم باعتماد نسخة الخادم متى شئتِ.') : null,
+    kept.map(x => el('div', { class: 'alert' }, el('div', { class: 'small' }, el('b', null, x.id), ` · أُبقيت نسخة الجهاز ${fmtDay(dayKey(new Date(x.resolved.at)))}`),
+      el('div', { class: 'small' }, 'هذا الجهاز: ', evSummary(Store.raw.find(e => e.id === x.id) || x.local)), el('div', { class: 'small' }, 'الخادم: ', evSummary(x.other)),
+      can ? el('div', { class: 'btns' }, el('button', { class: 'ghost', onclick: () => resolve(x, 'other') }, 'اعتماد نسخة الخادم')) : null)));
 }
 
 function RejectedCard() {
@@ -366,7 +371,7 @@ function RejectedCard() {
       if (e) { e.rj = (e.rj || []).filter(x => x !== sid); Store.saveEvents([e]); }
       st.rejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Sync.schedule(); UI.toast('سيُعاد رفعه'); UI.rerender(); return;
     }
-    try { Store.importEvents([r.payload], { server: sid }); st.rejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); UI.toast('أُدرج السجل'); }
+    try { Store.importEvents([r.payload], { server: sid }); st.rejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); UI.savedToast('أُدرج السجل'); }
     catch (e) { UI.toast('ما زال مرفوضاً: ' + e.message); }
     UI.rerender();
   };

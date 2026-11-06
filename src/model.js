@@ -2,19 +2,35 @@
 const LS_EVENTS = 'lm_events_v1';
 const LS_SETTINGS = 'lm_settings_v1';
 const LS_SESSION = 'lm_session_v1';
+/* التعارضات (نسختا سجل بمعرّف واحد) بيانات أحداث: تُحفظ في IndexedDB مع السجلات في المعاملة نفسها، لا في الإعدادات.
+   هذا المفتاح نسخة طوارئ لها (أو مخزنها حين لا يتاح IndexedDB) */
+const LS_CONFLICTS = 'lm_conflicts_v1';
 
 const Store = {
   events: [],
   settings: {},
+  conflicts: [],
   /* ===== التخزين: IndexedDB (سعة كبيرة، كتابة سجل واحد لا الكل) مع ترحيل تلقائي من localStorage وبديل عند تعذّر IDB ===== */
   db: null, idbOk: false, pending: new Map(), flushTimer: null,
   async openDb() {
     if (!window.indexedDB) return null;
     return new Promise((res) => {
-      let req; try { req = indexedDB.open('lawhat_muallima', 1); } catch (e) { res(null); return; }
-      req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains('events')) db.createObjectStore('events', { keyPath: 'id' }); };
-      req.onsuccess = () => res(req.result); req.onerror = () => res(null); req.onblocked = () => res(null);
+      let req; try { req = indexedDB.open('lawhat_muallima', 2); } catch (e) { res(null); return; }
+      req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains('events')) db.createObjectStore('events', { keyPath: 'id' }); if (!db.objectStoreNames.contains('conflicts')) db.createObjectStore('conflicts', { keyPath: 'key' }); };
+      /* الترقية إلى الإصدار 2 تنتظر إغلاق أي تبويب بإصدار أقدم: لا يُفتح البرنامج فارغاً على التخزين البديل، بل يُطلب الإغلاق ويُكمل وحده بعده */
+      req.onblocked = () => this.blockNotice('البرنامج مفتوح بإصدار أقدم في تبويب أو نافذة أخرى على هذا الجهاز. أغلقيها ليكتمل التحديث؛ تُفتح هذه الصفحة تلقائياً بعدها، ولا يضيع شيء.');
+      req.onsuccess = () => {
+        const db = req.result;
+        /* تبويب آخر يحتاج ترقية القاعدة: يُحفظ المعلّق ويُغلق الاتصال هنا، ويُطلب إعادة التحميل */
+        db.onversionchange = () => { try { this.emergencySave(); } catch (e) {} db.close(); this.idbOk = false; this.blockNotice('حُدّث البرنامج في تبويب آخر. أعيدي تحميل هذه الصفحة للمتابعة (ما لم يُحفظ بعد محفوظ في نسخة طوارئ تُدمج عند الفتح).'); };
+        const n = document.getElementById('lm-block'); if (n) n.remove();
+        res(db);
+      };
+      req.onerror = () => res(null);
     });
+  },
+  blockNotice(msg) {
+    try { let n = document.getElementById('lm-block'); if (!n) { n = document.createElement('div'); n.id = 'lm-block'; n.setAttribute('style', 'position:fixed;inset:0;z-index:9999;background:#fff;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font-size:18px;line-height:1.8'); document.body.append(n); } n.textContent = msg; } catch (e) {}
   },
   async load() {
     try { this.settings = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'); } catch (e) { this.settings = {}; }
@@ -22,18 +38,32 @@ const Store = {
     if (!this.settings.deviceId) this.settings.deviceId = 'd' + Math.random().toString(36).slice(2, 10);
     this.saveSettings();
     let lsRaw = []; try { lsRaw = JSON.parse(localStorage.getItem(LS_EVENTS) || '[]'); } catch (e) { lsRaw = []; }
+    let lsCf = []; try { lsCf = JSON.parse(localStorage.getItem(LS_CONFLICTS) || '[]'); } catch (e) { lsCf = []; }
+    /* 0.12–0.13.1 كانت تحفظ التعارضات داخل الإعدادات: تُنقل منها */
+    const legacyCf = Array.isArray(this.settings.conflicts) ? this.settings.conflicts.map(x => Object.assign({ key: this.cfKey(x.id, x.source) }, x)) : [];
     this.db = await this.openDb();
     if (this.db) {
-      const fromDb = await new Promise((res) => { try { const tx = this.db.transaction('events', 'readonly'); const r = tx.objectStore('events').getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res(null); } catch (e) { res(null); } });
+      const fromDb = await new Promise((res) => { try { const tx = this.db.transaction(['events', 'conflicts'], 'readonly'); const r = tx.objectStore('events').getAll(), q = tx.objectStore('conflicts').getAll(); tx.oncomplete = () => res({ ev: r.result || [], cf: q.result || [] }); tx.onerror = tx.onabort = () => res(null); } catch (e) { res(null); } });
       if (fromDb) {
         this.idbOk = true;
-        const have = new Set(fromDb.map(e => e.id));
+        /* نسخ الطوارئ تُضيف ما ليس في القاعدة فقط؛ تعديلُ موجودٍ (استبدال سجل أو حسم تعارض) لم يثبت = لم يحدث،
+           ولأن الاستبدال والحسم يُكتبان في معاملة واحدة فلا يُستعاد أحدهما دون الآخر (LM0131-R3-02) */
+        const have = new Set(fromDb.ev.map(e => e.id));
         const migrate = lsRaw.filter(e => e && e.id && !have.has(e.id));
-        this.raw = fromDb.concat(migrate).sort((a, b) => a.ts - b.ts);
-        if (migrate.length) { const ok = await this.putMany(migrate); if (ok) { try { localStorage.removeItem(LS_EVENTS); } catch (e) {} } }
-        else if (lsRaw.length && !migrate.length) { try { localStorage.removeItem(LS_EVENTS); } catch (e) {} }
-      } else { this.raw = lsRaw; }
-    } else { this.raw = lsRaw; }
+        this.raw = fromDb.ev.concat(migrate).sort((a, b) => a.ts - b.ts);
+        const haveCf = new Set(fromDb.cf.map(x => x.key));
+        const cfAdd = lsCf.concat(legacyCf).filter(x => x && x.key && !haveCf.has(x.key) && (haveCf.add(x.key), true));
+        this.conflicts = fromDb.cf.concat(cfAdd).sort((a, b) => a.at - b.at);
+        if (migrate.length || cfAdd.length) {
+          const ok = await this.putMany(migrate, cfAdd);
+          if (ok) { try { localStorage.removeItem(LS_EVENTS); localStorage.removeItem(LS_CONFLICTS); } catch (e) {} if (legacyCf.length) { delete this.settings.conflicts; this.saveSettings(); } }
+        } else {
+          try { if (lsRaw.length) localStorage.removeItem(LS_EVENTS); if (lsCf.length) localStorage.removeItem(LS_CONFLICTS); } catch (e) {}
+          if (legacyCf.length) { delete this.settings.conflicts; this.saveSettings(); }
+        }
+      } else { this.raw = lsRaw; this.conflicts = lsCf.concat(legacyCf); }
+    } else { this.raw = lsRaw; this.conflicts = lsCf.concat(legacyCf); }
+    if (!this.idbOk && legacyCf.length) { try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); delete this.settings.conflicts; this.saveSettings(); } catch (e) {} }
     this.migrateV2();
     this.refresh();
   },
@@ -68,25 +98,72 @@ const Store = {
     const o = Object.assign({}, e); for (const k of this.LOCAL_FIELDS) delete o[k];
     return JSON.stringify(norm(o));
   },
-  /* تعارض: معرّف واحد بمحتوى مختلف (LM0121-R2-04). تُحفظ النسختان للمراجعة، ولا يُختار شيء صامتاً */
+  /* تعارض: معرّف واحد بمحتوى مختلف (LM0121-R2-04). تُحفظ النسختان للمراجعة، ولا يُختار شيء صامتاً.
+     الحفظ كحفظ السجلات: «جارٍ الحفظ» حتى يثبت، وفشله معلن ويُعاد، ولا يتقدم مؤشر سحب قبله (LM0131-R3-04) */
+  cfKey(id, source) { return `${id}|${source}|${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`; },
   noteConflict(local, other, source) {
-    const list = this.settings.conflicts || (this.settings.conflicts = []);
-    const ofp = this.fp(other);
-    if (!list.some(x => x.id === local.id && x.source === source && !x.resolved && this.fp(x.other) === ofp)) list.push({ id: local.id, source, at: Date.now(), local: this.clean(local), other: this.clean(other) });
-    try { this.saveSettings(); } catch (e) {}
+    const ofp = this.fp(other), lfp = this.fp(local);
+    /* لا يُكرَّر: تعارض مفتوح للزوج نفسه، أو قرار «إبقاء نسخة الجهاز» للنسختين نفسيهما (السحب الكامل التالي يعيد الصف نفسه) */
+    if (this.conflicts.some(x => x.id === local.id && x.source === source && this.fp(x.other) === ofp && (!x.resolved || (x.resolved.choice === 'local' && this.fp(x.local) === lfp)))) return;
+    const rec = { key: this.cfKey(local.id, source), id: local.id, source, at: Date.now(), local: this.clean(local), other: this.clean(other) };
+    this.conflicts.push(rec);
+    if (!this.saveConflicts([rec])) throw new Error(this.storageError || 'تعذّر حفظ التعارض');
   },
-  openConflicts(source) { return (this.settings.conflicts || []).filter(x => !x.resolved && (!source || x.source === source)); },
+  saveConflicts(list) {
+    if (this.idbOk) {
+      for (const x of list) this.cdirty.add(x.key);
+      clearTimeout(this.flushTimer); this.flushTimer = setTimeout(() => this.flush(), 20);
+      try { UI.renderStatus(); } catch (x) {}
+      return true;
+    }
+    try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); return true; } catch (e) { this.storageError = 'تعذّر حفظ التعارض: امتلأت ذاكرة الجهاز. صدّري البيانات وأبلغي ولي الأمر.'; return false; }
+  },
+  openConflicts(source) { return this.conflicts.filter(x => !x.resolved && (!source || x.source === source)); },
+  /* اختلاف أبقته المعلمة عمداً مع خادم: حُسم التعارض بـ«إبقاء نسخة الجهاز» والسجل ما زال مختلفاً عنه (LM0131-R3-03) */
+  keptDiffs(source) {
+    const open = new Set(this.openConflicts().map(x => x.id + '|' + x.source));
+    const out = new Map();
+    for (const x of this.conflicts) {
+      if (!x.resolved || x.resolved.choice !== 'local' || !x.source.startsWith('server:') || (source && x.source !== source) || open.has(x.id + '|' + x.source)) continue;
+      const e = this.raw.find(r => r.id === x.id); if (!e || !hasIn(e.cf, x.source.slice(7))) continue;
+      out.set(x.id + '|' + x.source, x);
+    }
+    return [...out.values()];
+  },
+  /* حسم تعارض: الاستبدال (إن اختيرت النسخة الأخرى) والقرار يُكتبان في معاملة واحدة، ولا يُعلن الحسم قبل ثبوتهما.
+     إن فشل الحفظ يعود كل شيء كما كان ويبقى التعارض مفتوحاً (LM0131-R3-02) */
+  async resolveConflict(x, choice, by) {
+    if (x.resolved && x.resolved.choice === choice) return true;
+    const gen = this.gen;
+    const prevRes = x.resolved || null;
+    const i = this.raw.findIndex(e => e.id === x.id); const prev = i >= 0 ? this.raw[i] : null;
+    let repl = null;
+    if (choice === 'other' && prev) {
+      const sid = x.source.startsWith('server:') ? x.source.slice(7) : null;
+      repl = Object.assign(this.clean(x.other), { la: Date.now() });
+      if (sid) repl.sv = [sid];
+      this.raw[i] = repl; this.saveEvents([repl]);
+    }
+    x.resolved = Object.assign({ at: Date.now(), by, choice }, prevRes ? { was: prevRes.choice } : {});
+    this.saveConflicts([x]); this.refresh();
+    const ok = await this.durable();
+    if (ok || gen !== this.gen) return ok;
+    if (repl) { const j = this.raw.findIndex(e => e.id === x.id); if (j >= 0 && this.raw[j] === repl) this.raw[j] = prev; }
+    if (prevRes) x.resolved = prevRes; else delete x.resolved;
+    this.refresh();
+    return false;
+  },
   clean(e) { const o = Object.assign({}, e); for (const k of this.LOCAL_FIELDS) delete o[k]; return o; },
   markOn(e, id) { if (!hasIn(e.sv, id)) e.sv = (e.sv || []).concat(id); if (hasIn(e.rj, id)) e.rj = e.rj.filter(x => x !== id); },
   /* كتابة سجلات بعينها إلى IDB */
-  putMany(list) {
+  putMany(list, clist) {
     if (!this.idbOk || !this.db) return Promise.resolve(false);
-    return new Promise((res) => { try { const tx = this.db.transaction('events', 'readwrite'); const st = tx.objectStore('events'); for (const e of list) st.put(e); tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false); } catch (e) { res(false); } });
+    return new Promise((res) => { try { const tx = this.db.transaction(['events', 'conflicts'], 'readwrite'); const st = tx.objectStore('events'), cs = tx.objectStore('conflicts'); for (const e of list) st.put(e); for (const x of (clist || [])) cs.put(x); tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false); } catch (e) { res(false); } });
   },
-  clearDb() { if (!this.idbOk || !this.db) return Promise.resolve(false); return new Promise((res) => { try { const tx = this.db.transaction('events', 'readwrite'); tx.objectStore('events').clear(); tx.oncomplete = () => res(true); tx.onerror = () => res(false); } catch (e) { res(false); } }); },
+  clearDb() { if (!this.idbOk || !this.db) return Promise.resolve(false); return new Promise((res) => { try { const tx = this.db.transaction(['events', 'conflicts'], 'readwrite'); tx.objectStore('events').clear(); tx.objectStore('conflicts').clear(); tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false); } catch (e) { res(false); } }); },
   /* الحفظ: مع IDB تُكتب السجلات المتغيرة فقط؛ بدونه يُكتب الكل في localStorage (متزامن).
      مع IDB: add يعيد فوراً والسجل «جارٍ حفظه» (dirty) حتى تكتمل المعاملة؛ نقاط الالتزام (إنهاء جلسة، سحب) تنتظر durable(). */
-  dirty: new Set(), flushing: null, retryTimer: null,
+  dirty: new Set(), cdirty: new Set(), cinflight: null, flushing: null, retryTimer: null,
   saveEvents(changed) {
     if (this.idbOk) {
       for (const e of (changed || this.raw)) this.dirty.add(e.id);
@@ -96,19 +173,20 @@ const Store = {
     }
     try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); this.storageError = null; return true; } catch (e) { this.storageError = 'تعذّر الحفظ: امتلأت ذاكرة الجهاز. صدّري البيانات وأبلغي ولي الأمر.'; return false; } },
   /* هل كل ما في الذاكرة محفوظ دائماً الآن؟ */
-  saved() { return this.idbOk ? this.dirty.size === 0 && !this.inflight && !this.storageError : !this.storageError; },
+  saved() { return this.idbOk ? this.dirty.size === 0 && this.cdirty.size === 0 && !this.inflight && !this.cinflight && !this.storageError : !this.storageError; },
   /* ما لم يثبت على القرص بعد: المعلّق + الدفعة الجارية (LM0121-R2-03: الجارية كانت تُحسب محفوظة) */
-  pendingCount() { return this.dirty.size + (this.inflight ? this.inflight.size : 0); },
+  pendingCount() { return this.dirty.size + this.cdirty.size + (this.inflight ? this.inflight.size : 0) + (this.cinflight ? this.cinflight.size : 0); },
   /* عند مغادرة الصفحة وفي الذاكرة ما لم يثبت: نسخة طوارئ متزامنة في localStorage تُدمج عند الفتح التالي.
      تُدمج مع أي نسخة طوارئ موجودة ولا تستبدلها */
   emergencySave() {
     if (!this.idbOk || this.saved()) return false;
     const ids = new Set([...this.dirty, ...(this.inflight || [])]);
-    const pend = this.raw.filter(e => ids.has(e.id)); if (!pend.length) return false;
+    const cks = new Set([...this.cdirty, ...(this.cinflight || [])]);
+    const pend = this.raw.filter(e => ids.has(e.id)); const cpend = this.conflicts.filter(x => cks.has(x.key));
+    if (!pend.length && !cpend.length) return false;
     try {
-      let prev = []; try { prev = JSON.parse(localStorage.getItem(LS_EVENTS) || '[]'); } catch (e) { prev = []; }
-      const have = new Set(prev.map(e => e && e.id));
-      localStorage.setItem(LS_EVENTS, JSON.stringify(prev.concat(pend.filter(e => !have.has(e.id)))));
+      const merge = (key, list, k) => { if (!list.length) return; let prev = []; try { prev = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { prev = []; } const have = new Set(prev.map(x => x && x[k])); localStorage.setItem(key, JSON.stringify(prev.concat(list.filter(x => !have.has(x[k]))))); };
+      merge(LS_EVENTS, pend, 'id'); merge(LS_CONFLICTS, cpend, 'key');
       return true;
     } catch (e) { return false; }
   },
@@ -119,22 +197,24 @@ const Store = {
   async flushOnce() {
     const gen = this.gen;
     const ids = this.dirty; this.dirty = new Set(); this.inflight = ids;
-    const list = this.raw.filter(e => ids.has(e.id));
+    const cks = this.cdirty; this.cdirty = new Set(); this.cinflight = cks;
+    const list = this.raw.filter(e => ids.has(e.id)); const clist = this.conflicts.filter(x => cks.has(x.key));
     let ok = false;
-    try { ok = await this.putMany(list); } finally { if (this.inflight === ids) this.inflight = null; }
+    try { ok = await this.putMany(list, clist); } finally { if (this.inflight === ids) this.inflight = null; if (this.cinflight === cks) this.cinflight = null; }
     if (!ok) {
       if (gen === this.gen) {
         for (const id of ids) this.dirty.add(id);
+        for (const k of cks) this.cdirty.add(k);
         /* طوارئ: نسخة كاملة في localStorage إن اتسعت؛ تُدمج عند الفتح التالي وتُمحى فور نجاح الحفظ */
-        let lsOk = false; try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); lsOk = true; } catch (e) {}
+        let lsOk = false; try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); if (this.conflicts.length) localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); lsOk = true; } catch (e) {}
         this.storageError = lsOk ? 'تعذّر الحفظ في قاعدة الجهاز (حُفظت نسخة احتياطية مؤقتة)؛ صدّري البيانات' : 'تعذّر الحفظ في قاعدة الجهاز وامتلأت الذاكرة؛ صدّري البيانات فوراً ولا تغلقي الصفحة';
         try { UI.toast(this.storageError); } catch (x) {}
         clearTimeout(this.retryTimer); this.retryTimer = setTimeout(() => this.flush(), 5000);
       }
-    } else if (!this.dirty.size && gen === this.gen) {
+    } else if (!this.dirty.size && !this.cdirty.size && gen === this.gen) {
       this.storageError = null; /* كل شيء ثابت في IDB الآن */
       /* كل السجلات في IDB الآن: نسخة الطوارئ لم تعد لازمة، ومحوها يمنع إحياء ما حُذف لاحقاً */
-      try { localStorage.removeItem(LS_EVENTS); } catch (e) {}
+      try { localStorage.removeItem(LS_EVENTS); localStorage.removeItem(LS_CONFLICTS); } catch (e) {}
     }
     try { UI.renderStatus(); } catch (x) {}
     return ok;
@@ -143,7 +223,7 @@ const Store = {
   async flush() {
     for (;;) {
       if (this.flushing) { const ok = await this.flushing; if (!ok) return false; continue; }
-      if (!this.dirty.size) return !this.storageError;
+      if (!this.dirty.size && !this.cdirty.size) return !this.storageError;
       const pr = this.flushOnce(); this.flushing = pr;
       const ok = await pr; if (this.flushing === pr) this.flushing = null;
       if (!ok) return false;
@@ -170,18 +250,20 @@ const Store = {
   },
   ofType(t) { return this.byTypeMap.get(t) || []; },
   ofKey(k) { return this.byKeyMap.get(k) || []; },
-  /* مسح كل نسخ السجلات على الجهاز (IDB ونسخة الطوارئ/القديمة في localStorage). المسح في الذاكرة فوري،
-     ومعاملة المسح تُنشأ فوراً فتسبق أي كتابة لاحقة؛ القيمة: وعد بنجاح المسح الدائم */
+  /* مسح كل نسخ بيانات الأحداث على الجهاز: السجلات والتعارضات (مفتوحة ومحسومة بنسختيها) في IDB، ونسخ الطوارئ،
+     وما في الإعدادات منها (تعارضات الإصدارات السابقة، الجلسة الجارية بمسوداتها، المرفوضات بنسخها، التقارير).
+     المسح في الذاكرة فوري، ومعاملة المسح تُنشأ فوراً فتسبق أي كتابة لاحقة؛ القيمة: وعد بنجاح المسح الدائم كله (LM0131-R3-01) */
   reset() {
     clearTimeout(this.flushTimer); clearTimeout(this.retryTimer);
     this.gen++;
-    this.raw = []; this.dirty = new Set(); this.inflight = null; this.refresh();
+    this.raw = []; this.dirty = new Set(); this.inflight = null; this.conflicts = []; this.cdirty = new Set(); this.cinflight = null; this.lastConflicts = 0; this.refresh();
     /* بلا سجلات محلية لا يصح مؤشر سحب ولا مرفوضات لأي خادم: يُسحب كل شيء من جديد وتُجرى مطابقة كاملة */
     for (const st of Object.values(this.settings.servers || {})) Object.assign(st, { cursor: null, rejected: [], report: null, needReconcile: true });
-    try { this.saveSettings(); } catch (e) {}
-    let lsOk = true; try { localStorage.removeItem(LS_EVENTS); } catch (e) { lsOk = false; }
+    delete this.settings.conflicts; this.settings.active = null;
+    let setOk = true; try { this.saveSettings(); } catch (e) { setOk = false; }
+    let lsOk = true; try { localStorage.removeItem(LS_EVENTS); localStorage.removeItem(LS_CONFLICTS); } catch (e) { lsOk = false; }
     const cleared = this.idbOk ? this.clearDb() : Promise.resolve(true);
-    return cleared.then(ok => { ok = ok && lsOk; if (ok && this.storageError) this.storageError = null; try { UI.renderStatus(); } catch (x) {} return ok; });
+    return cleared.then(ok => { ok = ok && lsOk && setOk; if (ok && this.storageError) this.storageError = null; try { UI.renderStatus(); } catch (x) {} return ok; });
   },
   saveSettings() { localStorage.setItem(LS_SETTINGS, JSON.stringify(this.settings)); },
   add(ev) {
@@ -267,28 +349,38 @@ const Store = {
     const bad = items.filter(e => !this.validEvent(e, items) || !this.roleAllows(e.by, e));
     if (bad.length) throw new Error(`رُفض الملف كاملاً: ${bad.length} سجل غير صالح أو غير مسموح لدوره (مثال: ${JSON.stringify(bad[0]).slice(0, 80)})`);
     const have = new Map(this.raw.map(e => [e.id, e]));
-    const before = this.raw.slice();
-    let n = 0; const added = [], touched = []; this.lastConflicts = 0;
+    const before = this.raw.slice(); const cBefore = this.conflicts.length;
+    let n = 0; const added = [], touched = [], cfMarked = []; this.lastConflicts = 0;
+    /* فشل الحفظ: لا يبقى شيء من هذا الدمج في الذاكرة (لا سجل ولا تعارض ولا علامة تعارض) فلا نجاح وهمي */
+    const undo = () => {
+      this.raw = before;
+      for (const x of this.conflicts.splice(cBefore)) this.cdirty.delete(x.key);
+      for (const ex of cfMarked) { ex.cf = (ex.cf || []).filter(x => x !== opts.server); if (!ex.cf.length) delete ex.cf; }
+      if (!this.idbOk) { try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); } catch (x) {} }
+      this.lastConflicts = 0; this.refresh();
+    };
     const source = opts.server ? 'server:' + opts.server : (opts.source || 'file');
     const now = Date.now();
-    for (const e of items) {
-      const ex = have.get(e.id);
-      if (ex) {
-        /* المعرّف نفسه لا يثبت أن السجل نفسه: المحتوى يُقارن قبل أي علامة «مطابق» */
-        if (this.fp(ex) !== this.fp(e)) {
-          this.noteConflict(ex, e, source); this.lastConflicts++;
-          if (opts.server && !hasIn(ex.cf, opts.server)) { ex.cf = (ex.cf || []).concat(opts.server); touched.push(ex); }
+    try {
+      for (const e of items) {
+        const ex = have.get(e.id);
+        if (ex) {
+          /* المعرّف نفسه لا يثبت أن السجل نفسه: المحتوى يُقارن قبل أي علامة «مطابق» */
+          if (this.fp(ex) !== this.fp(e)) {
+            this.noteConflict(ex, e, source); this.lastConflicts++;
+            if (opts.server && !hasIn(ex.cf, opts.server)) { ex.cf = (ex.cf || []).concat(opts.server); touched.push(ex); cfMarked.push(ex); }
+            continue;
+          }
+          if (opts.server && !hasIn(ex.sv, opts.server)) { this.markOn(ex, opts.server); touched.push(ex); }
           continue;
         }
-        if (opts.server && !hasIn(ex.sv, opts.server)) { this.markOn(ex, opts.server); touched.push(ex); }
-        continue;
+        if (opts.server) e.sv = [opts.server];
+        e.la = now;
+        this.raw.push(e); have.set(e.id, e); n++; added.push(e);
       }
-      if (opts.server) e.sv = [opts.server];
-      e.la = now;
-      this.raw.push(e); have.set(e.id, e); n++; added.push(e);
-    }
+    } catch (err) { undo(); throw err; }
     this.raw.sort((a, b) => a.ts - b.ts);
-    if (!this.saveEvents(added.concat(touched))) { this.raw = before; throw new Error(this.storageError); }
+    if (!this.saveEvents(added.concat(touched))) { undo(); throw new Error(this.storageError); }
     this.refresh();
     return n;
   },

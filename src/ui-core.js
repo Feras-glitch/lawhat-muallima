@@ -95,6 +95,7 @@ const UI = {
     const k = Sync.counts();
     if (k.ownPending) return [el('span', { class: 'dot ok' }), `حُفظ على الجهاز · ${k.ownPending} بانتظار الرفع` + m];
     if (k.othersTotal) return [el('span', { class: 'dot off' }), `تمت مزامنة سجلاتك · ${k.othersTotal} لأدوار أخرى ليست على الخادم (الإعدادات ← الخادم)` + m];
+    if (k.kept) return [el('span', { class: 'dot off' }), `تمت المزامنة · ${k.kept} سجل يختلف عن الخادم بقرار «إبقاء نسخة الجهاز» (الإعدادات ← التعارضات)` + m];
     return [el('span', { class: 'dot ok' }), 'تمت المزامنة' + m];
   },
   /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ وإلا رسالة الفشل */
@@ -113,7 +114,13 @@ const UI = {
   },
   toast(msg) { const t = el('div', { class: 'toast' }, msg); document.body.append(t); setTimeout(() => t.remove(), 2200); },
   /* بديل prompt() الأصلي: نافذة داخلية؛ cb(text) أو null عند الإلغاء */
-  prompt(title, placeholder, cb, initial) { const t = el('input', { placeholder: placeholder || '', value: initial || '' }); const bg = this.modal(title, el('div', null, t), [el('button', { class: 'primary', onclick: () => { const v = t.value.trim(); if (!v) { this.toast('اكتبي ' + (placeholder || 'القيمة')); return; } if (cb(v) === false) return; bg.remove(); } }, 'حفظ'), el('button', { class: 'ghost', onclick: () => { bg.remove(); cb(null); } }, 'إلغاء')]); setTimeout(() => t.focus(), 50); t.addEventListener('keydown', e => { if (e.key === 'Enter') { const v = t.value.trim(); if (v) { bg.remove(); cb(v); } } }); return bg; },
+  prompt(title, placeholder, cb, initial) {
+    const t = el('input', { placeholder: placeholder || '', value: initial || '' });
+    /* إرسال واحد للزر وEnter: النافذة لا تُغلق إلا إذا قُبلت القيمة (cb لا يعيد false)؛ عند الرفض تبقى بقيمتها وتركيزها */
+    const submit = () => { const v = t.value.trim(); if (!v) { this.toast('اكتبي ' + (placeholder || 'القيمة')); t.focus(); return; } if (cb(v) === false) { t.focus(); return; } bg.remove(); };
+    const bg = this.modal(title, el('div', null, t), [el('button', { class: 'primary', onclick: submit }, 'حفظ'), el('button', { class: 'ghost', onclick: () => { bg.remove(); cb(null); } }, 'إلغاء')]);
+    setTimeout(() => t.focus(), 50); t.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }); return bg;
+  },
   confirm(msg, cb) { const bg = this.modal('تأكيد', el('p', null, msg), [el('button', { class: 'primary', onclick: () => { bg.remove(); cb(); } }, 'نعم'), el('button', { class: 'ghost', onclick: () => bg.remove() }, 'لا')]); },
 };
 
