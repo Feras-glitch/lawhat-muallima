@@ -60,6 +60,11 @@ async def session(fn):
         return await fn(p)
 
 
+def shot(name):
+    time.sleep(1.2)
+    subprocess.run(['adb', 'exec-out', 'screencap', '-p'], stdout=open(OUT + '-' + name + '.png', 'wb'))
+
+
 def ok(name, cond, data):
     results[name] = {'ok': bool(cond), 'data': data}
     print(('PASS ' if cond else 'FAIL ') + name, json.dumps(data, ensure_ascii=False)[:300])
@@ -76,7 +81,6 @@ async def main():
         ok('تسجيل ملاحظة وحفظها', n == 1, n)
         return info
     info = await session(first)
-    subprocess.run(['adb', 'exec-out', 'screencap', '-p'], stdout=open(OUT + '-logs.png', 'wb'))
 
     async def reload(p):
         await p.ev("(setTimeout(() => location.reload(), 200), true)")
@@ -104,43 +108,58 @@ async def main():
     sh('shell', 'input', 'keyevent', 'KEYCODE_BACK'); time.sleep(1.5)
     r = await session(after_back)
     ok('الرجوع التالي يعود إلى الشاشة الرئيسية لا يخرج', r['view'] == 'now', r)
-    subprocess.run(['adb', 'exec-out', 'screencap', '-p'], stdout=open(OUT + '-now.png', 'wb'))
+    shot('now')
 
     async def chooser(p):
         await p.ev("(() => { App.setRole('parent'); App.view = 'settings'; UI.rerender(); const i = document.querySelector('input[type=file]'); i.click(); return true; })()")
         return True
     await session(chooser); time.sleep(3)
-    focus = sh('shell', 'dumpsys', 'window', 'windows', check=False)
-    top = [l for l in focus.splitlines() if 'mCurrentFocus' in l or 'mFocusedApp' in l]
-    ok('اختيار ملف للاستيراد يفتح نافذة ملفات النظام', any(x in ' '.join(top) for x in ('documentsui', 'DocumentsUI', 'ResolverActivity', 'ChooserActivity', 'files')), top)
-    subprocess.run(['adb', 'exec-out', 'screencap', '-p'], stdout=open(OUT + '-chooser.png', 'wb'))
-    sh('shell', 'input', 'keyevent', 'KEYCODE_BACK'); time.sleep(1)
+    acts = sh('shell', 'dumpsys', 'activity', 'activities', check=False)
+    top = [l.strip() for l in acts.splitlines() if 'ResumedActivity' in l][:3]
+    ok('اختيار ملف للاستيراد يفتح نافذة ملفات النظام', any(x in ' '.join(top).lower() for x in ('documentsui', 'resolveractivity', 'chooseractivity', 'intentresolver')), top)
+    shot('chooser')
+    sh('shell', 'input', 'keyevent', 'KEYCODE_BACK'); time.sleep(1.5)
+
+    async def chooser_closed(p):
+        return await p.ev("({ ok: !!(window.Store && Store.raw), errors: UI.errors.length })")
+    r = await session(chooser_closed)
+    ok('إغلاق نافذة الملفات دون اختيار يعيد التطبيق سليماً', r['ok'] and r['errors'] == 0, r)
 
     async def settings(p):
         await p.ev("(() => { App.setRole('parent'); App.view = 'settings'; UI.rerender(); scrollTo(0, document.body.scrollHeight); return true; })()")
         return await p.ev("document.querySelector('main').innerText.includes('تطبيق أندرويد')")
     r = await session(settings)
     ok('الإعدادات تعرض بطاقة «تطبيق أندرويد»', r, r)
-    subprocess.run(['adb', 'exec-out', 'screencap', '-p'], stdout=open(OUT + '-settings.png', 'wb'))
+    shot('settings')
 
     # الدوران: الصفحة لا تُعاد (الحالة في الذاكرة باقية)
     async def mark(p):
         return await p.ev("(window.__mark = Math.random(), window.__mark)")
     m = await session(mark)
-    sh('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
-    sh('shell', 'settings', 'put', 'system', 'user_rotation', '1'); time.sleep(3)
 
     async def get_mark(p):
         return await p.ev("({ m: window.__mark, w: innerWidth, h: innerHeight })")
+    before = await session(get_mark)
+    sh('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
+    sh('shell', 'settings', 'put', 'system', 'user_rotation', '1'); time.sleep(3)
     r = await session(get_mark)
-    ok('الدوران لا يعيد تحميل الصفحة', r['m'] == m and r['w'] > r['h'], r)
+    ok('الدوران لا يعيد تحميل الصفحة (والأبعاد تنقلب)', r['m'] == m and (r['w'] > r['h']) != (before['w'] > before['h']), {'before': before, 'after': r})
 
     async def land(p):
         await p.ev("(() => { App.setRole('aya'); App.view = 'now'; UI.rerender(); scrollTo(0, 0); return true; })()")
         return True
-    await session(land); time.sleep(1)
-    subprocess.run(['adb', 'exec-out', 'screencap', '-p'], stdout=open(OUT + '-landscape.png', 'wb'))
-    sh('shell', 'settings', 'put', 'system', 'user_rotation', '0')
+    await session(land)
+    shot('rotated')
+    sh('shell', 'settings', 'put', 'system', 'user_rotation', '0'); time.sleep(2)
+
+    # السجلات بأزرار التراجع (آية ترى زراً على سجلها وسجل المساعدة)
+    async def logs(p):
+        await p.ev("""(async () => { App.role = ROLES.asst; Store.add({ type: 'outcome', child: 'dalal', page: 582, step: 'far', result: 'clean' });
+            App.setRole('aya'); App.view = 'logs'; UI.rerender(); await Store.durable(); scrollTo(0, 0); return true; })()""")
+        return await p.ev("[...document.querySelectorAll('main tr button')].filter(b => b.textContent === 'تراجع').length")
+    n = await session(logs)
+    ok('«السجلات» داخل التطبيق: أزرار التراجع ظاهرة', n >= 2, n)
+    shot('logs')
 
     json.dump({'info': info, 'results': results}, open(OUT + '.json', 'w'), ensure_ascii=False, indent=1)
     bad = [k for k, v in results.items() if not v['ok']]
