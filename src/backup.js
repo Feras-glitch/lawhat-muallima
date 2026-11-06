@@ -42,7 +42,8 @@ const Backup = {
   },
   /* دمج بلا علامة «على الخادم»؛ مع خادم متصل تُطلب مطابقة كاملة تصحّح العلامات وتُظهر ما بقي */
   merge(parsed) {
-    const n = Store.importEvents(parsed.events);
+    const n = Store.importEvents(parsed.events, { source: 'file' });
+    this.lastConflicts = Store.lastConflicts || 0;
     const st = Sync.st();
     if (st) { st.needReconcile = true; Store.saveSettings(); Sync.schedule(); }
     return n;
@@ -62,7 +63,8 @@ const Backup = {
     if (!lb) return Infinity;
     const days = Math.floor((Date.now() - lb.at) / DAY_MS);
     if (days < 7) return null;
-    return Store.raw.some(e => (e.ts || 0) > lb.at) ? days : null;
+    /* وقت وصول السجل إلى الجهاز (la)، لا وقت إنشائه: سجل قديم وصل بعد آخر نسخة غير مشمول بها (LM0121-R2-12) */
+    return Store.raw.some(e => (e.la || e.ts || 0) > lb.at) ? days : null;
   },
 };
 
@@ -111,14 +113,15 @@ const ServerRestore = {
     return `-- لوحة المعلمة · استعادة الخادم · الجزء ${k} من ${total} · ${chunk.length} سجل
 -- الإصدار ${BUILD.version} (${BUILD.commit}) · أُعدّ ${new Date().toISOString()} من الجهاز ${Store.settings.deviceId}
 -- يُشغَّل في SQL Editor لمشروع Supabase بعد إعداد الجداول وإنشاء المستخدمين الثلاثة وأدوارهم في profiles.
--- كل سجل يُدرج باسم دوره (set role authenticated) فتنطبق عليه سياسات الخادم نفسها؛ الموجود يُتجاهل؛ المرفوض يُذكر بسببه.
+-- كل سجل يُدرج باسم دوره (set role authenticated) فتنطبق عليه سياسات الخادم نفسها؛ الموجود بالمحتوى نفسه = exists؛
+-- الموجود بمحتوى مختلف = conflict (لا يُغيَّر)؛ المرفوض يُذكر بسببه.
 -- آمن للتكرار. شغّلي الأجزاء بالترتيب (التراجعات في الأجزاء الأخيرة).
 create temp table if not exists lm_restore_log (part int, id text, by text, type text, status text, reason text);
 delete from lm_restore_log where part = ${k};
 do $${dtag}$
 ${body}end $${dtag}$;
 select status as "الحالة", count(*) as "العدد",
-  string_agg(id || ' — ' || coalesce(reason, ''), E'\\n') filter (where status = 'rejected') as "المرفوض وسببه"
+  string_agg(id || ' — ' || coalesce(reason, ''), E'\\n') filter (where status in ('rejected', 'conflict')) as "المرفوض أو المتعارض وسببه"
 from lm_restore_log where part = ${k} group by status order by status;
 `;
   },
@@ -141,8 +144,14 @@ begin
         values (x->>'id', (x->>'ts')::bigint, x->>'day', x->>'by', x->>'child', x->>'type', x->>'dev', x)
         on conflict (id) do nothing;
       get diagnostics n = row_count;
+      if n = 0 and not exists (select 1 from public.events t where t.id = x->>'id'
+          and jsonb_strip_nulls(t.payload - 'sv' - 'rj' - 'cf' - 'la' - 'synced' - 'pushRejected') = jsonb_strip_nulls(x)) then
+        n := -1; /* المعرّف موجود بمحتوى مختلف: تعارض معلن، لا «موجود» */
+      end if;
       perform set_config('role', 'none', true);
-      insert into lm_restore_log values (${k}, x->>'id', x->>'by', x->>'type', case when n = 1 then 'inserted' else 'exists' end, null);
+      insert into lm_restore_log values (${k}, x->>'id', x->>'by', x->>'type',
+        case when n = 1 then 'inserted' when n = 0 then 'exists' else 'conflict' end,
+        case when n = -1 then 'المعرّف موجود على الخادم بمحتوى مختلف — لم يُغيَّر شيء' end);
     exception when others then
       perform set_config('role', 'none', true);
       insert into lm_restore_log values (${k}, x->>'id', x->>'by', x->>'type', 'rejected', sqlerrm);
@@ -178,7 +187,7 @@ function BackupCard() {
   Persist.check().then(() => { persistLine.textContent = Persist.text(); });
   return el('div', { class: 'card' }, el('h2', null, 'النسخ الاحتياطي وتبادل الملفات'),
     el('p', { class: 'small muted' }, 'النسخة الكاملة تحمل كل السجلات بالتراجعات ومعرّفاتها وأصحابها، وإعدادات الخادم بلا كلمات سر ولا جلسات ولا رموز دخول. الاستيراد يدمج ولا يكرر.'),
-    el('p', { class: 'small' }, lb ? `آخر نسخة من هذا الجهاز: ${fmtDay(dayKey(new Date(lb.at)))} ${hhmm(new Date(lb.at))} (${lb.count} سجل)` : 'لم تُصدَّر نسخة من هذا الجهاز بعد'),
+    el('p', { class: 'small' }, lb ? `آخر تنزيل نسخة من هذا الجهاز: ${fmtDay(dayKey(new Date(lb.at)))} ${hhmm(new Date(lb.at))} (${lb.count} سجل). للتأكد أن الملف المحفوظ صالح: اختاريه في «استيراد ملف» فيُعرض ما يحمله قبل أي دمج.` : 'لم تُصدَّر نسخة من هذا الجهاز بعد'),
     persistLine,
     el('div', { class: 'btns' },
       el('button', { class: 'primary', onclick: () => { Backup.download(); UI.toast('صُدّرت النسخة'); UI.rerender(); } }, `تصدير نسخة كاملة (${Store.raw.length} سجل)`),
@@ -187,19 +196,24 @@ function BackupCard() {
 }
 
 function ImportDialog(p) {
-  const have = new Set(Store.raw.map(e => e.id));
+  const have = new Map(Store.raw.map(e => [e.id, e]));
   const evs = p.events.filter(e => e && typeof e === 'object');
   const undo = evs.filter(e => e.type === 'undo').length;
   const fresh = evs.filter(e => !have.has(e.id)).length;
+  const inFile = new Set(evs.map(e => e.id));
+  const missing = Store.raw.filter(e => !inFile.has(e.id)).length;
+  const clash = evs.filter(e => have.has(e.id) && Store.fp(have.get(e.id)) !== Store.fp(e)).length;
   const m = p.meta || {};
   const body = el('div', null,
     el('p', null, p.full ? `نسخة من الإصدار ${m.app ? m.app.version : '؟'} (${m.app ? m.app.commit : '؟'})، صُدّرت ${m.exported ? m.exported.slice(0, 16).replace('T', ' ') : '؟'} من دور ${roleName(m.role)}.` : 'ملف بصيغة قديمة (قبل 0.12).'),
     el('p', null, `${evs.length} سجلاً (${undo} تراجعاً)، منها ${fresh} ليست على هذا الجهاز.`),
+    Store.raw.length ? el('p', { class: 'small' }, missing ? `لا يحمل ${missing} من سجلات هذا الجهاز (${Store.raw.length}) — ليس نسخة كاملة منه.` : `يحمل كل سجلات هذا الجهاز (${Store.raw.length}).`) : null,
+    clash ? el('div', { class: 'alert red' }, `${clash} سجلاً بمعرّف موجود هنا ومحتوى مختلف: لن يُغيَّر شيء منها، وستظهر في «التعارضات» للمراجعة.`) : null,
     p.full ? null : el('div', { class: 'alert' }, 'هذا الملف يحمل السجلات الحيّة فقط بلا تراجعات: ما تراجعتِ عنه في الجهاز المصدِّر لا يصل تراجعه إلى هنا.'),
     p.full && p.settings.sbUrl ? el('p', { class: 'small muted' }, `وفيه إعدادات الخادم: ${p.settings.sbUrl}`) : null);
   const canRestore = p.full && Store.raw.length === 0 && p.settings.sbUrl && p.settings.sbKey;
   let bg;
-  const merge = () => { bg.remove(); try { const n = Backup.merge(p); UI.savedToast(`أُضيف ${n} سجلاً وحُفظ`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } };
+  const merge = () => { bg.remove(); try { const n = Backup.merge(p); UI.savedToast(`أُضيف ${n} سجلاً وحُفظ${Backup.lastConflicts ? ` · ${Backup.lastConflicts} تعارض في «التعارضات»` : ''}`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } };
   const restore = () => {
     bg.remove();
     try { const n = Backup.restoreDevice(p); App.logout(); UI.savedToast(`استُعيد ${n} سجلاً؛ ادخلي بحسابك على الخادم لتكتمل المطابقة`); }
@@ -237,6 +251,7 @@ function syncReportView(st) {
   if (wt) items.push(`${wt} من تراجعاتك بانتظار وصول السجل الأصلي إلى الخادم — يرفعه جهاز صاحبه، ثم يُرفع التراجع تلقائياً`);
   for (const [by, n] of Object.entries(r.others || {})) items.push(`${n} من سجلات ${roleName(by)} ليست على الخادم — يرفعها جهاز ${roleName(by)} عند دخوله، أو «استعادة الخادم» من جهاز ولي الأمر`);
   if (r.rejected) items.push(`${r.rejected} سجلاً رفضها الخادم أو رفضها الجهاز — انظري المرفوضات`);
+  if (r.conflicts) items.push(`${r.conflicts} تعارضاً: معرّف واحد بمحتوى مختلف بين الجهاز والخادم — انظري «التعارضات»`);
   if (r.serverOnly) items.push(`${r.serverOnly} سجلاً على الخادم لم تصل هذا الجهاز بعد — تُسحب في الجولة التالية`);
   if (r.incomplete) items.push('السحب لم يكتمل (دفعة كبيرة) — يُستكمل تلقائياً');
   return el('div', { class: 'alert' }, el('div', null, el('b', null, `المطابقة لم تكتمل (${when}):`)), el('ul', { class: 'small', style: 'margin:4px 0' }, items.map(t => el('li', null, t))));
@@ -316,6 +331,28 @@ function ServerSwitchDialog(u, k) {
     el('p', null, el('b', null, 'خادم العائلة (انتقال أو استعادة): '), 'يُسحب ما فيه، وتُرفع إليه سجلات دورك التي لا يملكها. سجلات الأدوار الأخرى يرفعها أصحابها أو «استعادة الخادم».'),
     el('p', null, el('b', null, 'خادم منفصل (تجربة أو غيره): '), 'لا يُرفع إليه شيء من سجلات هذا الجهاز.')),
     [el('button', { class: 'primary', onclick: family }, 'خادم العائلة'), el('button', { onclick: separate }, 'خادم منفصل'), el('button', { class: 'ghost', onclick: () => bg.remove() }, 'إلغاء')]);
+}
+
+/* التعارضات: النسختان محفوظتان؛ القرار صريح وموثَّق (آية أو ولي الأمر)، ولا تعديل صامت */
+function evSummary(e) { return `${e.type} · ${roleName(e.by)}${e.child && CHILDREN[e.child] ? ' · ' + CHILDREN[e.child].name : ''} · ${e.day || ''}${e.text ? ' · ' + String(e.text).slice(0, 40) : ''}${e.page ? ' · ص' + e.page : ''}${e.result ? ' · ' + e.result : ''}${e.kind ? ' · ' + e.kind : ''}`; }
+function ConflictsCard() {
+  const list = Store.openConflicts(); if (!list.length) return null;
+  const can = App.role && (App.role.id === 'aya' || App.role.id === 'parent');
+  const resolve = (x, choice) => UI.confirm(choice === 'other' ? 'اعتماد النسخة الأخرى بدل نسخة هذا الجهاز لهذا المعرّف؟ يُوثَّق القرار.' : 'إبقاء نسخة هذا الجهاز؟ تبقى الأخرى مختلفة ويُوثَّق القرار.', () => {
+    if (choice === 'other') {
+      const i = Store.raw.findIndex(e => e.id === x.id);
+      if (i >= 0) { const sid = x.source.startsWith('server:') ? x.source.slice(7) : null; const repl = Object.assign(Store.clean(x.other), { la: Date.now() }); if (sid) repl.sv = [sid]; Store.raw[i] = repl; Store.saveEvents([repl]); Store.refresh(); }
+    }
+    x.resolved = { at: Date.now(), by: App.role.id, choice };
+    Store.saveSettings();
+    Store.add({ type: 'note', child: x.local.child || null, text: `حُسم تعارض المعرّف ${x.id} (${x.source}): ${choice === 'other' ? 'اعتُمدت النسخة الأخرى' : 'أُبقيت نسخة الجهاز'}` });
+    UI.rerender();
+  });
+  return el('div', { class: 'card' }, el('h2', null, `التعارضات (${list.length})`),
+    el('p', { class: 'small muted' }, 'معرّف واحد بمحتويين مختلفين. لم يُغيَّر شيء تلقائياً، ولا تُعلن المطابقة مكتملة حتى يُحسم كل تعارض.'),
+    list.map(x => el('div', { class: 'alert red' }, el('div', { class: 'small' }, el('b', null, x.id), ` · المصدر: ${x.source === 'file' ? 'ملف' : 'الخادم'}`),
+      el('div', { class: 'small' }, 'هذا الجهاز: ', evSummary(x.local)), el('div', { class: 'small' }, (x.source === 'file' ? 'الملف' : 'الخادم') + ': ', evSummary(x.other)),
+      can ? el('div', { class: 'btns' }, el('button', { class: 'ghost', onclick: () => resolve(x, 'local') }, 'إبقاء نسخة الجهاز'), el('button', { class: 'ghost', onclick: () => resolve(x, 'other') }, x.source === 'file' ? 'اعتماد نسخة الملف' : 'اعتماد نسخة الخادم')) : el('div', { class: 'small muted' }, 'تحسمه آية أو ولي الأمر.'))));
 }
 
 function RejectedCard() {

@@ -33,7 +33,7 @@ function parentExam(c) {
   const pool = d.far.slice(); const pick = []; for (let i = 0; i < 5 && pool.length; i++) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]); pick.sort((a, b) => a - b);
   const res = {}; const body = el('div');
   for (const p of pick) { const row = el('div', { class: 'ayahrow' }, el('span', null, pageLabel(p), ' ', d.pages[p].color ? resultPill(d.pages[p].color === 'green' ? 'clean' : d.pages[p].color) : el('span', { class: 'pill n' }, 'بلا لون')), el('span', { class: 'row' }, ['clean', 'yellow', 'red'].map(r => el('button', { class: ({ clean: 'btn-g', yellow: 'btn-y', red: 'btn-r' })[r], style: 'padding:4px 10px', onclick: e => { res[p] = r; [...e.currentTarget.parentNode.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } }, ({ clean: '✓', yellow: 'أصفر', red: 'أحمر' })[r])))); body.append(row); }
-  const bg = UI.modal(`فحص ${CHILDREN[c].name}`, body, [el('button', { class: 'primary', onclick: () => { const done = Object.keys(res).length; if (done < pick.length) { UI.toast('سجّل كل الصفحات'); return; } for (const p of pick) Store.add({ type: 'outcome', child: c, page: Number(p), step: 'exam', result: res[p], parent: true }); Store.add({ type: 'parent_exam', child: c, pages: pick, green: pick.filter(p => res[p] === 'clean').length }); bg.remove(); UI.toast('سُجّل الفحص'); UI.rerender(); } }, 'حفظ')]);
+  const bg = UI.modal(`فحص ${CHILDREN[c].name}`, body, [el('button', { class: 'primary', onclick: () => { const done = Object.keys(res).length; if (done < pick.length) { UI.toast('سجّل كل الصفحات'); return; } for (const p of pick) Store.add({ type: 'outcome', child: c, page: Number(p), step: 'exam', result: res[p], parent: true }); Store.add({ type: 'parent_exam', child: c, pages: pick, green: pick.filter(p => res[p] === 'clean').length }); bg.remove(); UI.savedToast('سُجّل الفحص'); UI.rerender(); } }, 'حفظ')]);
 }
 
 Views.reports = function () {
@@ -46,16 +46,20 @@ Views.reports = function () {
   const evs = Store.events.filter(e => e.child === f.child && e.day >= f.from && e.day <= f.to);
   const days = [...new Set(evs.map(e => e.day))].sort();
   const news = evs.filter(e => e.type === 'new_page'); const outs = effectiveOutcomes(e => e.child === f.child && e.day >= f.from && e.day <= f.to); const errs = evs.filter(e => e.type === 'error');
-  const gates = outs.filter(o => o.step === 'gate'); const fars = outs.filter(o => o.step === 'far'); const exams = outs.filter(o => o.step === 'exam');
+  /* (LM0121-R2-05/06) تعريف موحد: الجزئي مستقل عن السالم والساقط؛ فحص ولي الأمر صف مستقل لا يدخل أرقام المعلمتين */
+  const tOuts = outs.filter(teacherOutcome); const pOuts = outs.filter(o => o.parent);
+  const gates = tOuts.filter(o => o.step === 'gate'); const fars = tOuts.filter(o => o.step === 'far'); const exams = tOuts.filter(o => o.step === 'exam');
+  const sx = l => { const x = outcomeStats(l); return `${x.n}${x.partial ? ` (منها ${x.partial} لم يُقيَّم كاملاً)` : ''} · سالم ${x.clean} · سقوط ${x.fail}${x.pct != null ? ` · ${x.pct}%` : ''}`; };
   const byType = {}; for (const e of errs) byType[e.etype] = (byType[e.etype] || 0) + 1;
   const memMins = news.filter(n => n.minutes).map(n => n.minutes);
   wrap.append(el('div', { class: 'card' }, el('h3', null, `${CHILDREN[f.child].name} · ${days.length} يوم عمل`),
     el('table', null, el('tbody', null,
       tr('الجديد', `${news.length} ${f.child === 'karim' ? 'مقطع' : 'صفحة'}${memMins.length ? ` · متوسط زمن الحفظ ${Math.round(memMins.reduce((a, b) => a + b, 0) / memMins.length)} د` : ''}`),
-      tr('البوابة', `${gates.length} تسميع · سالم ${gates.filter(g => g.result === 'clean').length} · سقوط ${gates.filter(g => g.result !== 'clean').length}`),
-      tr('البعيد', `${fars.length} صفحة سُمّعت · سالم ${pct(fars)}`),
-      tr('فحص الخميس', exams.length ? `${exams.length} صفحة · أخضر ${pct(exams)}` : '—'),
-      tr('كل التسميعات', `${outs.length} · سالم ${pct(outs)}`),
+      tr('البوابة', gates.length ? sx(gates) : '—'),
+      tr('البعيد', fars.length ? sx(fars) : '—'),
+      tr('فحص الخميس (المعلمة)', exams.length ? sx(exams) : '—'),
+      tr('فحص المنزل (ولي الأمر)', pOuts.length ? sx(pOuts) : '—'),
+      tr('كل تسميعات المعلمتين', tOuts.length ? sx(tOuts) : '—'),
       tr('الأخطاء', `${errs.length}${errs.length ? ' · ' + Object.entries(byType).map(([k, v]) => (ERROR_TYPES.find(t => t.id === k) || {}).name + ' ' + v).join('، ') : ''}`),
       tr('الجلسات المسجلة', `${new Set(evs.filter(e => e.type === 'session_done').map(e => e.key)).size}`),
       tr('القرارات', evs.filter(e => e.type === 'decision').map(e => `${fmtDay(e.day)} ${decisionName(e.kind)}`).join('؛ ') || '—')))));
@@ -69,18 +73,19 @@ Views.reports = function () {
   return wrap;
 };
 function tr(a, b) { return el('tr', null, el('th', null, a), el('td', null, b)); }
-function pct(list) { if (!list.length) return '—'; return Math.round(100 * list.filter(o => o.result === 'clean').length / list.length) + '%'; }
+function pct(list) { const x = outcomeStats(list); return x.pct == null ? '—' : x.pct + '%'; }
 
 /* ===== الإعدادات ===== */
 Views.settings = function () {
   const wrap = el('div'); const s = Store.settings;
   const due = BackupReminder(); if (due) wrap.append(due);
   wrap.append(el('div', { class: 'card' }, el('h2', null, 'الحساب'), el('p', null, `الدخول الحالي: ${App.role.title}`), el('button', { class: 'ghost', onclick: () => App.logout() }, 'خروج')));
-  if (App.role.id === 'aya' || App.role.id === 'parent') {
+  if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الجرد الأولي'), el('p', { class: 'small muted' }, 'تنفذه آية من حسابها بعد تسميع المحفوظ الحالي (وضع الصفحات في البعيد وألوانها من صلاحيتها وحدها). يظهر هنا أثره بعد المزامنة.')));
+  if (App.role.id === 'aya') {
     const inv = el('div', { class: 'card' }, el('h2', null, 'الجرد الأولي'), el('p', { class: 'small muted' }, 'يُنفَّذ مرة واحدة بعد تسميع المحفوظ الحالي. يضع الصفحات في البعيد؛ ثم تُعدَّل ألوان صفحات مفردة من خريطة المصحف.'),
       el('div', { class: 'btns' },
-        el('button', { onclick: () => UI.confirm('وضع جزءي عمّ وتبارك (562–604) في البعيد لدلال وفرح باللون الأخضر؟', () => { for (const c of ['dalal', 'farah']) for (let p = 562; p <= 604; p++) Store.add({ type: 'layer', child: c, page: p, layer: 'far', color: 'green' }); UI.toast('تم'); UI.rerender(); }) }, 'دلال وفرح: عمّ وتبارك'),
-        el('button', { onclick: () => UI.prompt('كريم: من أي صفحة إلى 604 في البعيد؟ (نصف جزء عمّ ≈ من 595)', 'رقم الصفحة', v => { const n = Number(v); if (!(n >= 562 && n <= 604)) return; for (let p = n; p <= 604; p++) Store.add({ type: 'layer', child: 'karim', page: p, layer: 'far', color: 'green' }); UI.toast('تم'); UI.rerender(); }, '595') }, 'كريم: نصف عمّ')));
+        el('button', { onclick: () => UI.confirm('وضع جزءي عمّ وتبارك (562–604) في البعيد لدلال وفرح باللون الأخضر؟', () => { for (const c of ['dalal', 'farah']) for (let p = 562; p <= 604; p++) Store.add({ type: 'layer', child: c, page: p, layer: 'far', color: 'green' }); UI.savedToast('تم'); UI.rerender(); }) }, 'دلال وفرح: عمّ وتبارك'),
+        el('button', { onclick: () => UI.prompt('كريم: من أي صفحة إلى 604 في البعيد؟ (نصف جزء عمّ ≈ من 595)', 'رقم الصفحة', v => { const n = Number(v); if (!(Number.isInteger(n) && n >= 562 && n <= 604)) { UI.toast('رقم صفحة صحيح بين 562 و604'); return false; } for (let p = n; p <= 604; p++) Store.add({ type: 'layer', child: 'karim', page: p, layer: 'far', color: 'green' }); UI.savedToast('تم'); UI.rerender(); }, '595') }, 'كريم: نصف عمّ')));
     wrap.append(inv);
   }
   if (App.role.id === 'aya' || App.role.id === 'parent') {
@@ -91,6 +96,7 @@ Views.settings = function () {
   // الخادم والمرفوضات
   wrap.append(ServerCard());
   const rejCard = RejectedCard(); if (rejCard) wrap.append(rejCard);
+  const cfCard = ConflictsCard(); if (cfCard) wrap.append(cfCard);
   // التنبيهات والتقويم
   if (App.role.id !== 'parent') {
     const chk = el('input', { type: 'checkbox' }); chk.checked = Alarms.on();

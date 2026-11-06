@@ -29,7 +29,7 @@ jobs:
         run: python3 build.py && test -s dist/index.html && grep -q 'const BUILD = ' dist/index.html
       - name: تثبيت Playwright
         run: pip install playwright && python3 -m playwright install --with-deps chromium
-      - name: سياسات الخادم على PostgreSQL حقيقي (33 حالة قبول/رفض)
+      - name: سياسات الخادم على PostgreSQL حقيقي (قبول/رفض + قراءة)
         env: { PGHOST: localhost, PGUSER: postgres, PGPASSWORD: postgres, PGDATABASE: postgres }
         run: bash tests/sql_policy_test.sh
       - name: تطابق الصلاحيات بين البرنامج والخادم (كل الأنواع × الأدوار + التراجعات)
@@ -42,6 +42,10 @@ jobs:
         run: python3 test_smoke.py
       - name: اختبارات الفشل (IndexedDB حقيقي، حقن أعطال التخزين والشبكة)
         run: python3 tests/audit_failures.py
+      - name: انحدار المراجعة المستقلة 0.12.1 (R2-01..R2-14)
+        run: python3 tests/audit_r2.py
+      - name: مسح كل الأزرار في كل الشاشات والأدوار
+        run: python3 tests/crawl.py
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: dist-and-shots, path: "dist/index.html\nshots/" }

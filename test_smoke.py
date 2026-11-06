@@ -79,6 +79,7 @@ async def main():
         await page.click('text=الباقي مستقل')
         await page.wait_for_timeout(200)
         await page.click('text=تسجيل خطأ · دلال')
+        await page.fill('.modal input[placeholder="الصفحة"]', '542')
         await page.fill('input[placeholder="رقم الآية"]', '2')
         await page.click('text=انتقال إلى موضع مشابه')
         await page.fill('input[placeholder="رقم السورة"]', '79'); await page.fill('input[placeholder="الآية"]', '2')
@@ -318,14 +319,14 @@ async def asserts():
         r = await page.evaluate("""(async()=>{ Store.reset(); Sync.switchTo('https://x.invalid','k'); Sync.st().needReconcile=false; Sync.st().reconciledAt=Date.now(); Sync.st().rejected=[]; Store.settings.sbSession={sid:Sync.sid(),access_token:'t',refresh_token:'r',expires_at:Date.now()+3600e3}; Store.settings.sbRole='asst'; Store.saveSettings(); App.setRole('asst');
             const a=Store.add({type:'note',child:'dalal',text:'n1'}); const b=Store.add({type:'note',child:'dalal',text:'n2'}); const u=Store.add({type:'undo',target:a.id,child:'dalal'});
             const other=Store.add({type:'note',child:'dalal',text:'n-aya',by:'aya'}); /* سجل دور آخر لا يُرفع بتوكن المساعدة */
-            const posts=[]; const of=window.fetch; window.fetch=async(url,o)=>{ const s=String(url); if(o&&o.method==='POST'&&s.includes('/events?on_conflict')){ const rows=JSON.parse(o.body); posts.push(rows.map(x=>x.type)); if(rows.some(x=>x.id===b.id)) return {ok:false,status:403,json:async()=>({message:'policy'})}; return {ok:true,status:201,json:async()=>({})}; } if(s.includes('/events?select=id')) return {ok:true,json:async()=>[]}; return {ok:true,json:async()=>({})}; };
+            const posts=[]; const of=window.fetch; window.fetch=async(url,o)=>{ const s=String(url); if(o&&o.method==='POST'&&s.includes('/events?on_conflict')){ const rows=JSON.parse(o.body); posts.push(rows.map(x=>x.type)); if(rows.some(x=>x.id===b.id)) return {ok:false,status:403,json:async()=>({message:'policy'})}; return {ok:true,status:201,json:async()=>rows.map(x=>({id:x.id}))}; } if(s.includes('/events?select=id')) return {ok:true,json:async()=>[]}; return {ok:true,json:async()=>({})}; };
             Sync.refresh=async()=>true; await Sync.run(); window.fetch=of;
             return { posts, aSynced: hasIn(a.sv,Sync.sid()), bRej: hasIn(b.rj,Sync.sid()), uSynced: hasIn(u.sv,Sync.sid()), otherSynced: hasIn(other.sv,Sync.sid()), rej:Sync.st().rejected.map(x=>x.id), err: Sync.lastError }; })()""")
         assert r['posts'][0] == ['note','note'] and r['posts'][-1] == ['undo'] and r['aSynced'] and r['bRej'] and r['uSynced'] and r['otherSynced'] is False and r['rej'] == [await page.evaluate("Store.raw.find(e=>hasIn(e.rj,Sync.sid())).id")], r
         # (LM093-01) رفض دفعة ثم 503 أثناء الفحص الفردي: السجل يبقى منتظراً، ويُرفع تلقائياً بعد التعافي
         r = await page.evaluate("""(async()=>{ Store.reset(); Sync.switchTo('https://x.invalid','k'); Sync.st().needReconcile=false; Sync.st().reconciledAt=Date.now(); Sync.st().rejected=[]; Store.settings.sbSession={sid:Sync.sid(),access_token:'t',refresh_token:'r',expires_at:Date.now()+3600e3}; Store.settings.sbRole='asst'; Store.saveSettings(); App.setRole('asst');
             const a=Store.add({type:'note',child:'dalal',text:'n1'}); const b=Store.add({type:'note',child:'dalal',text:'n2'});
-            let down=true; const of=window.fetch; window.fetch=async(url,o)=>{ const s=String(url); if(o&&o.method==='POST'&&s.includes('/events?on_conflict')){ const rows=JSON.parse(o.body); if(rows.length>1) return {ok:false,status:403,json:async()=>({})}; if(down && rows[0].id===b.id) return {ok:false,status:503,json:async()=>({})}; return {ok:true,status:201,json:async()=>({})}; } if(s.includes('/events?select=id')) return {ok:true,json:async()=>[]}; return {ok:true,json:async()=>({})}; };
+            let down=true; const of=window.fetch; window.fetch=async(url,o)=>{ const s=String(url); if(o&&o.method==='POST'&&s.includes('/events?on_conflict')){ const rows=JSON.parse(o.body); if(rows.length>1) return {ok:false,status:403,json:async()=>({})}; if(down && rows[0].id===b.id) return {ok:false,status:503,json:async()=>({})}; return {ok:true,status:201,json:async()=>rows.map(x=>({id:x.id}))}; } if(s.includes('/events?select=id')) return {ok:true,json:async()=>[]}; return {ok:true,json:async()=>({})}; };
             Sync.refresh=async()=>true; await Sync.run(); const mid={aS:hasIn(a.sv,Sync.sid()),bS:hasIn(b.sv,Sync.sid()),rej:Sync.st().rejected.length,err:Sync.lastError};
             down=false; await Sync.run(); window.fetch=of;
             return { mid, after:{aS:hasIn(a.sv,Sync.sid()),bS:hasIn(b.sv,Sync.sid()),rej:Sync.st().rejected.length,err:Sync.lastError} }; })()""")

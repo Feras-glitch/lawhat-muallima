@@ -8,10 +8,17 @@ const App = {
   can(perm) { return !!(this.role && this.role[perm]); },
 };
 
+/* كل فعل من أفعال الواجهة: خطأ متزامن أو وعد مرفوض يظهر رسالةً ويُسجَّل في UI.errors، ولا يبقى خطأً غير معالج */
+function guardHandler(fn) {
+  return function (ev) {
+    const fail = err => { const msg = (err && err.message) || String(err); try { UI.errors.push(msg); console.error(err); if (!/^سجل غير صالح|^لا يُسمح لحساب/.test(msg)) UI.toast('تعذّر تنفيذ الإجراء: ' + msg); } catch (x) {} };
+    try { const r = fn.call(this, ev); if (r && typeof r.then === 'function') r.catch(fail); return r; } catch (err) { fail(err); }
+  };
+}
 const el = (tag, attrs, ...children) => {
   const n = document.createElement(tag);
   if (attrs) for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') n.className = v; else if (k === 'html') n.innerHTML = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else if (v !== null && v !== undefined) n.setAttribute(k, v);
+    if (k === 'class') n.className = v; else if (k === 'html') n.innerHTML = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), guardHandler(v)); else if (v !== null && v !== undefined) n.setAttribute(k, v);
   }
   for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
   return n;
@@ -19,7 +26,7 @@ const el = (tag, attrs, ...children) => {
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 const UI = {
-  root: null,
+  root: null, errors: [],
   init() {
     this.root = document.getElementById('app');
     const saved = sessionStorage.getItem(LS_SESSION);
@@ -28,16 +35,43 @@ const UI = {
     this.rerender();
     setInterval(() => { const ae = document.activeElement; const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT'); if (App.view === 'now' && App.role && !document.querySelector('.modal-bg') && !typing) this.rerender(true); }, 30000);
     setInterval(() => Alarms.tick(), 15000);
-    window.addEventListener('beforeunload', e => { if (Store.idbOk && Store.dirty.size) { e.preventDefault(); e.returnValue = ''; } });
+    /* مغادرة وفي الذاكرة ما لم يثبت (معلّق أو دفعة جارية): تحذير، ونسخة طوارئ متزامنة تُدمج عند الفتح التالي */
+    window.addEventListener('beforeunload', e => { if (Store.idbOk && !Store.saved()) { Store.emergencySave(); e.preventDefault(); e.returnValue = ''; } });
+    window.addEventListener('pagehide', () => { Store.emergencySave(); });
     document.addEventListener('click', () => Alarms.unlock(), { once: true });
+  },
+  /* مسودات الحقول (LM0121-R2-13): ما كُتب ولم يُحفظ يبقى عبر أي إعادة رسم (مزامنة، تحديث دوري، حفظ في مكان آخر)
+     ما دام الحقل نفسه في الشاشة نفسها وقيمته المخزنة لم تتغير. الحفظ أو الإلغاء الصريح وحده يحسم المسودة */
+  draftKey(n, i) { return [App.view, App.role && App.role.id, n.tagName, n.type || '', n.getAttribute('placeholder') || '', n.getAttribute('name') || '', i].join('|'); },
+  collectDrafts() {
+    const out = new Map(); const seen = {};
+    for (const n of this.root.querySelectorAll('input:not([type=file]), textarea')) {
+      const sig = this.draftKey(n, ''); const i = seen[sig] = (seen[sig] || 0) + 1;
+      const isBox = n.type === 'checkbox' || n.type === 'radio';
+      const dirty = isBox ? n.checked !== n.defaultChecked : n.value !== n.defaultValue;
+      if (dirty || n === document.activeElement) out.set(this.draftKey(n, i), { value: n.value, checked: n.checked, def: isBox ? n.defaultChecked : n.defaultValue, dirty, focus: n === document.activeElement, sel: (() => { try { return [n.selectionStart, n.selectionEnd]; } catch (e) { return null; } })() });
+    }
+    return out;
+  },
+  restoreDrafts(drafts) {
+    if (!drafts.size) return; const seen = {};
+    for (const n of this.root.querySelectorAll('input:not([type=file]), textarea')) {
+      const sig = this.draftKey(n, ''); const i = seen[sig] = (seen[sig] || 0) + 1;
+      const d = drafts.get(this.draftKey(n, i)); if (!d) continue;
+      const isBox = n.type === 'checkbox' || n.type === 'radio';
+      if (d.dirty && (isBox ? n.defaultChecked : n.defaultValue) === d.def) { if (isBox) n.checked = d.checked; else n.value = d.value; }
+      if (d.focus) { n.focus({ preventScroll: true }); if (d.sel) try { n.setSelectionRange(d.sel[0], d.sel[1]); } catch (e) {} }
+    }
   },
   rerender(soft) {
     if (!App.role) { this.root.innerHTML = ''; this.root.append(Views.login()); return; }
     const scroll = window.scrollY;
+    const drafts = this.collectDrafts();
     this.root.innerHTML = '';
     let main; try { main = el('main', null, (Views[App.view] || Views.now)()); }
     catch (err) { console.error(err); main = el('main', null, el('div', { class: 'card' }, el('h2', null, 'تعذّر عرض هذه الشاشة'), el('p', { class: 'small' }, 'سجل تالف وصل بالمزامنة أو خطأ في البرنامج: ', String(err && err.message || err)), el('div', { class: 'btns' }, el('button', { onclick: () => { App.view = 'settings'; UI.rerender(); } }, 'الإعدادات (تصدير البيانات)'), el('button', { class: 'ghost', onclick: () => { App.view = 'now'; UI.rerender(); } }, 'الآن')))); }
     this.root.append(this.header(), main, this.nav());
+    this.restoreDrafts(drafts);
     if (soft) window.scrollTo(0, scroll);
   },
   header() {
@@ -50,8 +84,9 @@ const UI = {
   statusInner() {
     const m = Alarms.muted() && Alarms.on() ? ' · 🔇 الأصوات مكتومة أثناء الجلسة' : '';
     if (Store.storageError) return [el('span', { class: 'dot bad' }), Store.storageError + m];
-    if (Store.idbOk && Store.dirty.size) return [el('span', { class: 'dot off' }), `جارٍ الحفظ… (${Store.dirty.size})` + m];
+    if (Store.idbOk && Store.pendingCount()) return [el('span', { class: 'dot off' }), `جارٍ الحفظ… (${Store.pendingCount()})` + m];
     if (!Store.idbOk) { const used = (localStorage.getItem('lm_events_v1') || '').length / 1048576; if (used > 2.5) return [el('span', { class: 'dot bad' }), `تخزين محدود (${used.toFixed(1)} من 5 م.ب) — افتحي البرنامج من الرابط لا من الملف` + m]; }
+    const cfN = Store.openConflicts().length; if (cfN) return [el('span', { class: 'dot bad' }), `${cfN} تعارض بين نسختين لسجل واحد — الإعدادات ← التعارضات` + m];
     const st = Sync.st(); const rejN = st ? st.rejected.length : 0; if (rejN) return [el('span', { class: 'dot bad' }), `${rejN} سجل مرفوض من المزامنة — الإعدادات` + m];
     if (Store.settings.localMode && Store.settings.sbUrl) return [el('span', { class: 'dot off' }), 'وضع محلي — المزامنة متوقفة (الإعدادات ← الخادم ← العودة للاتصال)' + m];
     if (!Sync.cfg()) return [el('span', { class: 'dot' }), 'حُفظ على الجهاز' + m];
@@ -78,7 +113,7 @@ const UI = {
   },
   toast(msg) { const t = el('div', { class: 'toast' }, msg); document.body.append(t); setTimeout(() => t.remove(), 2200); },
   /* بديل prompt() الأصلي: نافذة داخلية؛ cb(text) أو null عند الإلغاء */
-  prompt(title, placeholder, cb, initial) { const t = el('input', { placeholder: placeholder || '', value: initial || '' }); const bg = this.modal(title, el('div', null, t), [el('button', { class: 'primary', onclick: () => { const v = t.value.trim(); if (!v) { this.toast('اكتبي السبب'); return; } bg.remove(); cb(v); } }, 'حفظ'), el('button', { class: 'ghost', onclick: () => { bg.remove(); cb(null); } }, 'إلغاء')]); setTimeout(() => t.focus(), 50); t.addEventListener('keydown', e => { if (e.key === 'Enter') { const v = t.value.trim(); if (v) { bg.remove(); cb(v); } } }); return bg; },
+  prompt(title, placeholder, cb, initial) { const t = el('input', { placeholder: placeholder || '', value: initial || '' }); const bg = this.modal(title, el('div', null, t), [el('button', { class: 'primary', onclick: () => { const v = t.value.trim(); if (!v) { this.toast('اكتبي ' + (placeholder || 'القيمة')); return; } if (cb(v) === false) return; bg.remove(); } }, 'حفظ'), el('button', { class: 'ghost', onclick: () => { bg.remove(); cb(null); } }, 'إلغاء')]); setTimeout(() => t.focus(), 50); t.addEventListener('keydown', e => { if (e.key === 'Enter') { const v = t.value.trim(); if (v) { bg.remove(); cb(v); } } }); return bg; },
   confirm(msg, cb) { const bg = this.modal('تأكيد', el('p', null, msg), [el('button', { class: 'primary', onclick: () => { bg.remove(); cb(); } }, 'نعم'), el('button', { class: 'ghost', onclick: () => bg.remove() }, 'لا')]); },
 };
 
@@ -146,3 +181,8 @@ Views.login = function () {
   return wrap;
 };
 function label(t) { return el('label', null, t); }
+/* نسخ نص: «نُسخت» فقط إن نجح النسخ فعلاً؛ وإلا نافذة بالنص محدداً للنسخ اليدوي (المتصفح قد يمنع الحافظة) */
+async function copyText(text) {
+  try { if (!navigator.clipboard) throw new Error('no clipboard'); await navigator.clipboard.writeText(text); UI.toast('نُسخت'); }
+  catch (e) { const t = el('textarea', { style: 'min-height:200px' }, text); UI.modal('انسخي النص', el('div', null, el('p', { class: 'small muted' }, 'منع المتصفح النسخ التلقائي: النص محدد، انسخيه يدوياً.'), t)); t.focus(); t.select(); }
+}

@@ -85,6 +85,21 @@ set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a4'; set role aut
 select t_deny('حساب بلا دور: ملاحظة', ev('nop-note', 'aya', 'note', 'dalal', '{"text":"x"}'));
 reset role;
 
+-- ===== القراءة (LM0121-R2-01): الأدوار الثلاثة تقرأ؛ حساب بلا دور لا يقرأ؛ سحب الدور يمنع القراءة بالجلسة نفسها =====
+create or replace function public.t_reads(label text, want int) returns void language plpgsql as $$
+declare n int; begin select count(*) into n from public.events;
+  if n <> want then raise exception 'FAIL: %: قرأ % صفاً بدل %', label, n, want; end if;
+  raise notice 'PASS (قراءة % صفاً): %', n, label; end $$;
+grant execute on function public.t_reads(text, int) to authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a1'; set role authenticated; select t_reads('آية تقرأ كل السجلات', 11); reset role;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a2'; set role authenticated; select t_reads('المساعدة تقرأ كل السجلات', 11); reset role;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a3'; set role authenticated; select t_reads('ولي الأمر يقرأ كل السجلات', 11); reset role;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a4'; set role authenticated; select t_reads('حساب مصادَق بلا دور لا يقرأ شيئاً', 0); reset role;
+delete from public.profiles where user_id = '00000000-0000-0000-0000-0000000000a3';
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a3'; set role authenticated; select t_reads('سُحب دور ولي الأمر: لا قراءة بالجلسة نفسها', 0); reset role;
+insert into public.profiles values ('00000000-0000-0000-0000-0000000000a3', 'parent');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a3'; set role authenticated; select t_reads('أُعيد الدور: تعود القراءة', 11); reset role;
+
 -- ===== السجل النهائي كما يتوقعه الاختبار =====
 do $$ declare n int; begin
   select count(*) into n from public.events; 

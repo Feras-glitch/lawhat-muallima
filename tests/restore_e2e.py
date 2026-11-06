@@ -328,6 +328,44 @@ async def main():
         r = await a2.evaluate("(async () => ({ cfg: Sync.cfg(), r: await T.sync() }))()")
         ok('C7 رابط غير مقبول وُضع يدوياً: لا مزامنة إطلاقاً', r['cfg'] is None and not [x for x in shim.log if x['db'] == 'srv_z'], {'cfg': r['cfg'], 'log': shim.log[-3:]})
 
+        # ================= C8 (LM0121-R2-04) تعارض محتوى معرّف واحد مع الخادم =================
+        pg.create_server('srv_cf')
+        d1, d2, d3 = await device('cf1'), await device('cf2'), await device('cf3')
+        for d in (d1, d2, d3):
+            await connect(d, 'srv_cf'); await login(d, 'aya')
+        await add(d1, {'id': 'X', 'type': 'note', 'child': 'dalal', 'text': 'نسخة الخادم'})
+        await add(d1, {'id': 'Y', 'type': 'note', 'child': 'dalal', 'text': 'ي على الخادم'})
+        await sync(d1)
+        xv = await d1.evaluate("Store.clean(Store.raw.find(e => e.id === 'X'))")
+        # الرفع: جهاز يحمل X بمحتوى آخر لم يُرفع بعد
+        await d2.evaluate(f"Store.importEvents([Object.assign({json.dumps(xv, ensure_ascii=False)}, {{ text: 'نسخة الجهاز' }})], {{ source: 'file' }})")
+        r = await sync(d2)
+        srv = pg.psql('srv_cf', "select payload->>'text' from public.events where id = 'X';")[1].strip()
+        st = await d2.evaluate("({ sv: (Store.raw.find(e => e.id === 'X').sv || []).length, cf: (Store.raw.find(e => e.id === 'X').cf || []).length, conflicts: Store.openConflicts().length, status: UI.statusInner().map(n => typeof n === 'string' ? n : n.textContent).join('') })")
+        ok('C8 الرفع: المعرّف موجود بمحتوى آخر = تعارض معلن، لا «على الخادم»، والخادم لم يتغير، والتقرير لا يكتمل',
+           srv == 'نسخة الخادم' and st['sv'] == 0 and st['cf'] == 1 and st['conflicts'] == 1 and 'تعارض' in st['status'] and r['report']['conflicts'] == 1 and r['report']['complete'] is False, {'srv': srv, **st, 'report': r['report']})
+        r2 = await sync(d2)
+        posts = [x for x in shim.log if x['db'] == 'srv_cf' and x['method'] == 'POST' and x['token'].startswith('srv_cf|')]
+        n_before = len(posts)
+        await sync(d2)
+        posts2 = [x for x in shim.log if x['db'] == 'srv_cf' and x['method'] == 'POST' and x['token'].startswith('srv_cf|')]
+        ok('C8 المتعارض لا يُعاد رفعه في كل جولة', len(posts2) == n_before, {'before': n_before, 'after': len(posts2)})
+        await d2.evaluate("""(() => { App.view = 'settings'; UI.rerender(); [...document.querySelectorAll('button')].find(b => b.textContent === 'اعتماد نسخة الخادم').click(); [...document.querySelectorAll('.modal button')].find(b => b.textContent === 'نعم').click(); })()""")
+        r = await sync(d2)
+        st = await d2.evaluate("({ text: Store.raw.find(e => e.id === 'X').text, on: (Store.raw.find(e => e.id === 'X').sv || []).length, open: Store.openConflicts().length })")
+        ok('C8 الحسم الصريح باعتماد نسخة الخادم: تُستبدل النسخة المحلية وتُوثَّق، ثم تكتمل المطابقة', st == {'text': 'نسخة الخادم', 'on': 1, 'open': 0} and r['report']['complete'] is True, {**st, 'report': r['report']})
+        # السحب/المطابقة: Y مستورد من ملف بمحتوى آخر ولم يُتحقق منه
+        yv = await d1.evaluate("Store.clean(Store.raw.find(e => e.id === 'Y'))")
+        await d3.evaluate(f"Store.importEvents([Object.assign({json.dumps(yv, ensure_ascii=False)}, {{ text: 'ي مختلفة' }})], {{ source: 'file' }}); Sync.st().needReconcile = true;")
+        r = await sync(d3)
+        st = await d3.evaluate("({ on: (Store.raw.find(e => e.id === 'Y').sv || []).length, conflicts: Store.openConflicts().map(x => x.id) })")
+        ok('C8 المطابقة لا تعلّم «على الخادم» بالمعرّف وحده: Y يُقارن عند السحب ويُعلن تعارضاً', st == {'on': 0, 'conflicts': ['Y']} and r['report']['conflicts'] == 1 and r['report']['complete'] is False, {**st, 'report': r['report']})
+        # SQL الاستعادة: موجود بمحتوى مختلف = conflict، لا exists
+        sql = await d3.evaluate("ServerRestore.sql(ServerRestore.parts()[0], 1, 1)")
+        out = pg.psql('srv_cf', sql)[1]
+        srv = pg.psql('srv_cf', "select payload->>'text' from public.events where id = 'Y';")[1].strip()
+        ok('C8 الاستعادة الإدارية: المعرّف الموجود بمحتوى مختلف = conflict بسببه، والخادم لم يتغير', 'conflict|1|Y — المعرّف موجود على الخادم بمحتوى مختلف' in out and srv == 'ي على الخادم', out.strip())
+
         assert not errors, errors
         await b.close()
     shim.close(); pg.close()

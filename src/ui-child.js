@@ -39,12 +39,14 @@ function ChildSummary(c) {
 
 function decisionModal(c, kind) {
   const t = el('textarea', { placeholder: 'السبب بإيجاز' });
-  const bg = UI.modal(decisionName(kind), el('div', null, el('p', { class: 'muted small' }, `${CHILDREN[c].name}`), t), [el('button', { class: 'primary', onclick: () => { Store.add({ type: 'decision', child: c, kind, text: t.value.trim() }); bg.remove(); UI.toast('سُجّل القرار'); UI.rerender(); } }, 'تسجيل')]);
+  const bg = UI.modal(decisionName(kind), el('div', null, el('p', { class: 'muted small' }, `${CHILDREN[c].name}`), t), [el('button', { class: 'primary', onclick: () => { Store.add({ type: 'decision', child: c, kind, text: t.value.trim() }); bg.remove(); UI.savedToast('سُجّل القرار'); UI.rerender(); } }, 'تسجيل')]);
 }
 function juzPassModal(c) {
   const d = deriveChild(c);
   if (c === 'karim') {
-    const surahs = [...new Set(d.near.flatMap(p => surahsOfPage(p)))];
+    const passed = new Set(Store.events.filter(e => e.type === 'surah_passed' && e.child === c).map(e => e.surah));
+    const surahs = [...new Set(d.near.flatMap(p => surahsOfPage(p)))].filter(s => !passed.has(s));
+    if (!surahs.length) { UI.toast('لا سورة في القريب تنتظر الاعتماد'); return; }
     const sel = el('select', null, surahs.map(s => el('option', { value: s }, SURAH_NAMES[s - 1])));
     const bg = UI.modal('اعتماد سورة', el('div', null, el('p', { class: 'small muted' }, 'تُعتمد السورة بعد تسميعها خضراء مرتين في يومين متباعدين. تنتقل الصفحة إلى البعيد حين تُعتمد كل السور التي فيها.'), sel), [el('button', { class: 'primary', onclick: () => { const s = Number(sel.value); Store.add({ type: 'surah_passed', child: c, surah: s }); Store.add({ type: 'decision', child: c, kind: 'surah', text: SURAH_NAMES[s - 1] }); bg.remove(); UI.rerender(); } }, 'اعتماد')]);
     return;
@@ -66,7 +68,7 @@ function juzPassModal(c) {
   const bg = UI.modal('إجازة جزء', el('div', null, el('p', { class: 'small' }, 'يُجاز الجزء بعد تسميعه كاملاً لآية يوم الخميس بلا تلقين، فتنتقل صفحاته إلى البعيد.'), sel,
       label('الاستناد إلى اختبار إجازة سابق'), basis,
       label('أو تسجيل اختبار جديد الآن'), el('div', { class: 'row' }, exRes, exPrompts), exNote),
-    [el('button', { class: 'ghost', onclick: () => { const ex = newExam(); if (!ex) { if (ex === null) UI.toast('اختاري نتيجة الاختبار'); return; } Store.add(ex); UI.toast('سُجّل الاختبار دون إجازة'); bg.remove(); UI.rerender(); } }, 'تسجيل الاختبار فقط'),
+    [el('button', { class: 'ghost', onclick: () => { const ex = newExam(); if (!ex) { if (ex === null) UI.toast('اختاري نتيجة الاختبار'); return; } Store.add(ex); UI.savedToast('سُجّل الاختبار دون إجازة'); bg.remove(); UI.rerender(); } }, 'تسجيل الاختبار فقط'),
      el('button', { class: 'primary', onclick: () => { const juz = Number(sel.value);
       const ex = newExam(); if (ex === false) return;
       let basisEv = null, exId;
@@ -111,7 +113,7 @@ function pageModal(c, p) {
   if (App.can('canColor')) {
     const layerSel = el('select', null, [['none', 'لم تُحفظ'], ['near', 'القريب'], ['far', 'البعيد']].map(([v, n]) => el('option', { value: v }, n))); layerSel.value = pg.layer === 'new' ? 'near' : pg.layer;
     const colSel = el('select', null, [['', 'بلا لون'], ['green', 'أخضر'], ['yellow', 'أصفر'], ['red', 'أحمر']].map(([v, n]) => el('option', { value: v }, n))); colSel.value = pg.color || '';
-    body.append(el('details', null, el('summary', null, 'تعديل الطبقة أو اللون (الجرد الأولي)'), el('div', { class: 'row' }, layerSel, colSel, el('button', { onclick: () => { Store.add({ type: 'layer', child: c, page: p, layer: layerSel.value, color: colSel.value || null }); UI.toast('حُفظ'); bg.remove(); UI.rerender(); } }, 'حفظ'))));
+    body.append(el('details', null, el('summary', null, 'تعديل الطبقة أو اللون (الجرد الأولي)'), el('div', { class: 'row' }, layerSel, colSel, el('button', { onclick: () => { Store.add({ type: 'layer', child: c, page: p, layer: layerSel.value, color: colSel.value || null }); UI.savedToast('حُفظ'); bg.remove(); UI.rerender(); } }, 'حفظ'))));
   }
   const tbl = el('table', null, el('tbody', null, evs.slice(0, 40).map(e => el('tr', null, el('td', { style: 'white-space:nowrap' }, fmtDay(e.day)), el('td', null, eventText(e)), el('td', { class: 'muted small' }, ROLES[e.by] ? ROLES[e.by].name : e.by)))));
   body.append(evs.length ? tbl : el('p', { class: 'muted' }, 'لا أحداث لهذه الصفحة.'));
@@ -161,12 +163,12 @@ function CardsView(c) {
   const cards = Object.values(cardsFor(c)).sort((a, b) => (a.page || 0) - (b.page || 0));
   const d = deriveChild(c);
   return el('div', { class: 'card' }, el('h2', null, 'البطاقات'), App.can('canDecide') && d.nextNew ? el('button', { onclick: () => cardModal(c, d.nextNew) }, `بطاقة الغد: ${pageLabel(d.nextNew)}`) : null,
-    cards.length ? cards.map(cd => el('details', null, el('summary', null, cd.kind === 'surah' ? 'سورة ' + SURAH_NAMES[Number(cd.key.slice(1)) - 1] : pageLabel(cd.page)), el('div', { class: 'small', html: cardHtml(cd) }), App.can('canDecide') ? el('button', { class: 'ghost small', onclick: () => cardModal(c, cd.page) }, 'تعديل') : null)) : el('p', { class: 'muted' }, 'لا بطاقات بعد.'));
+    cards.length ? cards.map(cd => el('details', null, el('summary', null, cd.kind === 'surah' ? 'سورة ' + SURAH_NAMES[Number(cd.key.slice(1)) - 1] : pageLabel(cd.page)), el('div', { class: 'small', html: cardHtml(cd) }), App.can('canDecide') ? el('button', { class: 'ghost small', onclick: () => cardModal(c, cd.page, cd.kind === 'surah' ? Number(cd.key.slice(1)) : undefined) }, 'تعديل') : null)) : el('p', { class: 'muted' }, 'لا بطاقات بعد.'));
 }
 function HistoryView(c) {
   const days = {}; for (const e of Store.events.filter(e => e.child === c)) (days[e.day] = days[e.day] || []).push(e);
   const keys = Object.keys(days).sort().reverse().slice(0, 30);
-  return el('div', { class: 'card' }, el('h2', null, 'آخر 30 يوماً'), keys.length ? keys.map(k => { const evs = days[k]; const news = evs.filter(e => e.type === 'new_page').map(e => e.page); const outs = evs.filter(e => e.type === 'outcome'); const errs = evs.filter(e => e.type === 'error').length; return el('div', { class: 'ayahrow' }, el('span', null, fmtDay(k)), el('span', { class: 'small muted' }, `جديد: ${news.join('،') || '—'} · تسميعات: ${outs.length} · أخطاء: ${errs} · أخضر: ${outs.filter(o => o.result === 'clean').length}`)); }) : el('p', { class: 'muted' }, 'لا سجل بعد.'));
+  return el('div', { class: 'card' }, el('h2', null, 'آخر 30 يوماً'), keys.length ? keys.map(k => { const evs = days[k]; const news = evs.filter(e => e.type === 'new_page').map(e => e.page); const st = outcomeStats(effectiveOutcomes(e => e.child === c && e.day === k && teacherOutcome(e))); const pex = effectiveOutcomes(e => e.child === c && e.day === k && e.parent).length; const errs = evs.filter(e => e.type === 'error').length; return el('div', { class: 'ayahrow' }, el('span', null, fmtDay(k)), el('span', { class: 'small muted' }, `جديد: ${news.join('،') || '—'} · تسميعات: ${st.n} · سالم ${st.clean} · سقوط ${st.fail}${st.partial ? ` · غير مكتمل ${st.partial}` : ''} · أخطاء: ${errs}${pex ? ` · فحص المنزل ${pex}` : ''}`)); }) : el('p', { class: 'muted' }, 'لا سجل بعد.'));
 }
 
 /* ===== السجلات والبحث ===== */
@@ -204,7 +206,7 @@ Views.thursday = function () {
       mut.length ? el('details', null, el('summary', null, 'قائمة المتشابهات للمجلس'), MutashabihBox(c)) : null,
       y.active.length ? el('details', null, el('summary', null, 'الصفراء للكتابة والتصفية'), y.active.map(it => el('div', { class: 'small' }, `• ${SURAH_NAMES[it.surah - 1]} ${it.ayah} (ص${it.page})${it.target ? ' ← ' + SURAH_NAMES[it.target.surah - 1] + ' ' + (it.target.ayah || '') : ''}`))) : null));
   }
-  wrap.append(el('div', { class: 'card' }, el('h3', null, 'خلاصة الأسبوع'), el('pre', { style: 'direction:rtl;text-align:right' }, weeklySummaryText()), el('button', { onclick: () => { navigator.clipboard && navigator.clipboard.writeText(weeklySummaryText()); UI.toast('نُسخت'); } }, 'نسخ الخلاصة')));
+  wrap.append(el('div', { class: 'card' }, el('h3', null, 'خلاصة الأسبوع'), el('pre', { style: 'direction:rtl;text-align:right' }, weeklySummaryText()), el('button', { onclick: () => copyText(weeklySummaryText()) }, 'نسخ الخلاصة')));
   return wrap;
 };
 
@@ -218,8 +220,9 @@ function weeklySummaryText() {
     const decisions = evs.filter(e => e.type === 'decision').map(e => decisionName(e.kind));
     lines.push(`\n${CHILDREN[c].name} — ${lightText(h)}`);
     lines.push(`• الجديد: ${news.length} ${c === 'karim' ? 'مقطع' : 'صفحة'} (${news.join('، ') || '—'})`);
-    lines.push(`• التسميعات: ${outs.length}، منها سالم ${outs.filter(o => o.result === 'clean').length} · الأخطاء المسجلة: ${errs.length}`);
-    lines.push(`• البوابة: ${h.gateN} تسميع، سقط ${h.gateFails} · آخر فحص خميس: ${h.examGreen == null ? 'لم يُفحص' : `${h.examClean}/${h.examN} أخضر`}`);
+    const os = outcomeStats(outs.filter(teacherOutcome)); const pex = outcomeStats(outs.filter(o => o.parent));
+    lines.push(`• التسميعات: ${os.n}، سالم ${os.clean} · سقوط ${os.fail}${os.partial ? ` · لم يُقيَّم كاملاً ${os.partial}` : ''} · الأخطاء المسجلة: ${errs.length}`);
+    lines.push(`• البوابة: ${h.gateN} تسميع كامل، سقط ${h.gateFails} · آخر فحص خميس: ${h.examGreen == null ? 'لم يُفحص' : `${h.examClean}/${h.examN} أخضر`}${pex.n ? ` · فحص المنزل: ${pex.clean}/${pex.full} سالم` : ''}`);
     lines.push(`• البعيد ${d.far.length} صفحة، أطول صفحة بلا تسميع ${d.far.length ? d.maxGap + ' يوم' : '—'} · القريب ${d.near.length} · الصفراء النشطة ${yellowList(c).active.length}`);
     lines.push(`• الجلسات المسجلة: ${sess}${decisions.length ? ' · قرارات: ' + decisions.join('، ') : ''}`);
   }
@@ -227,4 +230,4 @@ function weeklySummaryText() {
 }
 
 /* ثلاث حالات مختلفة الإجراء: «لم يُقيَّم بعد» = لا بوابة ولا فحص؛ «لم يُقيَّم كاملاً» = تسميع ناقص لصفحة؛ «بانتظار اعتماد آية» = لون مقترح لم يُعتمد */
-function lightText(h) { return h.light === 'grey' ? 'لم يُقيَّم بعد: لا بوابة ولا فحص خميس' : h.light === 'green' ? 'سليم' : h.light === 'yellow' ? 'يحتاج انتباهاً' : 'يحتاج قراراً'; }
+function lightText(h) { return h.light === 'grey' ? (h.partialN ? 'لم يُقيَّم كاملاً: تسميع ناقص فقط هذا الأسبوع' : 'لم يُقيَّم بعد: لا بوابة ولا فحص خميس') : h.light === 'green' ? 'سليم' : h.light === 'yellow' ? 'يحتاج انتباهاً' : 'يحتاج قراراً'; }

@@ -156,11 +156,16 @@ class Shim:
             rows = json.loads(body)
             ins = (f"insert into public.events (id, ts, day, by, child, type, dev, payload) select id, ts, day, by, child, type, dev, payload "
                    f"from jsonb_to_recordset({dq(json.dumps(rows, ensure_ascii=False))}::jsonb) as x(id text, ts bigint, day text, by text, child text, type text, dev text, payload jsonb)")
-            if 'ignore-duplicates' in (h.headers.get('Prefer') or ''):
+            prefer = h.headers.get('Prefer') or ''
+            if 'ignore-duplicates' in prefer:
                 ins += ' on conflict (id) do nothing'
+            rep = 'return=representation' in prefer
+            sel = [c for c in q.get('select', 'id').split(',') if re.fullmatch(r'[a-z_]+', c)]
+            if rep:  # مثل PostgREST: يعيد ما أُدرج فعلاً فقط (ON CONFLICT DO NOTHING لا يعيد المكرر)
+                ins = f"with ins as ({ins} returning {', '.join(sel)}) select coalesce(json_agg(ins), '[]') from ins"
             rc, out, err = self.pg.as_user(db, uid, ins + ';')
             if rc == 0:
-                return h.send_json(201, '')
+                return h.send_json(201, out.strip() if rep else '')
             msg = next((l.split('ERROR:', 1)[1].strip() for l in err.split('\n') if 'ERROR:' in l), err.strip())
             code = 403 if ('row-level security' in msg or 'permission denied' in msg) else 400
             return h.send_json(code, {'code': '42501' if code == 403 else 'XX000', 'message': msg})
@@ -193,8 +198,13 @@ class Shim:
             where.append(f"(inserted_at > {dq(t)}::timestamptz or (inserted_at = {dq(t2)}::timestamptz and id > {dq(i)}))")
         if 'id' in q:
             op, val = q['id'].split('.', 1)
-            assert op == 'gt'
-            where.append(f'id > {dq(val)}')
+            if op == 'gt':
+                where.append(f'id > {dq(val)}')
+            elif op == 'in':  # in.("a","b") بعلامات اقتباس PostgREST
+                vals = [v.replace('\\"', '"').replace('\\\\', '\\') for v in re.findall(r'"((?:[^"\\]|\\.)*)"', val)]
+                where.append('id in (' + ', '.join(dq(v) for v in vals) + ')' if vals else 'false')
+            else:
+                raise ValueError(op)
         order = []
         for o in (q.get('order') or '').split(','):
             if o:

@@ -15,7 +15,8 @@ const Sync = {
     if (!s.sbUrl || !s.sbKey || s.localMode) return null;
     const id = serverId(s.sbUrl);
     if (!(s.servers && s.servers[id] && s.servers[id].accepted)) return null;
-    return { url: s.sbUrl.trim().replace(/\/+$/, ''), key: s.sbKey.trim(), id };
+    /* gen = جيل بيانات الجهاز: الحذف يرفعه، فتُبطل كل جولة بدأت قبله (LM0121-R2-02) */
+    return { url: s.sbUrl.trim().replace(/\/+$/, ''), key: s.sbKey.trim(), id, gen: Store.gen };
   },
   sid() { const c = this.cfg(); return c ? c.id : null; },
   st(id) { id = id || this.sid(); if (!id) return null; return (Store.settings.servers || {})[id] || null; },
@@ -39,6 +40,7 @@ const Sync = {
       const rows = await pr.json(); role = rows && rows[0] && rows[0].role;
     } catch (e) {}
     Store.settings.sbRole = ROLES[role] ? role : null;
+    if (!Store.settings.sbRole) Store.settings.sbSession = null; /* حساب بلا دور لا تُحفظ جلسته على الجهاز */
     Store.saveSettings();
     return Store.settings.sbRole;
   },
@@ -68,11 +70,12 @@ const Sync = {
   },
   /* عدد سجلات هذا الجهاز بحسب حالتها على خادم: سجلات الدور الحالي المنتظرة، وسجلات أدوار أخرى ليست عليه */
   counts(id) {
-    id = id || this.sid(); const me = this.role(); const r = { ownPending: 0, waitingTarget: 0, others: {}, othersTotal: 0, rejected: 0 };
+    id = id || this.sid(); const me = this.role(); const r = { ownPending: 0, waitingTarget: 0, others: {}, othersTotal: 0, rejected: 0, conflicts: 0 };
     if (!id) return r;
     let byId = null;
     for (const e of Store.raw) {
       if (hasIn(e.sv, id)) continue;
+      if (hasIn(e.cf, id)) { r.conflicts++; continue; }
       if (hasIn(e.rj, id)) { r.rejected++; continue; }
       if (me && e.by === me) {
         r.ownPending++;
@@ -89,7 +92,10 @@ const Sync = {
   transientMsg(status) { return status === 401 ? 'انتهت الجلسة، أعيدي الدخول' : status === 429 ? 'الخادم مشغول (حدّ الطلبات)؛ سيُعاد الرفع تلقائياً' : status >= 500 ? `عطل مؤقت في الخادم (${status})؛ سيُعاد الرفع تلقائياً` : `تعذّر الرفع مؤقتاً (${status})؛ سيُعاد تلقائياً`; },
   schedule() { if (!this.cfg()) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.run(), 1500); },
   /* أي تغيير للخادم أثناء الجولة يوقفها: لا يُكتب مؤشر أو علامة لخادم على خادم آخر */
-  guard(c) { if (this.sid() !== c.id) throw new Error('تغيّر الخادم أثناء المزامنة؛ أُوقفت الجولة'); },
+  guard(c) {
+    if (this.sid() !== c.id) throw new Error('تغيّر الخادم أثناء المزامنة؛ أُوقفت الجولة');
+    if (c.gen !== undefined && Store.gen !== c.gen) throw new Error('حُذفت سجلات الجهاز أثناء المزامنة؛ أُهملت الجولة ولم يُستورد منها شيء');
+  },
 
   async run() {
     const c = this.cfg();
@@ -110,7 +116,7 @@ const Sync = {
       /* تقرير «لم تكتمل» يُعاد فحصه تلقائياً متى خلا الجهاز مما ينتظر، فيتحول إلى «اكتملت» دون تدخل */
       if (!this.incomplete && st.report && !st.report.complete && Date.now() - (st.reconciledAt || 0) > this.RECHECK_MS) {
         const k = this.counts(c.id);
-        if (!k.ownPending && !k.othersTotal && !st.rejected.length) { await this.reconcile(c); n += await this.pull(c); }
+        if (!k.ownPending && !k.othersTotal && !st.rejected.length && !Store.openConflicts('server:' + c.id).length) { await this.reconcile(c); n += await this.pull(c); }
       }
       if (this.lastIds && this.lastIds.sid === c.id) this.writeReport(c);
       this.guard(c);
@@ -127,8 +133,16 @@ const Sync = {
   toRow(e) { return { id: e.id, ts: e.ts, day: e.day, by: e.by, child: e.child || null, type: e.type, dev: e.dev || null, payload: Store.clean(e) }; },
   async push(c) {
     const me = this.role(); if (!me) return;
-    const post = rows => fetch(`${c.url}/rest/v1/events?on_conflict=id`, { method: 'POST', headers: Object.assign(this.headers(true), { Prefer: 'resolution=ignore-duplicates,return=minimal' }), body: JSON.stringify(rows) });
-    const all = Store.raw.filter(e => e.by === me && !hasIn(e.sv, c.id) && !hasIn(e.rj, c.id));
+    /* الخادم يعيد معرّفات ما أُدرج فعلاً؛ ما لم يُدرج كان موجوداً، فيُقارن محتواه قبل أي علامة «على الخادم» (LM0121-R2-04) */
+    const post = rows => fetch(`${c.url}/rest/v1/events?on_conflict=id&select=id`, { method: 'POST', headers: Object.assign(this.headers(true), { Prefer: 'resolution=ignore-duplicates,return=representation' }), body: JSON.stringify(rows) });
+    const settle = async (r, list) => {
+      let ins = null; try { const j = await r.json(); if (Array.isArray(j)) ins = new Set(j.map(x => x && x.id)); } catch (x) {}
+      const existed = ins ? list.filter(e => !ins.has(e.id)) : list;
+      for (const e of list) if (ins && ins.has(e.id)) Store.markOn(e, c.id);
+      if (existed.length) await this.verifyExisting(c, existed);
+      this.guard(c); Store.saveEvents(list);
+    };
+    const all = Store.raw.filter(e => e.by === me && !hasIn(e.sv, c.id) && !hasIn(e.rj, c.id) && !hasIn(e.cf, c.id));
     const byId = new Map(Store.raw.map(e => [e.id, e]));
     /* التراجع يُرفع بعد أن يثبت هدفه على هذا الخادم (سياسة الخادم تشترطه)؛ هدف لم يصل بعد (سجل دور آخر لم يرفعه صاحبه) = ينتظر ولا يُعدّ مرفوضاً */
     const undoReady = () => all.filter(e => e.type === 'undo' && !hasIn(e.sv, c.id) && (t => t && hasIn(t.sv, c.id))(byId.get(e.target)));
@@ -138,14 +152,14 @@ const Sync = {
         const chunk = phase.slice(i, i + PUSH_CHUNK);
         const r = await post(chunk.map(e => this.toRow(e)));
         this.guard(c);
-        if (r.ok) { for (const e of chunk) Store.markOn(e, c.id); Store.saveEvents(chunk); continue; }
+        if (r.ok) { await settle(r, chunk); continue; }
         if (!this.isPermanent(r.status)) throw new Error(this.transientMsg(r.status));
         /* رفض دائم: يُعزل السجل المرفوض وحده مع سببه ولا تتوقف البقية.
            خطأ مؤقت أثناء الفحص الفردي يُبقي السجل منتظراً ويوقف الجولة. */
         for (const e of chunk) {
           const r1 = await post([this.toRow(e)]);
           this.guard(c);
-          if (r1.ok) { Store.markOn(e, c.id); Store.saveEvents([e]); continue; }
+          if (r1.ok) { await settle(r1, [e]); continue; }
           if (!this.isPermanent(r1.status)) throw new Error(this.transientMsg(r1.status));
           let why = 'رفض الخادم (' + r1.status + ')'; try { const j = await r1.json(); if (j && j.message) why += ': ' + j.message; } catch (x) {}
           e.rj = (e.rj || []).filter(x => x !== c.id).concat(c.id);
@@ -153,6 +167,25 @@ const Sync = {
           if (!st.rejected.some(x => x.id === e.id)) st.rejected.push({ id: e.id, type: e.type, by: e.by, child: e.child || null, day: e.day, reason: 'لم يقبل الخادم الرفع — ' + why, at: Date.now(), payload: Store.clean(e), direction: 'push' });
           Store.saveEvents([e]); Store.saveSettings();
         }
+      }
+    }
+  },
+
+  /* نسخة الخادم من سجلات بعينها تُقارن بالمحلية: المطابق يُعلَّم «على الخادم»، والمختلف تعارض معلن لا يُرفع ولا يُعلَّم */
+  fromRow(r) { return Object.assign(Store.clean(r.payload || {}), { id: r.id, by: r.by, type: r.type, child: r.child || undefined }); },
+  async verifyExisting(c, list) {
+    for (let i = 0; i < list.length; i += 100) {
+      const part = list.slice(i, i + 100);
+      const inList = part.map(e => '"' + String(e.id).replace(/["\\]/g, m => '\\' + m) + '"').join(',');
+      const r = await fetch(`${c.url}/rest/v1/events?select=id,by,type,child,payload&id=in.(${encodeURIComponent(inList)})`, { headers: this.headers() });
+      this.guard(c);
+      if (!r.ok) throw new Error(this.isPermanent(r.status) ? 'رفض الخادم التحقق: ' + r.status : this.transientMsg(r.status));
+      const rows = await r.json(); this.guard(c);
+      const srv = new Map(rows.map(x => [x.id, this.fromRow(x)]));
+      for (const e of part) {
+        const o = srv.get(e.id); if (!o) continue; /* لم يُدرج ولم يوجد: يبقى منتظراً */
+        if (Store.fp(o) === Store.fp(e)) Store.markOn(e, c.id);
+        else { Store.noteConflict(e, o, 'server:' + c.id); if (!hasIn(e.cf, c.id)) e.cf = (e.cf || []).concat(c.id); }
       }
     }
   },
@@ -173,9 +206,10 @@ const Sync = {
       this.guard(c);
       if (!r2.ok) throw new Error((this.isPermanent(r2.status) ? 'رفض الخادم السحب: ' + r2.status : this.transientMsg(r2.status)));
       const rows = await r2.json();
+      this.guard(c); /* ردّ وصل بعد حذف السجلات أو تغيير الخادم لا يُستورد */
       if (!rows.length) { complete = true; break; }
       /* أعمدة الخادم (المحمية بالسياسات) تغلب ما في payload؛ والحقول المحلية في payload قديم تُهمل */
-      const incoming = rows.map(r => Object.assign(Store.clean(r.payload || {}), { id: r.id, by: r.by, type: r.type, child: r.child || undefined }));
+      const incoming = rows.map(r => this.fromRow(r));
       const bad = incoming.filter(e => !Store.validEvent(e, incoming) || !Store.roleAllows(e.by, e));
       if (bad.length) { /* كل المرفوضات تُحفظ مع سببها بلا حد؛ القائمة السابقة تُستعاد عند فشل الحفظ */
         const prev = st.rejected; const next = prev.slice();
@@ -212,15 +246,20 @@ const Sync = {
   },
   async reconcile(c) {
     const ids = await this.fetchIds(c);
+    this.guard(c);
     const st = this.st(c.id); const changed = [];
+    let unverified = false;
     for (const e of Store.raw) {
       const on = ids.has(e.id), had = hasIn(e.sv, c.id);
-      if (on && !had) { Store.markOn(e, c.id); changed.push(e); }
+      /* موجود على الخادم ولم يُتحقق من محتواه هنا (مستورد، أو بعد استعادة): يُقارن عند السحب من البداية */
+      if (on && !had && !hasIn(e.cf, c.id)) unverified = true;
       else if (!on && had) { e.sv = e.sv.filter(x => x !== c.id); changed.push(e); }
+      if (!on && hasIn(e.cf, c.id)) { e.cf = e.cf.filter(x => x !== c.id); changed.push(e); }
     }
-    /* ما على الخادم وليس هنا يُسحب من البداية (المكرر يُزال بالمعرّف) */
+    /* ما على الخادم وليس هنا، أو هنا ولم يُتحقق منه: سحب من البداية (المكرر يُقارن محتواه ثم يُعلَّم أو يُعلن تعارضاً) */
     const local = new Set(Store.raw.map(e => e.id)); const rej = new Set(st.rejected.map(x => x.id));
-    for (const id of ids) if (!local.has(id) && !rej.has(id)) { st.cursor = null; break; }
+    if (unverified) st.cursor = null;
+    else for (const id of ids) if (!local.has(id) && !rej.has(id)) { st.cursor = null; break; }
     if (changed.length) Store.saveEvents(changed);
     st.needReconcile = false; st.reconciledAt = Date.now();
     this.lastIds = { sid: c.id, ids };
@@ -243,8 +282,9 @@ const Sync = {
     const st = this.st(c.id); const k = this.counts(c.id);
     const local = new Set(Store.raw.map(e => e.id)); const rej = new Set(st.rejected.map(x => x.id));
     let serverOnly = 0; for (const id of this.lastIds.ids) if (!local.has(id) && !rej.has(id)) serverOnly++;
-    const rep = { at: Date.now(), ownPending: k.ownPending, waitingTarget: k.waitingTarget, others: k.others, othersTotal: k.othersTotal, rejected: st.rejected.length, serverOnly, incomplete: this.incomplete };
-    rep.complete = !rep.ownPending && !rep.othersTotal && !rep.rejected && !rep.serverOnly && !rep.incomplete;
+    const conflicts = Store.openConflicts('server:' + c.id).length;
+    const rep = { at: Date.now(), ownPending: k.ownPending, waitingTarget: k.waitingTarget, others: k.others, othersTotal: k.othersTotal, rejected: st.rejected.length, conflicts, serverOnly, incomplete: this.incomplete };
+    rep.complete = !rep.ownPending && !rep.othersTotal && !rep.rejected && !rep.conflicts && !rep.serverOnly && !rep.incomplete;
     st.report = rep; this.lastIds = null;
   },
   started: false,
@@ -275,13 +315,15 @@ alter table public.profiles enable row level security;
 -- ترحيل من 0.3: حذف السياسات القديمة (الإدراج المفتوح) قبل إعادة الإنشاء
 drop policy if exists "insert_auth" on public.events;
 drop policy if exists "read_all_auth" on public.events;
+drop policy if exists "read_family" on public.events;
 drop policy if exists "insert_own_role" on public.events;
 drop policy if exists "read_own_profile" on public.profiles;
 create policy "read_own_profile" on public.profiles for select to authenticated using (user_id = auth.uid());
 create or replace function public.my_role() returns text language sql stable security definer set search_path = '' as
   $$ select role from public.profiles where user_id = auth.uid() $$;
--- القراءة لكل حساب مسجل؛ لا تعديل ولا حذف لأحد
-create policy "read_all_auth" on public.events for select to authenticated using (true);
+-- القراءة لحساب له دور عائلي في profiles فقط (حساب بلا دور أو سُحب دوره لا يقرأ شيئاً)؛ لا تعديل ولا حذف لأحد
+-- (استدعاء الدالة لا استعلام فرعي: سياسة الإدراج تستعلم events نفسها، والاستعلام الفرعي هنا يجعل PostgreSQL يرفضها بخطأ تكرار)
+create policy "read_family" on public.events for select to authenticated using (public.my_role() is not null);
 -- الإدراج: باسم دور الحساب فقط، والحقول الخارجية تطابق الداخلية، ونوع الحدث مسموح للدور
 create policy "insert_own_role" on public.events for insert to authenticated with check (
   by = public.my_role()
