@@ -116,7 +116,7 @@ header.top{flex-wrap:wrap}
 <body>
 <div id="app"></div>
 <script>
-const BUILD = {"version": "0.13.4", "commit": "22ce272", "src": "d78ddd16ff", "built": "2026-11-06"};
+const BUILD = {"version": "0.14.0", "commit": "92eaacc", "src": "79e108de2b", "built": "2026-11-06"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 const CHILDREN = {
   dalal: { id: 'dalal', name: 'دلال', age: 10, unit: 'page', unitLabel: 'صفحة' },
@@ -1425,9 +1425,42 @@ const App = {
   role: null, view: 'now', sub: {}, timeOffset: 0,
   realNow() { return new Date(Date.now() + (Store.settings.timeOffset || 0)); },
   now() { return wallClock(this.realNow()); },
-  setRole(r) { this.role = ROLES[r]; sessionStorage.setItem(LS_SESSION, r); this.view = r === 'parent' ? 'dash' : 'now'; Alarms.unlock(); UI.rerender(); Persist.auto(); },
+  setRole(r) { this.role = ROLES[r]; sessionStorage.setItem(LS_SESSION, r); this.view = r === 'parent' ? 'dash' : 'now'; Alarms.unlock(); UI.rerender(); Persist.auto(); if (AppShell.inApp()) AppUpdate.check().then(v => { if (v && AppUpdate.available()) UI.rerender(); }); },
   logout() { this.role = null; sessionStorage.removeItem(LS_SESSION); if (Sync.cfg()) Sync.logout(); UI.rerender(); },
   can(perm) { return !!(this.role && this.role[perm]); },
+};
+
+/* ===== داخل تطبيق أندرويد (غلاف WebView): جسر LawhatAndroid للحفظ والنسخ وفتح الروابط، وزر الرجوع ===== */
+const AppShell = {
+  inApp() { return !!(window.LawhatAndroid && typeof window.LawhatAndroid.saveFile === 'function'); },
+  version() { try { return this.inApp() && window.LawhatAndroid.appVersion ? String(window.LawhatAndroid.appVersion()) : null; } catch (e) { return null; } },
+  preview() { try { return this.inApp() && !!(window.LawhatAndroid.isPreview && window.LawhatAndroid.isPreview()); } catch (e) { return false; } },
+  pending: {}, seq: 0,
+  /* حفظ ملف: في المتصفح تنزيل مباشر (لا يُعرف إن أُلغي)؛ في التطبيق نافذة «حفظ باسم» من النظام، وonSaved لا يُستدعى إلا بعد كتابة الملف فعلاً */
+  saveFile(name, mime, text, onSaved) {
+    if (this.inApp()) {
+      const id = 'f' + (++this.seq); this.pending[id] = { name, onSaved };
+      try { window.LawhatAndroid.saveFile(id, name, mime, text); } catch (e) { delete this.pending[id]; UI.toast('تعذّر فتح نافذة الحفظ: ' + e.message); }
+      return;
+    }
+    const a = el('a', { href: URL.createObjectURL(new Blob([text], { type: mime })), download: name });
+    document.body.append(a); a.click(); a.remove();
+    if (onSaved) onSaved();
+  },
+  openExternal(url) { if (this.inApp() && window.LawhatAndroid.openExternal) window.LawhatAndroid.openExternal(url); else window.open(url, '_blank', 'noopener'); },
+};
+window.LM_fileSaved = (id, ok, err) => {
+  const p = AppShell.pending[id]; delete AppShell.pending[id]; if (!p) return;
+  if (ok) { UI.toast('حُفظ الملف: ' + p.name); if (p.onSaved) guardHandler(p.onSaved)(); }
+  else UI.toast(err ? 'لم يُحفظ الملف: ' + err : 'أُلغي الحفظ — لم يُكتب الملف');
+};
+/* زر الرجوع في التطبيق: يغلق النافذة المفتوحة، ثم يعود إلى الشاشة الرئيسية للدور؛ وإلا يُترك للتطبيق (رجوع مرتين للخروج) */
+window.LM_back = () => {
+  const ms = document.querySelectorAll('.modal-bg'); if (ms.length) { ms[ms.length - 1].remove(); return true; }
+  if (!App.role) return false;
+  const home = App.role.id === 'parent' ? 'dash' : 'now';
+  if (App.view !== home) { App.view = home; App.sub = {}; UI.rerender(); return true; }
+  return false;
 };
 
 /* كل فعل من أفعال الواجهة: خطأ متزامن أو وعد مرفوض يظهر رسالةً ويُسجَّل في UI.errors، ولا يبقى خطأً غير معالج */
@@ -1615,7 +1648,10 @@ Views.login = function () {
 function label(t) { return el('label', null, t); }
 /* نسخ نص: «نُسخت» فقط إن نجح النسخ فعلاً؛ وإلا نافذة بالنص محدداً للنسخ اليدوي (المتصفح قد يمنع الحافظة) */
 async function copyText(text) {
-  try { if (!navigator.clipboard) throw new Error('no clipboard'); await navigator.clipboard.writeText(text); UI.toast('نُسخت'); }
+  try {
+    if (AppShell.inApp() && window.LawhatAndroid.copy) { if (!window.LawhatAndroid.copy(text)) throw new Error('copy'); UI.toast('نُسخت'); return; }
+    if (!navigator.clipboard) throw new Error('no clipboard'); await navigator.clipboard.writeText(text); UI.toast('نُسخت');
+  }
   catch (e) { const t = el('textarea', { style: 'min-height:200px' }, text); UI.modal('انسخي النص', el('div', null, el('p', { class: 'small muted' }, 'منع المتصفح النسخ التلقائي: النص محدد، انسخيه يدوياً.'), t)); t.focus(); t.select(); }
 }
 
@@ -1659,6 +1695,7 @@ Views.now = function () {
   const d = App.now(); const { list, current, next } = currentSession(App.role.id, d);
   const wrap = el('div');
   if (!Sync.cfg()) { const due = BackupReminder(); if (due) wrap.append(due); } /* في الوضع المحلي الجهاز هو النسخة الوحيدة */
+  { const upd = AppUpdateBanner(); if (upd) wrap.append(upd); }
   const active = Store.settings.active && Store.settings.active.dayK === todayKey() && Store.settings.active.role === App.role.id ? Store.settings.active : null;
   if (active) { const s = PLAN.find(x => sessionKey(x, active.dayK) === active.key); if (s) return SessionView(s, active); }
   const noInv = CHILD_ORDER.filter(c => !Store.events.some(e => e.type === 'layer' && e.child === c));
@@ -2087,6 +2124,42 @@ function undoLast() {
   if (!last) { UI.toast('لا تسجيل للتراجع عنه اليوم'); return; }
   UI.confirm(`التراجع عن: ${eventText(last)}؟ يُلغى أثره في الحسابات ويبقى أثر التصحيح في السجل.`, () => { Store.add({ type: 'undo', target: last.id, child: last.child || undefined, reason: 'تراجع ' + ROLES[App.role.id].name }); UI.savedToast('تم التراجع'); UI.rerender(true); });
 }
+/* ===== التراجع عن سجل بعينه (من «السجلات»): بالصلاحيات نفسها التي يفرضها الخادم (canUndo)، بسبب وتأكيد،
+   والزر معطّل أثناء الحفظ، والعملية تُلغى إن حُذفت بيانات الجهاز أو تغيّر الحساب أثناءها. يبقى السجل الأصلي مشطوباً وأثر التراجع في التاريخ ===== */
+const UNDO_STRUCTURAL = { session_done: 'إنهاء جلسة: تعود الجلسة كأنها لم تُنهَ', session_start: 'بدء جلسة', handoff: 'تسليم: تختفي البطاقة', layer: 'جرد: يعود تصنيف الصفحة السابق', new_page: 'حفظ جديد: تعود الصفحة غير محفوظة' };
+function canUndoRecord(e, live) {
+  if (!App.role || !e || e.type === 'undo') return false;
+  const isLive = live ? live.has(e.id) : Store.events.some(x => x.id === e.id); /* مُتراجَع عنه أو غير صالح = ليس في الأحداث الحيّة */
+  return isLive && Store.canUndo(App.role.id, e);
+}
+function undoRecord(e) {
+  if (!canUndoRecord(e)) { UI.toast('لا يحق لهذا الحساب التراجع عن هذا السجل'); return; }
+  const reasons = ['تسجيل خاطئ', 'الطفل خطأ', 'الصفحة خطأ', 'مكرر', 'أخرى'];
+  const sel = el('select', null, reasons.map(r => el('option', { value: r }, r)));
+  const txt = el('input', { placeholder: 'توضيح (اختياري، ومطلوب مع «أخرى»)' });
+  const who = ROLES[e.by] ? ROLES[e.by].name : e.by;
+  const body = el('div', null,
+    el('p', null, el('b', null, `${e.child && CHILDREN[e.child] ? CHILDREN[e.child].name + ' · ' : ''}${e.page ? 'ص' + e.page + ' · ' : ''}${eventText(e)}`)),
+    el('p', { class: 'small muted' }, `${fmtDay(e.day)} ${chinaHHMM(e.ts)} · سجّلته: ${who}`),
+    UNDO_STRUCTURAL[e.type] ? el('div', { class: 'alert' }, 'تنبيه — ' + UNDO_STRUCTURAL[e.type] + '.') : null,
+    el('p', { class: 'small' }, 'يُلغى أثره في كل الحسابات، ويبقى مشطوباً في السجلات مع سبب التراجع ومن قام به. لا يُحذف شيء.'),
+    el('label', { class: 'small' }, 'السبب'), sel, txt);
+  let busy = false;
+  const go = async ev => {
+    if (busy) return;
+    const reason = sel.value === 'أخرى' ? txt.value.trim() : sel.value + (txt.value.trim() ? ': ' + txt.value.trim() : '');
+    if (!reason) { UI.toast('اكتبي سبب التراجع'); txt.focus(); return; }
+    if (!canUndoRecord(e)) { bg.remove(); UI.toast('لم يعد التراجع ممكناً (تغيّر السجل أو الحساب)'); UI.rerender(); return; }
+    busy = true; const btn = ev && ev.currentTarget; if (btn) btn.disabled = true;
+    const op = UI.opGuard();
+    try { Store.add({ type: 'undo', target: e.id, child: e.child || undefined, reason }); }
+    catch (err) { busy = false; if (btn) btn.disabled = false; UI.toast('لم يُسجَّل التراجع: ' + err.message); return; }
+    const ok = await Store.durable();
+    if (!op.alive()) { bg.remove(); UI.rerender(); return; }
+    bg.remove(); UI.toast(ok ? 'تم التراجع وحُفظ' : 'سُجّل التراجع ولم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ')); UI.rerender(true);
+  };
+  const bg = UI.modal('التراجع عن سجل', body, [el('button', { class: 'danger', onclick: go }, 'تراجع عن هذا السجل'), el('button', { class: 'ghost', onclick: () => bg.remove() }, 'إلغاء')]);
+}
 function MutashabihBox(c) {
   const ws = weekStartKey(App.now()); const list = mutashabihat(c, ws); const box = el('div', { class: 'small' });
   if (!list.length) return el('div', { class: 'muted small' }, `لا متشابهات مسجلة هذا الأسبوع لـ${CHILDREN[c].name}.`);
@@ -2427,13 +2500,14 @@ Views.logs = function () {
   const list = el('div', { class: 'card' }); wrap.append(list);
   function render() {
     list.innerHTML = '';
-    let evs = Store.raw.slice().reverse(); const undone = new Set(Store.raw.filter(e => e.type === 'undo').map(e => e.target));
-    evs = evs.map(e => undone.has(e.id) ? Object.assign({}, e, { _undone: true }) : e);
+    /* المشطوب = ما ألغاه تراجع صالح (كما في الحسابات)، لا أي تراجع محلي مرفوض */
+    let evs = Store.raw.slice().reverse(); const live = new Set(Store.events.map(e => e.id));
+    evs = evs.map(e => e.type !== 'undo' && !live.has(e.id) ? Object.assign({}, e, { _undone: true }) : e);
     if (f.child) evs = evs.filter(e => e.child === f.child);
     if (f.type) evs = evs.filter(e => e.type === f.type);
     if (f.day) evs = evs.filter(e => e.day === f.day);
     if (f.q.trim()) { const ql = f.q.trim(); evs = evs.filter(e => { const s = JSON.stringify(e) + ' ' + (e.page ? pageLabel(e.page) : '') + ' ' + (e.surah ? SURAH_NAMES[e.surah - 1] : ''); return s.includes(ql); }); }
-    list.append(el('div', { class: 'muted small' }, `${evs.length} سجل`), el('table', null, el('tbody', null, evs.slice(0, 200).map(e => el('tr', { style: e._undone ? 'opacity:.5;text-decoration:line-through' : '' }, el('td', { style: 'white-space:nowrap' }, fmtDay(e.day), el('div', { class: 'muted small' }, chinaHHMM(e.ts))), el('td', null, e.child && CHILDREN[e.child] ? el('b', null, CHILDREN[e.child].name + ' · ') : null, e.page ? `ص${e.page} · ` : '', eventText(e)), el('td', { class: 'muted small' }, ROLES[e.by] ? ROLES[e.by].name : e.by))))));
+    list.append(el('div', { class: 'muted small' }, `${evs.length} سجل`), el('table', null, el('tbody', null, evs.slice(0, 200).map(e => el('tr', { style: e._undone ? 'opacity:.5;text-decoration:line-through' : '' }, el('td', { style: 'white-space:nowrap' }, fmtDay(e.day), el('div', { class: 'muted small' }, chinaHHMM(e.ts))), el('td', null, e.child && CHILDREN[e.child] ? el('b', null, CHILDREN[e.child].name + ' · ') : null, e.page ? `ص${e.page} · ` : '', eventText(e)), el('td', { class: 'muted small' }, ROLES[e.by] ? ROLES[e.by].name : e.by), el('td', null, !e._undone && canUndoRecord(e, live) ? el('button', { class: 'ghost small', title: 'التراجع عن هذا السجل', onclick: () => undoRecord(e) }, 'تراجع') : null))))));
   }
   render(); return wrap;
 };
@@ -2502,13 +2576,14 @@ const Backup = {
       settings, events, conflicts,
     };
   },
-  download() {
+  /* onSaved: بعد كتابة الملف (في التطبيق: بعد اختيار المكان والكتابة فعلاً؛ في المتصفح: فور بدء التنزيل). «آخر نسخة» لا تُسجَّل قبله */
+  download(onSaved) {
     const b = this.build();
-    const blob = new Blob([JSON.stringify(b)], { type: 'application/json' });
-    const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-backup-${todayKey()}-${b.role || 'x'}.json` });
-    document.body.append(a); a.click(); a.remove();
-    Store.settings.lastBackup = { at: Date.now(), count: b.counts.all };
-    Store.saveSettings();
+    AppShell.saveFile(`lawhat-backup-${todayKey()}-${b.role || 'x'}.json`, 'application/json', JSON.stringify(b), () => {
+      Store.settings.lastBackup = { at: Date.now(), count: b.counts.all };
+      Store.saveSettings();
+      if (onSaved) onSaved(b);
+    });
     return b;
   },
   /* النسخة الكاملة (0.12+) أو ملف قديم (سجلات حيّة فقط بلا تراجعات) */
@@ -2569,6 +2644,7 @@ const Persist = {
   async auto() { if ((await this.check()) === 'denied' && !Store.settings.persistAsked) await this.request(); },
   standalone() { return !!((window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone); },
   text() {
+    if (AppShell.inApp()) return 'داخل تطبيق أندرويد: البيانات في مساحة التطبيق الخاصة على الجهاز، تبقى ما لم يُلغَ تثبيت التطبيق أو تُمسح بياناته من إعدادات أندرويد. لا يغني ذلك عن تصدير نسخة كاملة.';
     const inst = this.standalone() ? 'البرنامج مثبّت على الشاشة الرئيسية' : 'البرنامج مفتوح في المتصفح (على iPhone ثبّتيه على الشاشة الرئيسية)';
     const st = { granted: 'التخزين الدائم ممنوح', denied: 'التخزين الدائم غير ممنوح — المتصفح قد يمحو البيانات عند ضيق المساحة', unsupported: 'التخزين الدائم غير مدعوم في هذا المتصفح', unknown: 'التخزين الدائم: لم يُفحص' }[this.state];
     return `${st} · ${inst}`;
@@ -2643,20 +2719,51 @@ begin
   end loop;
 `;
   },
-  download(text, k, total) {
-    const blob = new Blob([text], { type: 'application/sql' });
-    const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-restore-${todayKey()}-${k}-of-${total}.sql` });
-    document.body.append(a); a.click(); a.remove();
-  },
+  download(text, k, total) { AppShell.saveFile(`lawhat-restore-${todayKey()}-${k}-of-${total}.sql`, 'application/sql', text); },
 };
 
 /* ===== الواجهات ===== */
 function roleName(r) { return ROLES[r] ? ROLES[r].name : (r || 'غير معروف'); }
 
+/* ===== تحديث تطبيق أندرويد: فحص آخر إصدار منشور على GitHub مرة في اليوم (داخل التطبيق فقط)، والتنزيل يفتح المتصفح.
+   تثبيت التحديث فوق التطبيق يحتفظ بالبيانات (التوقيع نفسه)؛ إلغاء التثبيت يمحوها ===== */
+const AppUpdate = {
+  api: 'https://api.github.com/repos/Feras-glitch/lawhat-muallima/releases/latest',
+  apk: 'https://github.com/Feras-glitch/lawhat-muallima/releases/latest/download/lawhat-muallima.apk',
+  newer(a, b) { const p = v => String(v || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0); const x = p(a), y = p(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; },
+  latest() { const u = Store.settings.updateCheck; return u && u.v ? u.v : null; },
+  available() { const v = this.latest(); return AppShell.inApp() && !AppShell.preview() && v && this.newer(v, BUILD.version) ? v : null; },
+  async check(force) {
+    if (!AppShell.inApp() || AppShell.preview()) return null;
+    const u = Store.settings.updateCheck;
+    if (!force && u && Date.now() - u.at < 864e5) return u.v;
+    try {
+      const r = await fetch(this.api, { headers: { Accept: 'application/vnd.github+json' } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json(); const v = String(j.tag_name || '').replace(/^v/, '');
+      Store.settings.updateCheck = { at: Date.now(), v }; Store.saveSettings(); return v;
+    } catch (e) { this.error = e.message; return null; }
+  },
+};
+function AppUpdateBanner() {
+  if (AppShell.preview()) return el('div', { class: 'alert red' }, el('b', null, 'نسخة معاينة للتجربة. '), 'تطبيق منفصل بمفتاح مؤقت: لا تسجّلي فيه بيانات حقيقية. النسخة الدائمة «لوحة المعلمة» تُثبَّت بجانبه، وبياناتها منفصلة عنه.');
+  const v = AppUpdate.available(); if (!v) return null;
+  return el('div', { class: 'alert' }, `يتوفر إصدار أحدث من التطبيق (${v}). `, el('button', { class: 'ghost small', onclick: () => AppShell.openExternal(AppUpdate.apk) }, 'تنزيل التحديث'), el('div', { class: 'small muted' }, 'ثبّتيه فوق التطبيق الحالي فتبقى البيانات. لا تلغي تثبيت القديم أولاً: إلغاء التثبيت يمحو بيانات الجهاز.'));
+}
+function AppCard() {
+  if (!AppShell.inApp()) return null;
+  const line = el('p', { class: 'small' }, AppUpdate.available() ? `يتوفر الإصدار ${AppUpdate.available()}.` : (AppUpdate.latest() ? `آخر إصدار منشور: ${AppUpdate.latest()} — هذا هو الأحدث.` : 'لم يُفحص وجود تحديث بعد.'));
+  return el('div', { class: 'card' }, el('h2', null, 'تطبيق أندرويد'),
+    el('p', { class: 'small muted' }, `الواجهة ${BUILD.version} (${BUILD.commit}) · التطبيق ${AppShell.version() || '—'}`), line,
+    el('div', { class: 'btns' },
+      el('button', { class: 'ghost', onclick: async () => { UI.toast('جارٍ الفحص…'); const v = await AppUpdate.check(true); UI.toast(v ? (AppUpdate.available() ? `يتوفر ${v}` : 'التطبيق محدَّث') : 'تعذّر الفحص: ' + (AppUpdate.error || 'لا اتصال')); UI.rerender(); } }, 'التحقق من وجود تحديث'),
+      AppUpdate.available() ? el('button', { class: 'primary', onclick: () => AppShell.openExternal(AppUpdate.apk) }, 'تنزيل التحديث') : null),
+    el('p', { class: 'small muted' }, 'التحديث يُثبَّت فوق التطبيق فتبقى البيانات. إلغاء تثبيت التطبيق أو مسح بياناته من إعدادات أندرويد يمحو كل ما على الجهاز: صدّري نسخة كاملة قبل أي من ذلك.'));
+}
 function BackupReminder() {
   const d = Backup.overdue(); if (d == null) return null;
   return el('div', { class: 'alert' }, d === Infinity ? 'لم تُصدَّر نسخة احتياطية من هذا الجهاز بعد. ' : `آخر نسخة احتياطية من هذا الجهاز قبل ${d} يوماً. `,
-    el('button', { class: 'ghost small', onclick: () => { Backup.download(); UI.toast('صُدّرت النسخة'); UI.rerender(); } }, 'تصدير نسخة كاملة الآن'));
+    el('button', { class: 'ghost small', onclick: () => Backup.download(() => { UI.toast('صُدّرت النسخة'); UI.rerender(); }) }, 'تصدير نسخة كاملة الآن'));
 }
 
 function BackupCard() {
@@ -2675,7 +2782,7 @@ function BackupCard() {
     el('p', { class: 'small' + (Store.idbOk ? ' muted' : '') }, Store.idbOk ? 'التخزين: قاعدة الجهاز (IndexedDB).' : '⚠ التخزين البديل (localStorage): تعذّر فتح قاعدة الجهاز، والسعة محدودة (~5 م.ب). صدّري نسخة كاملة، وأغلقي التبويبات الأخرى ثم أعيدي التحميل.'),
     persistLine,
     el('div', { class: 'btns' },
-      el('button', { class: 'primary', onclick: () => { Backup.download(); UI.toast('صُدّرت النسخة'); UI.rerender(); } }, `تصدير نسخة كاملة (${Store.raw.length} سجل)`),
+      el('button', { class: 'primary', onclick: () => Backup.download(() => { UI.toast('صُدّرت النسخة'); UI.rerender(); }) }, `تصدير نسخة كاملة (${Store.raw.length} سجل)`),
       Persist.state !== 'granted' ? el('button', { class: 'ghost', onclick: async () => { await Persist.request(); UI.toast(Persist.text()); UI.rerender(); } }, 'طلب التخزين الدائم') : null),
     label('استيراد ملف (دمج، أو استعادة جهاز فارغ)'), fileIn);
 }
@@ -2804,7 +2911,7 @@ function ServerSwitchDialog(u, k) {
   const separate = () => {
     bg.remove();
     let b2;
-    const exp = el('button', { onclick: () => { Backup.download(); wipe.disabled = false; UI.toast('صُدّرت النسخة'); } }, 'تصدير نسخة كاملة أولاً');
+    const exp = el('button', { onclick: () => Backup.download(() => { wipe.disabled = false; UI.toast('صُدّرت النسخة'); }) }, 'تصدير نسخة كاملة أولاً');
     const wipe = el('button', { class: 'danger', disabled: true, onclick: () => UI.confirm(`حذف ${Store.raw.length} سجلاً من هذا الجهاز ثم الاتصال بالخادم الجديد؟ لا يمس أي خادم.`, async () => {
       b2.remove(); const ok = await Store.reset(); Store.settings.active = null; Store.saveSettings();
       if (!ok) { UI.toast('تعذّر الحذف الكامل؛ لم يتصل الجهاز'); return; }
@@ -2887,6 +2994,7 @@ function RejectedCard() {
 Views.dash = function () {
   const wrap = el('div');
   const due = BackupReminder(); if (due) wrap.append(due);
+  const upd = AppUpdateBanner(); if (upd) wrap.append(upd);
   wrap.append(el('div', { class: 'grid2' }, CHILD_ORDER.map(c => { const h = healthOf(c); const d = h.st; return el('div', { class: 'card', style: 'margin:0;cursor:pointer', onclick: () => { App.sub.child = c; App.sub.ctab = 'summary'; App.view = 'children'; UI.rerender(); } },
     el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, CHILDREN[c].name), el('span', { class: 'light ' + h.light })),
     el('div', { class: 'kpi', style: 'margin-top:8px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? 'أخضر في الفحص' : 'لم يُفحص')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, 'أقدم صفحة (يوم)'))),
@@ -2964,6 +3072,7 @@ function pct(list) { const x = outcomeStats(list); return x.pct == null ? '—' 
 Views.settings = function () {
   const wrap = el('div'); const s = Store.settings;
   const due = BackupReminder(); if (due) wrap.append(due);
+  const upd = AppUpdateBanner(); if (upd) wrap.append(upd);
   wrap.append(el('div', { class: 'card' }, el('h2', null, 'الحساب'), el('p', null, `الدخول الحالي: ${App.role.title}`), el('button', { class: 'ghost', onclick: () => App.logout() }, 'خروج')));
   if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الجرد الأولي'), el('p', { class: 'small muted' }, 'تنفذه آية من حسابها بعد تسميع المحفوظ الحالي (وضع الصفحات في البعيد وألوانها من صلاحيتها وحدها). يظهر هنا أثره بعد المزامنة.')));
   if (App.role.id === 'aya') {
@@ -2996,6 +3105,7 @@ Views.settings = function () {
   }
   // النسخ الاحتياطي والاستعادة
   wrap.append(BackupCard());
+  const appCard = AppCard(); if (appCard) wrap.append(appCard);
   if (App.role.id === 'parent') wrap.append(AdminRestoreCard());
   // محاكاة الوقت
   if (App.role.id !== 'asst') {
@@ -3003,7 +3113,7 @@ Views.settings = function () {
     if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
   }
   if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
-  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, `لوحة المعلمة · الإصدار ${BUILD.version} (${BUILD.commit}) · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً`));
+  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, `لوحة المعلمة · الإصدار ${BUILD.version} (${BUILD.commit})${AppShell.inApp() ? ' · تطبيق أندرويد ' + (AppShell.version() || '') : ''} · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً`));
   return wrap;
 };
 
@@ -3025,8 +3135,7 @@ function downloadIcs(role) {
     lines.push('BEGIN:VEVENT', `UID:lm-${role}-${i++}@lawhat`, `DTSTAMP:${ds}T000000Z`, `DTSTART;TZID=Asia/Shanghai:${ds}T${t(it.start)}`, `DTEND;TZID=Asia/Shanghai:${ds}T${t(it.end)}`, `RRULE:FREQ=WEEKLY;BYDAY=${byday[it.day]}`, `SUMMARY:${it.title}`, 'BEGIN:VALARM', 'TRIGGER:-PT5M', 'ACTION:DISPLAY', `DESCRIPTION:${it.title}`, 'END:VALARM', 'END:VEVENT');
   }
   lines.push('END:VCALENDAR');
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar' });
-  const a = el('a', { href: URL.createObjectURL(blob), download: `jadwal-${role}.ics` }); document.body.append(a); a.click(); a.remove();
+  AppShell.saveFile(`jadwal-${role}.ics`, 'text/calendar', lines.join('\r\n'));
 }
 
 /* ===== الموجز لولي الأمر: أُنجز / تحسّن / يحتاج متابعة / قرار الأسبوع ===== */
