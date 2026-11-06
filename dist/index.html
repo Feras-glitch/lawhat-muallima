@@ -116,6 +116,7 @@ header.top{flex-wrap:wrap}
 <body>
 <div id="app"></div>
 <script>
+const BUILD = {"version": "0.12", "commit": "9b0ffa1", "src": "49afcf534d", "built": "2026-11-06"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 const CHILDREN = {
   dalal: { id: 'dalal', name: 'دلال', age: 10, unit: 'page', unitLabel: 'صفحة' },
@@ -336,8 +337,35 @@ const Store = {
         else if (lsRaw.length && !migrate.length) { try { localStorage.removeItem(LS_EVENTS); } catch (e) {} }
       } else { this.raw = lsRaw; }
     } else { this.raw = lsRaw; }
+    this.migrateV2();
     this.refresh();
   },
+  /* ترحيل 0.11 ← 0.12: حالة المزامنة لكل خادم. «مرفوع» القديم يصير «على الخادم الحالي»، والمؤشر والمرفوضات تنتقل إلى حالة ذلك الخادم،
+     وتُطلب مطابقة كاملة عند أول تزامن لتصحيح أي علامة قديمة غير دقيقة */
+  migrateV2() {
+    const s = this.settings; if (s.schema >= 2) return;
+    const id = s.sbUrl ? serverId(s.sbUrl) : null;
+    s.servers = s.servers || {};
+    if (id) {
+      const cur = typeof s.sbCursor === 'string' ? { t: s.sbCursor, id: '' } : (s.sbCursor || null);
+      s.servers[id] = Object.assign({ cursor: cur, rejected: s.syncRejected || [], since: Date.now() }, s.servers[id] || {}, { accepted: true, needReconcile: true });
+      if (s.sbSession) s.sbSession.sid = id;
+    }
+    delete s.sbCursor; delete s.syncRejected;
+    const changed = [];
+    for (const e of this.raw) {
+      if (!('synced' in e) && !('pushRejected' in e)) continue;
+      if (id && e.synced === true) { if (e.pushRejected) e.rj = [id]; else e.sv = [id]; }
+      delete e.synced; delete e.pushRejected; changed.push(e);
+    }
+    s.schema = 2;
+    if (changed.length) this.saveEvents(changed);
+    this.saveSettings();
+  },
+  /* حقول محلية لا تخرج من الجهاز (لا إلى الخادم ولا إلى ملف) */
+  LOCAL_FIELDS: ['sv', 'rj', 'synced', 'pushRejected'],
+  clean(e) { const o = Object.assign({}, e); for (const k of this.LOCAL_FIELDS) delete o[k]; return o; },
+  markOn(e, id) { if (!hasIn(e.sv, id)) e.sv = (e.sv || []).concat(id); if (hasIn(e.rj, id)) e.rj = e.rj.filter(x => x !== id); },
   /* كتابة سجلات بعينها إلى IDB */
   putMany(list) {
     if (!this.idbOk || !this.db) return Promise.resolve(false);
@@ -433,7 +461,6 @@ const Store = {
     ev.dev = this.settings.deviceId;
     const act = this.settings.active;
     if (act && act.sid && !ev.sid && ev.by === act.role && ['outcome', 'error', 'new_page', 'fluency_time', 'fluency_page', 'yellow_pass', 'card', 'note', 'tilawa', 'juz_exam'].includes(ev.type)) ev.sid = act.sid;
-    ev.synced = false;
     if (!this.validEvent(ev)) { const msg = 'سجل غير صالح لم يُحفظ: ' + ev.type; try { UI.toast(msg); } catch (x) {} throw new Error(msg); }
     if (!this.roleAllows(ev.by, ev)) { const msg = `لا يُسمح لحساب ${ROLES[ev.by] ? ROLES[ev.by].name : ev.by} بتسجيل «${ev.type}»؛ يُطلب من آية`; try { UI.toast(msg); } catch (x) {} throw new Error(msg); }
     this.raw.push(ev);
@@ -448,6 +475,7 @@ const Store = {
     if (typeof e.id !== 'string' || typeof e.type !== 'string' || typeof e.ts !== 'number' || !/^\d{4}-\d{2}-\d{2}$/.test(e.day || '')) return 'حقول أساسية ناقصة أو غير صالحة';
     if (e.by != null && !ROLES[e.by]) return 'دور غير معروف: ' + e.by;
     if (e.child != null && !CHILDREN[e.child]) return 'طفل غير معروف';
+    if (e.type !== 'undo' && e.by != null && !this.roleAllows(e.by, e) && this.validEvent(e, batch)) return `لا صلاحية لـ${ROLES[e.by].name} بتسجيل «${e.type}»`;
     if (e.type === 'undo') { const t = this.raw.find(x => x.id === e.target) || (batch || []).find(x => x && x.id === e.target); return t ? `لا صلاحية لـ${ROLES[e.by] ? ROLES[e.by].name : e.by} للتراجع عن سجل ${ROLES[t.by] ? ROLES[t.by].name : t.by}` : 'هدف التراجع غير موجود'; }
     return 'حقول النوع ' + e.type + ' غير صالحة';
   },
@@ -499,16 +527,24 @@ const Store = {
       default: return false;
     }
   },
-  importEvents(list) {
+  /* دمج سجلات (ملف أو سحب): يُضاف ما ليس موجوداً بمعرّفه ولا يُكرَّر. الحقول المحلية في الوارد تُهمل.
+     opts.server: السجلات واردة من هذا الخادم فتُعلَّم «عليه» — والموجود منها هنا يُعلَّم كذلك */
+  importEvents(list, opts = {}) {
     if (!Array.isArray(list)) throw new Error('الملف ليس قائمة أحداث');
-    const bad = list.filter(e => !this.validEvent(e, list) || !this.roleAllows(e.by, e));
+    const items = list.map(e => (e && typeof e === 'object') ? this.clean(e) : e);
+    const bad = items.filter(e => !this.validEvent(e, items) || !this.roleAllows(e.by, e));
     if (bad.length) throw new Error(`رُفض الملف كاملاً: ${bad.length} سجل غير صالح أو غير مسموح لدوره (مثال: ${JSON.stringify(bad[0]).slice(0, 80)})`);
-    const have = new Set(this.raw.map(e => e.id));
+    const have = new Map(this.raw.map(e => [e.id, e]));
     const before = this.raw.slice();
-    let n = 0; const added = [];
-    for (const e of list) if (!have.has(e.id)) { this.raw.push(e); have.add(e.id); n++; added.push(e); }
+    let n = 0; const added = [], touched = [];
+    for (const e of items) {
+      const ex = have.get(e.id);
+      if (ex) { if (opts.server && !hasIn(ex.sv, opts.server)) { this.markOn(ex, opts.server); touched.push(ex); } continue; }
+      if (opts.server) e.sv = [opts.server];
+      this.raw.push(e); have.set(e.id, e); n++; added.push(e);
+    }
     this.raw.sort((a, b) => a.ts - b.ts);
-    if (!this.saveEvents(added)) { this.raw = before; throw new Error(this.storageError); }
+    if (!this.saveEvents(added.concat(touched))) { this.raw = before; throw new Error(this.storageError); }
     this.refresh();
     return n;
   },
@@ -778,10 +814,29 @@ function lastTilawa(c, kind) { const l = Store.events.filter(e => e.type === 'ti
 function juzExams(c, juz) { return Store.events.filter(e => e.type === 'juz_exam' && e.child === c && e.juz === juz); }
 
 /* ===== التزامن الاختياري مع خادم Supabase ===== */
+/* هوية الخادم = رابط المشروع مطبَّعاً. لكل خادم حالته المستقلة في settings.servers:
+   قبول صريح (accepted)، مؤشر السحب، المرفوضات، وتقرير آخر مطابقة.
+   وفي كل سجل: e.sv = الخوادم التي ثبت وجوده عليها، e.rj = الخوادم التي رفضته رفضاً دائماً.
+   الجلسة مربوطة بالخادم الذي أصدرها (sbSession.sid) فلا تنتقل إلى غيره. */
+function serverId(url) { return String(url || '').trim().replace(/\/+$/, '').toLowerCase(); }
+const hasIn = (arr, v) => Array.isArray(arr) && arr.includes(v);
+const PUSH_CHUNK = 500;
+const PAGE = 1000;
+
 const Sync = {
-  timer: null, busy: false, lastError: null, lastOk: null,
-  cfg() { const s = Store.settings; return (s.sbUrl && s.sbKey && !s.localMode) ? { url: s.sbUrl.replace(/\/$/, ''), key: s.sbKey } : null; },
-  token() { return Store.settings.sbSession && Store.settings.sbSession.access_token; },
+  timer: null, busy: false, lastError: null, lastOk: null, incomplete: false, lastIds: null,
+  cfg() {
+    const s = Store.settings;
+    if (!s.sbUrl || !s.sbKey || s.localMode) return null;
+    const id = serverId(s.sbUrl);
+    if (!(s.servers && s.servers[id] && s.servers[id].accepted)) return null;
+    return { url: s.sbUrl.trim().replace(/\/+$/, ''), key: s.sbKey.trim(), id };
+  },
+  sid() { const c = this.cfg(); return c ? c.id : null; },
+  st(id) { id = id || this.sid(); if (!id) return null; return (Store.settings.servers || {})[id] || null; },
+  session() { const s = Store.settings.sbSession; return s && s.sid && s.sid === this.sid() ? s : null; },
+  role() { return this.session() && ROLES[Store.settings.sbRole] ? Store.settings.sbRole : null; },
+  token() { const s = this.session(); return s && s.access_token; },
   headers(json) {
     const c = this.cfg(); const h = { apikey: c.key, Authorization: 'Bearer ' + (this.token() || c.key) };
     if (json) h['Content-Type'] = 'application/json';
@@ -792,98 +847,212 @@ const Sync = {
     const r = await fetch(`${c.url}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: c.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error_description || j.msg || 'فشل الدخول');
-    Store.settings.sbSession = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: j.user && j.user.email };
+    Store.settings.sbSession = { sid: c.id, access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: j.user && j.user.email };
     let role = null;
-    try { const pr = await fetch(`${c.url}/rest/v1/profiles?select=role&user_id=eq.${j.user.id}`, { headers: { apikey: c.key, Authorization: 'Bearer ' + j.access_token } }); const rows = await pr.json(); role = rows && rows[0] && rows[0].role; } catch (e) {}
+    try {
+      const pr = await fetch(`${c.url}/rest/v1/profiles?select=role&user_id=eq.${j.user.id}`, { headers: { apikey: c.key, Authorization: 'Bearer ' + j.access_token } });
+      const rows = await pr.json(); role = rows && rows[0] && rows[0].role;
+    } catch (e) {}
     Store.settings.sbRole = ROLES[role] ? role : null;
     Store.saveSettings();
     return Store.settings.sbRole;
   },
   async refresh() {
-    const c = this.cfg(); const s = Store.settings.sbSession; if (!c || !s || !s.refresh_token) return false;
+    const c = this.cfg(); const s = this.session(); if (!c || !s || !s.refresh_token) return false;
     if (Date.now() < s.expires_at - 60000) return true;
     const r = await fetch(`${c.url}/auth/v1/token?grant_type=refresh_token`, { method: 'POST', headers: { apikey: c.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: s.refresh_token }) });
     if (!r.ok) { Store.settings.sbSession = null; Store.saveSettings(); return false; }
     const j = await r.json();
-    Store.settings.sbSession = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: s.email };
+    Store.settings.sbSession = { sid: c.id, access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: s.email };
     Store.saveSettings(); return true;
   },
   logout() { Store.settings.sbSession = null; Store.settings.sbRole = null; Store.saveSettings(); },
-  /* تصنيف أخطاء الرفع: دائم (صلاحيات/بيانات) أم مؤقت (دخول، خادم، حدّ طلبات، شبكة) */
+
+  /* ===== تغيير الخادم ===== */
+  isKnown(url) { const all = Store.settings.servers || {}; const x = all[serverId(url)]; return !!(x && x.accepted); },
+  /* الانتقال إلى خادم مقبول (أو قبوله الآن بعد اختيار صريح): لا تنتقل الجلسة ولا المؤشر، وتُجرى مطابقة كاملة عند أول تزامن */
+  switchTo(url, key) {
+    const s = Store.settings; const id = serverId(url);
+    s.servers = s.servers || {};
+    if (!s.servers[id]) s.servers[id] = { cursor: null, rejected: [], since: Date.now() };
+    Object.assign(s.servers[id], { accepted: true, needReconcile: true });
+    s.sbUrl = url.trim(); s.sbKey = key.trim(); s.localMode = false;
+    s.sbSession = null; s.sbRole = null;
+    this.lastError = null; this.lastOk = null; this.incomplete = false; this.lastIds = null;
+    Store.saveSettings();
+  },
+  /* عدد سجلات هذا الجهاز بحسب حالتها على خادم: سجلات الدور الحالي المنتظرة، وسجلات أدوار أخرى ليست عليه */
+  counts(id) {
+    id = id || this.sid(); const me = this.role(); const r = { ownPending: 0, waitingTarget: 0, others: {}, othersTotal: 0, rejected: 0 };
+    if (!id) return r;
+    let byId = null;
+    for (const e of Store.raw) {
+      if (hasIn(e.sv, id)) continue;
+      if (hasIn(e.rj, id)) { r.rejected++; continue; }
+      if (me && e.by === me) {
+        r.ownPending++;
+        if (e.type === 'undo') { byId = byId || new Map(Store.raw.map(x => [x.id, x])); const t = byId.get(e.target); if (!t || !hasIn(t.sv, id)) r.waitingTarget++; }
+      } else { const k = e.by || '?'; r.others[k] = (r.others[k] || 0) + 1; r.othersTotal++; }
+    }
+    return r;
+  },
+
+  /* ===== تصنيف الأخطاء ===== */
   /* ترتيب المؤشرات: الوقت ثم المعرّف (نصوص الخادم بصيغة واحدة فتُقارن نصاً عند تساوي الميلي ثانية) */
   cmpCursor(a, b) { if (a.t === b.t) return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; const d = Date.parse(a.t) - Date.parse(b.t); return d || (a.t < b.t ? -1 : 1); },
   isPermanent(status) { return [400, 403, 409, 422].includes(status); },
   transientMsg(status) { return status === 401 ? 'انتهت الجلسة، أعيدي الدخول' : status === 429 ? 'الخادم مشغول (حدّ الطلبات)؛ سيُعاد الرفع تلقائياً' : status >= 500 ? `عطل مؤقت في الخادم (${status})؛ سيُعاد الرفع تلقائياً` : `تعذّر الرفع مؤقتاً (${status})؛ سيُعاد تلقائياً`; },
   schedule() { if (!this.cfg()) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.run(), 1500); },
+  /* أي تغيير للخادم أثناء الجولة يوقفها: لا يُكتب مؤشر أو علامة لخادم على خادم آخر */
+  guard(c) { if (this.sid() !== c.id) throw new Error('تغيّر الخادم أثناء المزامنة؛ أُوقفت الجولة'); },
+
   async run() {
-    if (!this.cfg() || this.busy || !navigator.onLine) return;
+    const c = this.cfg();
+    if (!c || this.busy || !navigator.onLine) return;
     this.busy = true;
     try {
-      if (!(await this.refresh())) { this.lastError = 'انتهت الجلسة، أعيدي الدخول'; this.busy = false; UI.renderStatus(); return; }
-      const c = this.cfg();
-      // دفع: على مرحلتين — السجلات العادية أولاً ثم التراجعات (سياسة الخادم تتحقق من وجود هدف التراجع، ولا ترى صفوف البيان نفسه)
-      const toRow = e => ({ id: e.id, ts: e.ts, day: e.day, by: e.by, child: e.child || null, type: e.type, dev: e.dev || null, payload: e });
-      const post = async rows => fetch(`${c.url}/rest/v1/events?on_conflict=id`, { method: 'POST', headers: Object.assign(this.headers(true), { Prefer: 'resolution=ignore-duplicates,return=minimal' }), body: JSON.stringify(rows) });
-      /* تُرفع سجلات هذا الحساب فقط؛ سجلات دور آخر (جهاز مشترك/استيراد) تبقى حتى يدخل صاحبها */
-      const me = Store.settings.sbRole;
-      const pendingAll = Store.raw.filter(e => !e.synced && e.by === me);
-      for (const phase of [pendingAll.filter(e => e.type !== 'undo'), pendingAll.filter(e => e.type === 'undo')]) {
-        if (!phase.length) continue;
-        const r = await post(phase.map(toRow));
-        if (r.ok) { for (const e of phase) e.synced = true; Store.saveEvents(phase); continue; }
-        if (!this.isPermanent(r.status)) throw new Error(this.transientMsg(r.status));
-        /* رفض صلاحيات (403/4xx دائم): لا نُوقف المزامنة كلها؛ نعزل السجل المرفوض ونحفظه مع سببه.
-           خطأ مؤقت أثناء الفحص الفردي (401/408/425/429/5xx/شبكة) يُبقي السجل منتظراً ويوقف الجولة. */
-        for (const e of phase) {
-          const r1 = await post([toRow(e)]);
-          if (r1.ok) { e.synced = true; Store.saveEvents([e]); continue; }
-          if (!this.isPermanent(r1.status)) { Store.saveEvents(phase); throw new Error(this.transientMsg(r1.status)); }
-          let why = 'رفض الخادم (' + r1.status + ')'; try { const j = await r1.json(); if (j && j.message) why += ': ' + j.message; } catch (x) {}
-          e.synced = true; e.pushRejected = why;
-          const rej = Store.settings.syncRejected || []; if (!rej.some(x => x.id === e.id)) rej.push({ id: e.id, type: e.type, by: e.by, child: e.child || null, day: e.day, reason: 'لم يقبل الخادم الرفع — ' + why, at: Date.now(), payload: e, direction: 'push' }); Store.settings.syncRejected = rej; Store.saveSettings();
-        }
-        Store.saveEvents();
-      }
-      // سحب
-      let n = 0;
-      const EPOCH = '1970-01-01T00:00:00Z';
-      let cur = Store.settings.sbCursor;
-      if (typeof cur === 'string') { cur = { t: cur, id: '' }; Store.settings.sbCursor = cur; Store.saveSettings(); } /* ترحيل مؤشر 0.3 */
-      if (!cur || typeof cur.t !== 'string') cur = { t: EPOCH, id: '' };
-      /* نافذة تداخل 5 ثوانٍ تُطبَّق مرة واحدة في بداية الجولة (صف التُزم متأخراً لا يضيع؛ المكرر يُزال بالمعرّف)،
-         ثم التصفح بمؤشر متقدم حصراً (inserted_at, id) */
-      let q = cur.t === EPOCH ? { t: cur.t, id: cur.id } : { t: new Date(Math.max(0, Date.parse(cur.t) - 5000)).toISOString(), id: '' };
-      let best = cur, complete = false;
-      for (let round = 0; round < 50; round++) {
-        const t = encodeURIComponent(q.t), id = encodeURIComponent(q.id);
-        const r2 = await fetch(`${c.url}/rest/v1/events?select=id,by,type,child,payload,inserted_at&or=(inserted_at.gt.${t},and(inserted_at.eq.${t},id.gt.${id}))&order=inserted_at.asc,id.asc&limit=1000`, { headers: this.headers() });
-        if (!r2.ok) throw new Error((this.isPermanent(r2.status) ? 'رفض الخادم السحب: ' + r2.status : this.transientMsg(r2.status)));
-        const rows = await r2.json();
-        if (!rows.length) { complete = true; break; }
-        /* أعمدة الخادم (المحمية بالسياسات) تغلب ما في payload */
-        const incoming = rows.map(r => Object.assign({}, r.payload, { id: r.id, by: r.by, type: r.type, child: r.child || undefined, synced: true }));
-        const bad = incoming.filter(e => !Store.validEvent(e, incoming));
-        if (bad.length) { /* كل المرفوضات تُحفظ مع سببها بلا حد؛ القائمة السابقة تُحفظ كاملة وتُستعاد عند فشل الحفظ */
-          const prev = Store.settings.syncRejected || [];
-          const next = prev.slice();
-          for (const e of bad) if (!next.some(x => x.id === e.id)) next.push({ id: e.id, type: e.type, by: e.by, child: e.child || null, day: e.day, reason: Store.rejectReason(e, incoming), at: Date.now(), payload: e });
-          Store.settings.syncRejected = next;
-          try { Store.saveSettings(); } catch (err) { Store.settings.syncRejected = prev; this.lastError = 'تعذّر حفظ السجلات المرفوضة (امتلأت الذاكرة)؛ لن يتقدم المؤشر'; UI.renderStatus(); throw new Error(this.lastError); }
-        }
-        n += Store.importEvents(incoming.filter(e => !bad.includes(e)));
-        /* المؤشر لا يتقدم إلا بعد ثبوت السجلات على القرص */
-        if (!(await Store.durable())) throw new Error('تعذّر حفظ السجلات المسحوبة على الجهاز؛ لن يتقدم المؤشر وستُعاد المحاولة');
-        const last = rows[rows.length - 1]; q = { t: last.inserted_at, id: last.id };
-        if (this.cmpCursor(q, best) > 0) { best = q; Store.settings.sbCursor = best; Store.saveSettings(); }
-        if (rows.length < 1000) { complete = true; break; }
-      }
-      this.incomplete = !complete;
-      if (!complete) setTimeout(() => this.run(), 2000);
-      this.lastOk = Date.now(); this.lastError = this.incomplete ? 'المزامنة لم تكتمل بعد (دفعة كبيرة)؛ تُستكمل تلقائياً' : (Store.settings.syncRejected || []).length ? `${Store.settings.syncRejected.length} سجل مرفوض بانتظار المعالجة (الإعدادات ← المرفوضات)` : null;
+      if (!(await this.refresh())) { this.lastError = 'انتهت الجلسة، أعيدي الدخول'; return; }
+      const st = this.st(c.id);
+      const full = !!st.needReconcile;
+      if (full) await this.reconcile(c);
+      await this.push(c);
+      let n = await this.pull(c);
+      /* فحص رخيص كل جولة: خادم يحمل أقل مما ثبت رفعه إليه = استُعيد من نسخة أقدم أو فُقد منه شيء */
+      if (!full && !this.incomplete && await this.countMismatch(c)) { await this.reconcile(c); await this.push(c); n += await this.pull(c); }
+      if (this.lastIds && this.lastIds.sid === c.id) this.writeReport(c);
+      this.guard(c);
+      const rejN = st.rejected.length;
+      this.lastOk = Date.now();
+      this.lastError = this.incomplete ? 'المزامنة لم تكتمل بعد (دفعة كبيرة)؛ تُستكمل تلقائياً' : rejN ? `${rejN} سجل مرفوض بانتظار المعالجة (الإعدادات ← المرفوضات)` : null;
       Store.saveSettings();
       if (n) UI.rerender();
     } catch (err) { this.lastError = err.message; }
-    this.busy = false; UI.renderStatus();
+    finally { this.busy = false; UI.renderStatus(); }
+  },
+
+  /* ===== الرفع: سجلات الدور الحالي التي ليست على هذا الخادم؛ العادية أولاً ثم التراجعات، بدفعات ===== */
+  toRow(e) { return { id: e.id, ts: e.ts, day: e.day, by: e.by, child: e.child || null, type: e.type, dev: e.dev || null, payload: Store.clean(e) }; },
+  async push(c) {
+    const me = this.role(); if (!me) return;
+    const post = rows => fetch(`${c.url}/rest/v1/events?on_conflict=id`, { method: 'POST', headers: Object.assign(this.headers(true), { Prefer: 'resolution=ignore-duplicates,return=minimal' }), body: JSON.stringify(rows) });
+    const all = Store.raw.filter(e => e.by === me && !hasIn(e.sv, c.id) && !hasIn(e.rj, c.id));
+    const byId = new Map(Store.raw.map(e => [e.id, e]));
+    /* التراجع يُرفع بعد أن يثبت هدفه على هذا الخادم (سياسة الخادم تشترطه)؛ هدف لم يصل بعد (سجل دور آخر لم يرفعه صاحبه) = ينتظر ولا يُعدّ مرفوضاً */
+    const undoReady = () => all.filter(e => e.type === 'undo' && !hasIn(e.sv, c.id) && (t => t && hasIn(t.sv, c.id))(byId.get(e.target)));
+    for (const getPhase of [() => all.filter(e => e.type !== 'undo'), undoReady]) {
+      const phase = getPhase();
+      for (let i = 0; i < phase.length; i += PUSH_CHUNK) {
+        const chunk = phase.slice(i, i + PUSH_CHUNK);
+        const r = await post(chunk.map(e => this.toRow(e)));
+        this.guard(c);
+        if (r.ok) { for (const e of chunk) Store.markOn(e, c.id); Store.saveEvents(chunk); continue; }
+        if (!this.isPermanent(r.status)) throw new Error(this.transientMsg(r.status));
+        /* رفض دائم: يُعزل السجل المرفوض وحده مع سببه ولا تتوقف البقية.
+           خطأ مؤقت أثناء الفحص الفردي يُبقي السجل منتظراً ويوقف الجولة. */
+        for (const e of chunk) {
+          const r1 = await post([this.toRow(e)]);
+          this.guard(c);
+          if (r1.ok) { Store.markOn(e, c.id); Store.saveEvents([e]); continue; }
+          if (!this.isPermanent(r1.status)) throw new Error(this.transientMsg(r1.status));
+          let why = 'رفض الخادم (' + r1.status + ')'; try { const j = await r1.json(); if (j && j.message) why += ': ' + j.message; } catch (x) {}
+          e.rj = (e.rj || []).filter(x => x !== c.id).concat(c.id);
+          const st = this.st(c.id);
+          if (!st.rejected.some(x => x.id === e.id)) st.rejected.push({ id: e.id, type: e.type, by: e.by, child: e.child || null, day: e.day, reason: 'لم يقبل الخادم الرفع — ' + why, at: Date.now(), payload: Store.clean(e), direction: 'push' });
+          Store.saveEvents([e]); Store.saveSettings();
+        }
+      }
+    }
+  },
+
+  /* ===== السحب بمؤشر (inserted_at, id) خاص بهذا الخادم ===== */
+  async pull(c) {
+    const st = this.st(c.id);
+    let n = 0;
+    const EPOCH = '1970-01-01T00:00:00Z';
+    let cur = st.cursor;
+    if (!cur || typeof cur.t !== 'string') cur = { t: EPOCH, id: '' };
+    /* نافذة تداخل 5 ثوانٍ مرة واحدة في بداية الجولة (صف التُزم متأخراً لا يضيع؛ المكرر يُزال بالمعرّف)، ثم مؤشر متقدم حصراً */
+    let q = cur.t === EPOCH ? { t: cur.t, id: cur.id } : { t: new Date(Math.max(0, Date.parse(cur.t) - 5000)).toISOString(), id: '' };
+    let best = cur, complete = false;
+    for (let round = 0; round < 50; round++) {
+      const t = encodeURIComponent(q.t), id = encodeURIComponent(q.id);
+      const r2 = await fetch(`${c.url}/rest/v1/events?select=id,by,type,child,payload,inserted_at&or=(inserted_at.gt.${t},and(inserted_at.eq.${t},id.gt.${id}))&order=inserted_at.asc,id.asc&limit=${PAGE}`, { headers: this.headers() });
+      this.guard(c);
+      if (!r2.ok) throw new Error((this.isPermanent(r2.status) ? 'رفض الخادم السحب: ' + r2.status : this.transientMsg(r2.status)));
+      const rows = await r2.json();
+      if (!rows.length) { complete = true; break; }
+      /* أعمدة الخادم (المحمية بالسياسات) تغلب ما في payload؛ والحقول المحلية في payload قديم تُهمل */
+      const incoming = rows.map(r => Object.assign(Store.clean(r.payload || {}), { id: r.id, by: r.by, type: r.type, child: r.child || undefined }));
+      const bad = incoming.filter(e => !Store.validEvent(e, incoming) || !Store.roleAllows(e.by, e));
+      if (bad.length) { /* كل المرفوضات تُحفظ مع سببها بلا حد؛ القائمة السابقة تُستعاد عند فشل الحفظ */
+        const prev = st.rejected; const next = prev.slice();
+        for (const e of bad) if (!next.some(x => x.id === e.id)) next.push({ id: e.id, type: e.type, by: e.by, child: e.child || null, day: e.day, reason: Store.rejectReason(e, incoming), at: Date.now(), payload: e });
+        st.rejected = next;
+        try { Store.saveSettings(); } catch (err) { st.rejected = prev; this.lastError = 'تعذّر حفظ السجلات المرفوضة (امتلأت الذاكرة)؛ لن يتقدم المؤشر'; UI.renderStatus(); throw new Error(this.lastError); }
+      }
+      n += Store.importEvents(incoming.filter(e => !bad.includes(e)), { server: c.id });
+      /* المؤشر لا يتقدم إلا بعد ثبوت السجلات على القرص */
+      if (!(await Store.durable())) throw new Error('تعذّر حفظ السجلات المسحوبة على الجهاز؛ لن يتقدم المؤشر وستُعاد المحاولة');
+      this.guard(c);
+      const last = rows[rows.length - 1]; q = { t: last.inserted_at, id: last.id };
+      if (this.cmpCursor(q, best) > 0) { best = q; st.cursor = best; Store.saveSettings(); }
+      if (rows.length < PAGE) { complete = true; break; }
+    }
+    this.incomplete = !complete;
+    if (!complete) setTimeout(() => this.run(), 2000);
+    return n;
+  },
+
+  /* ===== المطابقة الكاملة: كل معرّفات الخادم مقابل سجلات الجهاز ===== */
+  async fetchIds(c) {
+    const ids = new Set(); let after = null;
+    for (let i = 0; i < 2000; i++) {
+      const r = await fetch(`${c.url}/rest/v1/events?select=id&order=id.asc&limit=${PAGE}${after !== null ? '&id=gt.' + encodeURIComponent(after) : ''}`, { headers: this.headers() });
+      this.guard(c);
+      if (!r.ok) throw new Error(this.isPermanent(r.status) ? 'رفض الخادم المطابقة: ' + r.status : this.transientMsg(r.status));
+      const rows = await r.json();
+      for (const x of rows) ids.add(x.id);
+      if (rows.length < PAGE) return ids;
+      after = rows[rows.length - 1].id;
+    }
+    throw new Error('تعذّرت المطابقة: الخادم أكبر من المتوقع');
+  },
+  async reconcile(c) {
+    const ids = await this.fetchIds(c);
+    const st = this.st(c.id); const changed = [];
+    for (const e of Store.raw) {
+      const on = ids.has(e.id), had = hasIn(e.sv, c.id);
+      if (on && !had) { Store.markOn(e, c.id); changed.push(e); }
+      else if (!on && had) { e.sv = e.sv.filter(x => x !== c.id); changed.push(e); }
+    }
+    /* ما على الخادم وليس هنا يُسحب من البداية (المكرر يُزال بالمعرّف) */
+    const local = new Set(Store.raw.map(e => e.id)); const rej = new Set(st.rejected.map(x => x.id));
+    for (const id of ids) if (!local.has(id) && !rej.has(id)) { st.cursor = null; break; }
+    if (changed.length) Store.saveEvents(changed);
+    st.needReconcile = false; st.reconciledAt = Date.now();
+    this.lastIds = { sid: c.id, ids };
+    Store.saveSettings();
+  },
+  async countMismatch(c) {
+    try {
+      const r = await fetch(`${c.url}/rest/v1/events?select=id&limit=1`, { headers: Object.assign(this.headers(), { Prefer: 'count=exact' }) });
+      if (!r.ok) return false;
+      const m = /\/(\d+)\s*$/.exec(r.headers.get('content-range') || ''); if (!m) return false;
+      const server = Number(m[1]);
+      const known = Store.raw.reduce((k, e) => k + (hasIn(e.sv, c.id) ? 1 : 0), 0);
+      const st = this.st(c.id); st.serverCount = server;
+      /* أقل مما ثبت رفعه = فُقد شيء من الخادم. (الزيادة طبيعية: أجهزة أخرى ترفع، والسحب يأتي بها) */
+      return server < known;
+    } catch (e) { return false; }
+  },
+  /* تقرير بعد مطابقة كاملة: لا يُعلن الاكتمال إلا إن لم يبقَ شيء، وإلا يُذكر ما بقي وسببه */
+  writeReport(c) {
+    const st = this.st(c.id); const k = this.counts(c.id);
+    const local = new Set(Store.raw.map(e => e.id)); const rej = new Set(st.rejected.map(x => x.id));
+    let serverOnly = 0; for (const id of this.lastIds.ids) if (!local.has(id) && !rej.has(id)) serverOnly++;
+    const rep = { at: Date.now(), ownPending: k.ownPending, waitingTarget: k.waitingTarget, others: k.others, othersTotal: k.othersTotal, rejected: st.rejected.length, serverOnly, incomplete: this.incomplete };
+    rep.complete = !rep.ownPending && !rep.othersTotal && !rep.rejected && !rep.serverOnly && !rep.incomplete;
+    st.report = rep; this.lastIds = null;
   },
   started: false,
   start() { if (this.cfg() && !this.started) { this.started = true; this.run(); setInterval(() => this.run(), 30000); window.addEventListener('online', () => this.run()); } },
@@ -943,7 +1112,7 @@ const App = {
   role: null, view: 'now', sub: {}, timeOffset: 0,
   realNow() { return new Date(Date.now() + (Store.settings.timeOffset || 0)); },
   now() { return wallClock(this.realNow()); },
-  setRole(r) { this.role = ROLES[r]; sessionStorage.setItem(LS_SESSION, r); this.view = r === 'parent' ? 'dash' : 'now'; Alarms.unlock(); UI.rerender(); },
+  setRole(r) { this.role = ROLES[r]; sessionStorage.setItem(LS_SESSION, r); this.view = r === 'parent' ? 'dash' : 'now'; Alarms.unlock(); UI.rerender(); Persist.auto(); },
   logout() { this.role = null; sessionStorage.removeItem(LS_SESSION); if (Sync.cfg()) Sync.logout(); UI.rerender(); },
   can(perm) { return !!(this.role && this.role[perm]); },
 };
@@ -964,7 +1133,7 @@ const UI = {
     this.root = document.getElementById('app');
     const saved = sessionStorage.getItem(LS_SESSION);
     if (saved && ROLES[saved]) { App.role = ROLES[saved]; App.view = saved === 'parent' ? 'dash' : 'now'; }
-    if (Sync.cfg() && Store.settings.sbRole && Store.settings.sbSession) { App.role = ROLES[Store.settings.sbRole]; if (!saved) App.view = App.role.id === 'parent' ? 'dash' : 'now'; }
+    if (Sync.role()) { App.role = ROLES[Sync.role()]; if (!saved) App.view = App.role.id === 'parent' ? 'dash' : 'now'; }
     this.rerender();
     setInterval(() => { const ae = document.activeElement; const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT'); if (App.view === 'now' && App.role && !document.querySelector('.modal-bg') && !typing) this.rerender(true); }, 30000);
     setInterval(() => Alarms.tick(), 15000);
@@ -992,13 +1161,15 @@ const UI = {
     if (Store.storageError) return [el('span', { class: 'dot bad' }), Store.storageError + m];
     if (Store.idbOk && Store.dirty.size) return [el('span', { class: 'dot off' }), `جارٍ الحفظ… (${Store.dirty.size})` + m];
     if (!Store.idbOk) { const used = (localStorage.getItem('lm_events_v1') || '').length / 1048576; if (used > 2.5) return [el('span', { class: 'dot bad' }), `تخزين محدود (${used.toFixed(1)} من 5 م.ب) — افتحي البرنامج من الرابط لا من الملف` + m]; }
-    const rejN = (Store.settings.syncRejected || []).length; if (rejN) return [el('span', { class: 'dot bad' }), `${rejN} سجل مرفوض من المزامنة — الإعدادات` + m];
+    const st = Sync.st(); const rejN = st ? st.rejected.length : 0; if (rejN) return [el('span', { class: 'dot bad' }), `${rejN} سجل مرفوض من المزامنة — الإعدادات` + m];
     if (Store.settings.localMode && Store.settings.sbUrl) return [el('span', { class: 'dot off' }), 'وضع محلي — المزامنة متوقفة (الإعدادات ← الخادم ← العودة للاتصال)' + m];
     if (!Sync.cfg()) return [el('span', { class: 'dot' }), 'حُفظ على الجهاز' + m];
     if (!navigator.onLine) return [el('span', { class: 'dot off' }), 'بلا إنترنت، سيُرفع لاحقاً'];
     if (Sync.lastError) return [el('span', { class: 'dot bad' }), Sync.lastError];
-    const pend = Store.raw.filter(e => !e.synced).length;
-    return [el('span', { class: 'dot ok' }), (pend ? `حُفظ على الجهاز · ${pend} بانتظار الرفع` : 'تمت المزامنة') + m];
+    const k = Sync.counts();
+    if (k.ownPending) return [el('span', { class: 'dot ok' }), `حُفظ على الجهاز · ${k.ownPending} بانتظار الرفع` + m];
+    if (k.othersTotal) return [el('span', { class: 'dot off' }), `تمت مزامنة سجلاتك · ${k.othersTotal} لأدوار أخرى ليست على الخادم (الإعدادات ← الخادم)` + m];
+    return [el('span', { class: 'dot ok' }), 'تمت المزامنة' + m];
   },
   /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ وإلا رسالة الفشل */
   savedToast(msg) { Store.durable().then(ok => this.toast(ok ? msg : 'لم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ'))); },
@@ -1057,7 +1228,7 @@ const Alarms = {
 
 /* ===== الدخول ===== */
 Views.login = function () {
-  const online = !!Sync.cfg() && !Store.settings.localMode;
+  const online = !!Sync.cfg();
   const wrap = el('div', { class: 'login' });
   wrap.append(el('h1', { style: 'color:var(--brand);margin-bottom:4px' }, 'لوحة المعلمة'), el('p', { class: 'muted' }, 'برنامج حفظ القرآن وتدبره — دلال وفرح وكريم'));
   if (online) {
@@ -1124,6 +1295,7 @@ function pagesText(st, page, lines) { return st && st.id === 'karim' && lines ? 
 Views.now = function () {
   const d = App.now(); const { list, current, next } = currentSession(App.role.id, d);
   const wrap = el('div');
+  if (!Sync.cfg()) { const due = BackupReminder(); if (due) wrap.append(due); } /* في الوضع المحلي الجهاز هو النسخة الوحيدة */
   const active = Store.settings.active && Store.settings.active.dayK === todayKey() && Store.settings.active.role === App.role.id ? Store.settings.active : null;
   if (active) { const s = PLAN.find(x => sessionKey(x, active.dayK) === active.key); if (s) return SessionView(s, active); }
   const noInv = CHILD_ORDER.filter(c => !Store.events.some(e => e.type === 'layer' && e.child === c));
@@ -1897,9 +2069,343 @@ function weeklySummaryText() {
 /* ثلاث حالات مختلفة الإجراء: «لم يُقيَّم بعد» = لا بوابة ولا فحص؛ «لم يُقيَّم كاملاً» = تسميع ناقص لصفحة؛ «بانتظار اعتماد آية» = لون مقترح لم يُعتمد */
 function lightText(h) { return h.light === 'grey' ? 'لم يُقيَّم بعد: لا بوابة ولا فحص خميس' : h.light === 'green' ? 'سليم' : h.light === 'yellow' ? 'يحتاج انتباهاً' : 'يحتاج قراراً'; }
 
+/* ===== النسخ الاحتياطي، استعادة الجهاز، استعادة الخادم، وبطاقة الخادم ===== */
+/* ثلاثة إجراءات منفصلة:
+   1. تبادل ملف / دمج: كل السجلات بالتراجعات ومعرّفاتها وأصحابها؛ يُضاف الجديد ولا يُكرَّر.
+   2. استعادة جهاز فارغ: السجلات + إعدادات الخادم (بلا رموز الدخول ولا جلسات ولا مؤشرات)، ثم دخول جديد ومطابقة كاملة.
+   3. استعادة خادم: ملفات SQL تُشغَّل في SQL Editor؛ كل سجل يُدرج باسم دوره فتنطبق عليه سياسات الخادم نفسها. */
+const BACKUP_FORMAT = 'lawhat-muallima-backup';
+const DAY_MS = 86400000;
+
+const Backup = {
+  /* ما يلزم لإعادة الجهاز فقط */
+  SETTINGS_KEYS: ['sbUrl', 'sbKey', 'sounds', 'endAlarm'],
+  build() {
+    const events = Store.raw.map(e => Store.clean(e));
+    const settings = {};
+    for (const k of this.SETTINGS_KEYS) if (Store.settings[k] != null && Store.settings[k] !== '') settings[k] = Store.settings[k];
+    return {
+      format: BACKUP_FORMAT, formatVersion: 2, app: { version: BUILD.version, commit: BUILD.commit },
+      exported: new Date().toISOString(), device: Store.settings.deviceId, role: App.role ? App.role.id : null,
+      counts: { all: events.length, live: Store.events.length, undo: events.filter(e => e.type === 'undo').length },
+      settings, events,
+    };
+  },
+  download() {
+    const b = this.build();
+    const blob = new Blob([JSON.stringify(b)], { type: 'application/json' });
+    const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-backup-${todayKey()}-${b.role || 'x'}.json` });
+    document.body.append(a); a.click(); a.remove();
+    Store.settings.lastBackup = { at: Date.now(), count: b.counts.all };
+    Store.saveSettings();
+    return b;
+  },
+  /* النسخة الكاملة (0.12+) أو ملف قديم (سجلات حيّة فقط بلا تراجعات) */
+  parse(text) {
+    const j = JSON.parse(text);
+    if (j && j.format === BACKUP_FORMAT) {
+      if (!Array.isArray(j.events)) throw new Error('ملف النسخة بلا سجلات');
+      return { full: true, meta: j, events: j.events, settings: j.settings || {} };
+    }
+    const list = Array.isArray(j) ? j : j && j.events;
+    if (!Array.isArray(list)) throw new Error('ليس ملف سجلات من لوحة المعلمة');
+    return { full: false, meta: Array.isArray(j) ? {} : j, events: list, settings: {} };
+  },
+  /* دمج بلا علامة «على الخادم»؛ مع خادم متصل تُطلب مطابقة كاملة تصحّح العلامات وتُظهر ما بقي */
+  merge(parsed) {
+    const n = Store.importEvents(parsed.events);
+    const st = Sync.st();
+    if (st) { st.needReconcile = true; Store.saveSettings(); Sync.schedule(); }
+    return n;
+  },
+  restoreDevice(parsed) {
+    const n = this.merge(parsed);
+    const s = parsed.settings || {};
+    if (s.sounds != null) Store.settings.sounds = s.sounds;
+    if (s.endAlarm != null) Store.settings.endAlarm = s.endAlarm;
+    if (s.sbUrl && s.sbKey) Sync.switchTo(s.sbUrl, s.sbKey); else Store.saveSettings();
+    return n;
+  },
+  /* أيام منذ آخر نسخة إن تجاوزت 7 وفي الجهاز سجلات أحدث منها؛ وإلا null */
+  overdue() {
+    if (!Store.raw.length) return null;
+    const lb = Store.settings.lastBackup;
+    if (!lb) return Infinity;
+    const days = Math.floor((Date.now() - lb.at) / DAY_MS);
+    if (days < 7) return null;
+    return Store.raw.some(e => (e.ts || 0) > lb.at) ? days : null;
+  },
+};
+
+/* ===== التخزين الدائم: يُطلب مرة بعد الدخول، ونتيجته معروضة. قد يُرفض، ولا يغني عن النسخ ===== */
+const Persist = {
+  state: 'unknown',
+  async check() {
+    if (!(navigator.storage && navigator.storage.persisted)) return (this.state = 'unsupported');
+    try { this.state = (await navigator.storage.persisted()) ? 'granted' : 'denied'; } catch (e) { this.state = 'unsupported'; }
+    return this.state;
+  },
+  async request() {
+    if (!(navigator.storage && navigator.storage.persist)) return (this.state = 'unsupported');
+    try { this.state = (await navigator.storage.persist()) ? 'granted' : 'denied'; } catch (e) { this.state = 'denied'; }
+    Store.settings.persistAsked = Date.now(); Store.saveSettings();
+    return this.state;
+  },
+  async auto() { if ((await this.check()) === 'denied' && !Store.settings.persistAsked) await this.request(); },
+  standalone() { return !!((window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone); },
+  text() {
+    const inst = this.standalone() ? 'البرنامج مثبّت على الشاشة الرئيسية' : 'البرنامج مفتوح في المتصفح (على iPhone ثبّتيه على الشاشة الرئيسية)';
+    const st = { granted: 'التخزين الدائم ممنوح', denied: 'التخزين الدائم غير ممنوح — المتصفح قد يمحو البيانات عند ضيق المساحة', unsupported: 'التخزين الدائم غير مدعوم في هذا المتصفح', unknown: 'التخزين الدائم: لم يُفحص' }[this.state];
+    return `${st} · ${inst}`;
+  },
+};
+
+/* ===== استعادة الخادم: SQL يُشغَّل في SQL Editor ===== */
+const ServerRestore = {
+  PART: 2000,
+  /* العادية أولاً ثم التراجعات (هدف التراجع يجب أن يسبقه على الخادم) */
+  parts() {
+    const evs = Store.raw.map(e => Store.clean(e));
+    const byTs = (a, b) => a.ts - b.ts;
+    const ordered = evs.filter(e => e.type !== 'undo').sort(byTs).concat(evs.filter(e => e.type === 'undo').sort(byTs));
+    const out = [];
+    for (let i = 0; i < ordered.length; i += this.PART) out.push(ordered.slice(i, i + this.PART));
+    return out;
+  },
+  sql(chunk, k, total) {
+    const json = JSON.stringify(chunk);
+    let tag = 'lm_json'; while (json.includes('$' + tag + '$')) tag += '_x';
+    return `-- لوحة المعلمة · استعادة الخادم · الجزء ${k} من ${total} · ${chunk.length} سجل
+-- الإصدار ${BUILD.version} (${BUILD.commit}) · أُعدّ ${new Date().toISOString()} من الجهاز ${Store.settings.deviceId}
+-- يُشغَّل في SQL Editor لمشروع Supabase بعد إعداد الجداول وإنشاء المستخدمين الثلاثة وأدوارهم في profiles.
+-- كل سجل يُدرج باسم دوره (set role authenticated) فتنطبق عليه سياسات الخادم نفسها؛ الموجود يُتجاهل؛ المرفوض يُذكر بسببه.
+-- آمن للتكرار. شغّلي الأجزاء بالترتيب (التراجعات في الأجزاء الأخيرة).
+create temp table if not exists lm_restore_log (part int, id text, by text, type text, status text, reason text);
+delete from lm_restore_log where part = ${k};
+do $lm_do$
+declare
+  js jsonb := $${tag}$${json}$${tag}$::jsonb;
+  x jsonb; uid text; n int;
+begin
+  for x in select value from jsonb_array_elements(js) loop
+    select p.user_id::text into uid from public.profiles p where p.role = x->>'by' order by p.user_id limit 1;
+    if uid is null then
+      insert into lm_restore_log values (${k}, x->>'id', x->>'by', x->>'type', 'rejected', 'لا يوجد في profiles مستخدم بدور ' || coalesce(x->>'by', '؟'));
+      continue;
+    end if;
+    begin
+      perform set_config('request.jwt.claim.sub', uid, true);
+      perform set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true);
+      perform set_config('role', 'authenticated', true);
+      insert into public.events (id, ts, day, by, child, type, dev, payload)
+        values (x->>'id', (x->>'ts')::bigint, x->>'day', x->>'by', x->>'child', x->>'type', x->>'dev', x)
+        on conflict (id) do nothing;
+      get diagnostics n = row_count;
+      perform set_config('role', 'none', true);
+      insert into lm_restore_log values (${k}, x->>'id', x->>'by', x->>'type', case when n = 1 then 'inserted' else 'exists' end, null);
+    exception when others then
+      perform set_config('role', 'none', true);
+      insert into lm_restore_log values (${k}, x->>'id', x->>'by', x->>'type', 'rejected', sqlerrm);
+    end;
+  end loop;
+end $lm_do$;
+select status as "الحالة", count(*) as "العدد",
+  string_agg(id || ' — ' || coalesce(reason, ''), E'\\n') filter (where status = 'rejected') as "المرفوض وسببه"
+from lm_restore_log where part = ${k} group by status order by status;
+`;
+  },
+  download(text, k, total) {
+    const blob = new Blob([text], { type: 'application/sql' });
+    const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-restore-${todayKey()}-${k}-of-${total}.sql` });
+    document.body.append(a); a.click(); a.remove();
+  },
+};
+
+/* ===== الواجهات ===== */
+function roleName(r) { return ROLES[r] ? ROLES[r].name : (r || 'غير معروف'); }
+
+function BackupReminder() {
+  const d = Backup.overdue(); if (d == null) return null;
+  return el('div', { class: 'alert' }, d === Infinity ? 'لم تُصدَّر نسخة احتياطية من هذا الجهاز بعد. ' : `آخر نسخة احتياطية من هذا الجهاز قبل ${d} يوماً. `,
+    el('button', { class: 'ghost small', onclick: () => { Backup.download(); UI.toast('صُدّرت النسخة'); UI.rerender(); } }, 'تصدير نسخة كاملة الآن'));
+}
+
+function BackupCard() {
+  const lb = Store.settings.lastBackup;
+  const fileIn = el('input', { type: 'file', accept: '.json,application/json' });
+  fileIn.addEventListener('change', async () => {
+    const f = fileIn.files[0]; if (!f) return;
+    let p; try { p = Backup.parse(await f.text()); } catch (e) { UI.modal('لم يُقرأ الملف', el('p', null, e.message)); return; } finally { fileIn.value = ''; }
+    ImportDialog(p);
+  });
+  const persistLine = el('p', { class: 'small muted' }, Persist.text());
+  Persist.check().then(() => { persistLine.textContent = Persist.text(); });
+  return el('div', { class: 'card' }, el('h2', null, 'النسخ الاحتياطي وتبادل الملفات'),
+    el('p', { class: 'small muted' }, 'النسخة الكاملة تحمل كل السجلات بالتراجعات ومعرّفاتها وأصحابها، وإعدادات الخادم بلا كلمات سر ولا جلسات ولا رموز دخول. الاستيراد يدمج ولا يكرر.'),
+    el('p', { class: 'small' }, lb ? `آخر نسخة من هذا الجهاز: ${fmtDay(dayKey(new Date(lb.at)))} ${hhmm(new Date(lb.at))} (${lb.count} سجل)` : 'لم تُصدَّر نسخة من هذا الجهاز بعد'),
+    persistLine,
+    el('div', { class: 'btns' },
+      el('button', { class: 'primary', onclick: () => { Backup.download(); UI.toast('صُدّرت النسخة'); UI.rerender(); } }, `تصدير نسخة كاملة (${Store.raw.length} سجل)`),
+      Persist.state !== 'granted' ? el('button', { class: 'ghost', onclick: async () => { await Persist.request(); UI.toast(Persist.text()); UI.rerender(); } }, 'طلب التخزين الدائم') : null),
+    label('استيراد ملف (دمج، أو استعادة جهاز فارغ)'), fileIn);
+}
+
+function ImportDialog(p) {
+  const have = new Set(Store.raw.map(e => e.id));
+  const evs = p.events.filter(e => e && typeof e === 'object');
+  const undo = evs.filter(e => e.type === 'undo').length;
+  const fresh = evs.filter(e => !have.has(e.id)).length;
+  const m = p.meta || {};
+  const body = el('div', null,
+    el('p', null, p.full ? `نسخة من الإصدار ${m.app ? m.app.version : '؟'} (${m.app ? m.app.commit : '؟'})، صُدّرت ${m.exported ? m.exported.slice(0, 16).replace('T', ' ') : '؟'} من دور ${roleName(m.role)}.` : 'ملف بصيغة قديمة (قبل 0.12).'),
+    el('p', null, `${evs.length} سجلاً (${undo} تراجعاً)، منها ${fresh} ليست على هذا الجهاز.`),
+    p.full ? null : el('div', { class: 'alert' }, 'هذا الملف يحمل السجلات الحيّة فقط بلا تراجعات: ما تراجعتِ عنه في الجهاز المصدِّر لا يصل تراجعه إلى هنا.'),
+    p.full && p.settings.sbUrl ? el('p', { class: 'small muted' }, `وفيه إعدادات الخادم: ${p.settings.sbUrl}`) : null);
+  const canRestore = p.full && Store.raw.length === 0 && p.settings.sbUrl && p.settings.sbKey;
+  let bg;
+  const merge = () => { bg.remove(); try { const n = Backup.merge(p); UI.savedToast(`أُضيف ${n} سجلاً وحُفظ`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } };
+  const restore = () => {
+    bg.remove();
+    try { const n = Backup.restoreDevice(p); App.logout(); UI.savedToast(`استُعيد ${n} سجلاً؛ ادخلي بحسابك على الخادم لتكتمل المطابقة`); }
+    catch (e) { UI.modal('لم تُستعد النسخة', el('p', null, e.message)); }
+  };
+  bg = UI.modal('استيراد ملف', body, [
+    canRestore ? el('button', { class: 'primary', onclick: restore }, 'استعادة الجهاز (السجلات + الخادم)') : null,
+    el('button', { class: canRestore ? 'ghost' : 'primary', onclick: merge }, 'دمج السجلات فقط'),
+    el('button', { class: 'ghost', onclick: () => bg.remove() }, 'إلغاء')]);
+  if (canRestore) body.append(el('p', { class: 'small' }, 'استعادة الجهاز: تُضاف السجلات ويتصل الجهاز بالخادم المحفوظ في النسخة. بعد الدخول تُرفع سجلات دورك التي ليست عليه، ويظهر تقرير بما بقي.'));
+}
+
+function AdminRestoreCard() {
+  const out = el('div');
+  return el('div', { class: 'card' }, el('h2', null, 'استعادة الخادم (إجراء إداري)'),
+    el('p', { class: 'small muted' }, 'حين يُفقد الخادم أو يُستعاد من نسخة أقدم ولا تتوفر أجهزة كل الأدوار. تُرفع سجلات هذا الجهاز كلها من SQL Editor في لوحة Supabase؛ كل سجل باسم دوره فتنطبق عليه سياسات الخادم نفسها، والموجود يُتجاهل، والمرفوض يُذكر بسببه.'),
+    el('ol', { class: 'small' },
+      el('li', null, 'مشروع جديد: نفّذي تعليمات الإعداد، وأنشئي المستخدمين الثلاثة وأدوارهم في profiles.'),
+      el('li', null, 'شغّلي ملفات الاستعادة بالترتيب، وراجعي نتيجة كل جزء (المرفوض وسببه).'),
+      el('li', null, 'على كل جهاز: الإعدادات ← الخادم ← «مطابقة كاملة»، حتى يظهر «اكتملت المطابقة».')),
+    el('button', { onclick: () => {
+      const parts = ServerRestore.parts(); out.innerHTML = '';
+      if (!parts.length) { out.append(el('p', { class: 'small' }, 'لا سجلات على هذا الجهاز.')); return; }
+      parts.forEach((ch, i) => out.append(el('button', { class: 'ghost', onclick: () => ServerRestore.download(ServerRestore.sql(ch, i + 1, parts.length), i + 1, parts.length) }, `الجزء ${i + 1} من ${parts.length} (${ch.length} سجل)`)));
+    } }, `إعداد ملفات الاستعادة (${Store.raw.length} سجل)`), out);
+}
+
+function syncReportView(st) {
+  const r = st && st.report; if (!r) return null;
+  const when = `${fmtDay(dayKey(new Date(r.at)))} ${hhmm(new Date(r.at))}`;
+  if (r.complete) return el('div', { class: 'alert', style: 'background:#e8f5e9;border-color:#a5d6a7' }, `✓ اكتملت المطابقة (${when}): كل سجلات هذا الجهاز على الخادم، وكل ما على الخادم على هذا الجهاز.`);
+  const items = [];
+  const wt = r.waitingTarget || 0;
+  if (r.ownPending - wt > 0) items.push(`${r.ownPending - wt} من سجلات دورك لم تُرفع بعد — تُرفع في الجولة التالية`);
+  if (wt) items.push(`${wt} من تراجعاتك بانتظار وصول السجل الأصلي إلى الخادم — يرفعه جهاز صاحبه، ثم يُرفع التراجع تلقائياً`);
+  for (const [by, n] of Object.entries(r.others || {})) items.push(`${n} من سجلات ${roleName(by)} ليست على الخادم — يرفعها جهاز ${roleName(by)} عند دخوله، أو «استعادة الخادم» من جهاز ولي الأمر`);
+  if (r.rejected) items.push(`${r.rejected} سجلاً رفضها الخادم أو رفضها الجهاز — انظري المرفوضات`);
+  if (r.serverOnly) items.push(`${r.serverOnly} سجلاً على الخادم لم تصل هذا الجهاز بعد — تُسحب في الجولة التالية`);
+  if (r.incomplete) items.push('السحب لم يكتمل (دفعة كبيرة) — يُستكمل تلقائياً');
+  return el('div', { class: 'alert' }, el('div', null, el('b', null, `المطابقة لم تكتمل (${when}):`)), el('ul', { class: 'small', style: 'margin:4px 0' }, items.map(t => el('li', null, t))));
+}
+
+function ServerCard() {
+  const s = Store.settings; const c = Sync.cfg();
+  const url = el('input', { value: s.sbUrl || '', placeholder: 'https://xxxx.supabase.co', dir: 'ltr' });
+  const key = el('input', { value: s.sbKey || '', placeholder: 'anon public key', dir: 'ltr' });
+  const save = () => {
+    const u = url.value.trim(), k = key.value.trim();
+    if (!u && !k) {
+      UI.confirm('فصل هذا الجهاز عن الخادم؟ تبقى السجلات على الجهاز.', () => { s.sbUrl = ''; s.sbKey = ''; s.sbSession = null; s.sbRole = null; Store.saveSettings(); App.logout(); });
+      return;
+    }
+    if (!/^https?:\/\/\S+$/.test(u) || !k) { UI.toast('أدخلي رابط المشروع والمفتاح العام'); return; }
+    if (s.sbUrl && serverId(u) === serverId(s.sbUrl) && Sync.isKnown(u)) { s.sbKey = k; Store.saveSettings(); UI.toast('حُفظ'); UI.rerender(); return; }
+    ServerSwitchDialog(u, k);
+  };
+  const card = el('div', { class: 'card' }, el('h2', null, 'الخادم (الحسابات الثلاثة عبر الإنترنت)'),
+    el('p', { class: 'small muted' }, 'اختياري. بدونه يعمل البرنامج محلياً مع تبادل بالملفات. مع الخادم تتزامن الأجهزة وتعمل بلا إنترنت ثم ترفع. تغيير الرابط لا ينقل الدخول ولا موضع المزامنة، ولا يرفع شيئاً إلى خادم جديد قبل اختيار صريح.'),
+    label('رابط المشروع'), url, label('المفتاح العام'), key,
+    s.localMode && s.sbUrl ? el('div', { class: 'alert' }, 'الوضع المحلي مفعّل والمزامنة متوقفة. ', el('button', { class: 'ghost small', onclick: () => { s.localMode = false; Store.saveSettings(); App.logout(); } }, 'العودة للاتصال بالخادم')) : null,
+    el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: save }, 'حفظ'),
+      el('button', { class: 'ghost', onclick: () => UI.modal('إعداد الخادم', el('div', null, el('p', { class: 'small' }, 'أنشئ مشروعاً في supabase.com، ثم نفّذ هذا في SQL Editor، ثم أنشئ المستخدمين الثلاثة وضع لكل منهم الدور في جدول profiles.'), el('pre', null, SETUP_SQL))) }, 'تعليمات الإعداد')));
+  if (c) {
+    const k = Sync.counts(); const st = Sync.st();
+    const others = Object.entries(k.others).map(([by, n]) => `${roleName(by)} ${n}`).join('، ');
+    card.append(el('p', { class: 'small muted' }, Sync.lastOk ? `آخر تزامن ${hhmm(new Date(Sync.lastOk))}` : 'لم يتزامن بعد في هذه الجلسة', Sync.lastError ? ` · ${Sync.lastError}` : ''),
+      el('p', { class: 'small' }, Sync.role() ? `سجلات دورك بانتظار الرفع: ${k.ownPending}` : 'لم يُدخل إلى هذا الخادم بعد', k.othersTotal ? ` · سجلات أدوار أخرى ليست على الخادم: ${others}` : ''),
+      syncReportView(st) || el('p', { class: 'small muted' }, st.needReconcile ? 'مطابقة كاملة مطلوبة: تُجرى عند التزامن التالي.' : 'لم تُجرَ مطابقة كاملة مع هذا الخادم بعد.'),
+      el('div', { class: 'btns' },
+        el('button', { class: 'ghost small', onclick: async () => { await Sync.run(); UI.rerender(); } }, 'تزامن الآن'),
+        el('button', { class: 'ghost small', onclick: async () => { st.needReconcile = true; Store.saveSettings(); UI.toast('تجري المطابقة…'); await Sync.run(); UI.rerender(); } }, 'مطابقة كاملة')));
+  }
+  return card;
+}
+
+/* اختيار صريح عند خادم لم يتصل به الجهاز من قبل: لا رفع تلقائياً لبيانات الأطفال لمجرد تغيير الرابط */
+function ServerSwitchDialog(u, k) {
+  if (Sync.isKnown(u)) {
+    UI.confirm(`الانتقال إلى ${u}؟ اتصل به هذا الجهاز من قبل: تُستأنف مزامنته من موضعها، وتجري مطابقة كاملة، ويلزم الدخول إليه من جديد.`, () => { Sync.switchTo(u, k); App.logout(); });
+    return;
+  }
+  if (!Store.raw.length) { Sync.switchTo(u, k); App.logout(); UI.toast('اتصل الجهاز بالخادم؛ ادخلي بحسابك'); return; }
+  const byRole = {}; for (const e of Store.raw) byRole[e.by || '?'] = (byRole[e.by || '?'] || 0) + 1;
+  const dist = Object.entries(byRole).map(([r, n]) => `${roleName(r)} ${n}`).join('، ');
+  let bg;
+  const family = () => UI.confirm('تأكيد: هذا خادم العائلة. بعد الدخول يُسحب ما فيه إلى هذا الجهاز، وتُرفع إليه سجلات دورك التي ليست عليه.', () => { bg.remove(); Sync.switchTo(u, k); App.logout(); UI.toast('ادخلي بحسابك على الخادم الجديد'); });
+  const separate = () => {
+    bg.remove();
+    let b2;
+    const exp = el('button', { onclick: () => { Backup.download(); wipe.disabled = false; UI.toast('صُدّرت النسخة'); } }, 'تصدير نسخة كاملة أولاً');
+    const wipe = el('button', { class: 'danger', disabled: true, onclick: () => UI.confirm(`حذف ${Store.raw.length} سجلاً من هذا الجهاز ثم الاتصال بالخادم الجديد؟ لا يمس أي خادم.`, async () => {
+      b2.remove(); const ok = await Store.reset(); Store.settings.active = null; Store.saveSettings();
+      if (!ok) { UI.toast('تعذّر الحذف الكامل؛ لم يتصل الجهاز'); return; }
+      Sync.switchTo(u, k); App.logout(); UI.toast('الجهاز نظيف ومتصل بالخادم الجديد؛ ادخلي بحسابك');
+    }) }, 'حذف سجلات الجهاز ثم الاتصال');
+    b2 = UI.modal('خادم منفصل', el('div', null,
+      el('p', null, 'هذا الجهاز يحمل سجلات العائلة، فلا يتصل بخادم منفصل وهي عليه (كانت ستُخلط بسجلاته).'),
+      el('p', { class: 'small' }, 'للتجربة: استعملي متصفحاً آخر أو جهازاً آخر. أو ابدئي هذا الجهاز نظيفاً: صدّري نسخة كاملة ثم احذفي سجلاته.')),
+      [exp, wipe, el('button', { class: 'ghost', onclick: () => b2.remove() }, 'إلغاء')]);
+  };
+  bg = UI.modal('خادم جديد لهذا الجهاز', el('div', null,
+    el('p', null, `${u} لم يتصل به هذا الجهاز من قبل. على الجهاز ${Store.raw.length} سجلاً (${dist}).`),
+    el('p', null, el('b', null, 'خادم العائلة (انتقال أو استعادة): '), 'يُسحب ما فيه، وتُرفع إليه سجلات دورك التي لا يملكها. سجلات الأدوار الأخرى يرفعها أصحابها أو «استعادة الخادم».'),
+    el('p', null, el('b', null, 'خادم منفصل (تجربة أو غيره): '), 'لا يُرفع إليه شيء من سجلات هذا الجهاز.')),
+    [el('button', { class: 'primary', onclick: family }, 'خادم العائلة'), el('button', { onclick: separate }, 'خادم منفصل'), el('button', { class: 'ghost', onclick: () => bg.remove() }, 'إلغاء')]);
+}
+
+function RejectedCard() {
+  const st = Sync.st(); const sid = Sync.sid();
+  const rej = st ? st.rejected : [];
+  if (!rej.length) return null;
+  const rp = App.sub.rejPage || 0; const RP = 20; const pages = Math.ceil(rej.length / RP);
+  const retry = r => {
+    if (r.direction === 'push') {
+      const e = Store.raw.find(x => x.id === r.id);
+      if (e) { e.rj = (e.rj || []).filter(x => x !== sid); Store.saveEvents([e]); }
+      st.rejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Sync.schedule(); UI.toast('سيُعاد رفعه'); UI.rerender(); return;
+    }
+    try { Store.importEvents([r.payload], { server: sid }); st.rejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); UI.toast('أُدرج السجل'); }
+    catch (e) { UI.toast('ما زال مرفوضاً: ' + e.message); }
+    UI.rerender();
+  };
+  const ignore = r => UI.confirm('تجاهل هذا السجل نهائياً على هذا الجهاز؟ (يبقى على الخادم)', () => {
+    st.rejected = rej.filter(x => x.id !== r.id); Store.saveSettings();
+    Store.add({ type: 'note', child: r.child || null, text: `تجاهل سجل مرفوض من المزامنة: ${r.id} (${r.reason})` }); UI.rerender();
+  });
+  return el('div', { class: 'card' }, el('h2', null, `المرفوضات من المزامنة (${rej.length})`),
+    el('p', { class: 'small muted' }, 'سجلات رفضها الخادم أو رفضها هذا الجهاز عند السحب. تبقى هنا كلها حتى تُعالَج: إعادة محاولة (إن أصلحت الشرط) أو تجاهل موثَّق.'),
+    pages > 1 ? el('div', { class: 'row between' },
+      el('button', { class: 'ghost small', disabled: rp <= 0, onclick: () => { App.sub.rejPage = rp - 1; UI.rerender(); } }, 'السابق'),
+      el('span', { class: 'small muted' }, `صفحة ${rp + 1} من ${pages}`),
+      el('button', { class: 'ghost small', disabled: rp >= pages - 1, onclick: () => { App.sub.rejPage = rp + 1; UI.rerender(); } }, 'التالي')) : null,
+    rej.slice().reverse().slice(rp * RP, rp * RP + RP).map(r => el('div', { class: 'alert red' },
+      el('div', null, el('b', null, `${r.type} · ${roleName(r.by)} · ${r.child && CHILDREN[r.child] ? CHILDREN[r.child].name : ''} · ${fmtDay(r.day)}`)),
+      el('div', { class: 'small' }, r.reason),
+      el('div', { class: 'btns' }, el('button', { class: 'ghost', onclick: () => retry(r) }, 'إعادة المحاولة'), el('button', { class: 'ghost', onclick: () => ignore(r) }, 'تجاهل موثَّق')))));
+}
+
 /* ===== لوحة ولي الأمر، التقارير، الإعدادات ===== */
 Views.dash = function () {
   const wrap = el('div');
+  const due = BackupReminder(); if (due) wrap.append(due);
   wrap.append(el('div', { class: 'grid2' }, CHILD_ORDER.map(c => { const h = healthOf(c); const d = h.st; return el('div', { class: 'card', style: 'margin:0;cursor:pointer', onclick: () => { App.sub.child = c; App.sub.ctab = 'summary'; App.view = 'children'; UI.rerender(); } },
     el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, CHILDREN[c].name), el('span', { class: 'light ' + h.light })),
     el('div', { class: 'kpi', style: 'margin-top:8px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? 'أخضر في الفحص' : 'لم يُفحص')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, 'أقدم صفحة (يوم)'))),
@@ -1972,6 +2478,7 @@ function pct(list) { if (!list.length) return '—'; return Math.round(100 * lis
 /* ===== الإعدادات ===== */
 Views.settings = function () {
   const wrap = el('div'); const s = Store.settings;
+  const due = BackupReminder(); if (due) wrap.append(due);
   wrap.append(el('div', { class: 'card' }, el('h2', null, 'الحساب'), el('p', null, `الدخول الحالي: ${App.role.title}`), el('button', { class: 'ghost', onclick: () => App.logout() }, 'خروج')));
   if (App.role.id === 'aya' || App.role.id === 'parent') {
     const inv = el('div', { class: 'card' }, el('h2', null, 'الجرد الأولي'), el('p', { class: 'small muted' }, 'يُنفَّذ مرة واحدة بعد تسميع المحفوظ الحالي. يضع الصفحات في البعيد؛ ثم تُعدَّل ألوان صفحات مفردة من خريطة المصحف.'),
@@ -1985,19 +2492,10 @@ Views.settings = function () {
     for (const r of Object.values(ROLES)) { const i = el('input', { value: s.pins[r.id], inputmode: 'numeric', style: 'width:120px' }); pins.append(el('div', { class: 'row', style: 'margin:6px 0' }, el('span', { style: 'min-width:110px' }, r.name), i, el('button', { onclick: () => { s.pins[r.id] = i.value; Store.saveSettings(); UI.toast('حُفظ'); } }, 'حفظ'))); }
     wrap.append(pins);
   }
-  // الخادم
-  const url = el('input', { value: s.sbUrl || '', placeholder: 'https://xxxx.supabase.co', dir: 'ltr' }); const key = el('input', { value: s.sbKey || '', placeholder: 'anon public key', dir: 'ltr' });
-  wrap.append(el('div', { class: 'card' }, el('h2', null, 'الخادم (الحسابات الثلاثة عبر الإنترنت)'), el('p', { class: 'small muted' }, 'اختياري. بدونه يعمل البرنامج محلياً على هذا الجهاز مع تبادل بالملفات. مع الخادم تتزامن الأجهزة فوراً وتعمل بلا إنترنت ثم ترفع.'),
-    label('رابط المشروع'), url, label('المفتاح العام'), key, Store.settings.localMode && Store.settings.sbUrl ? el('div', { class: 'alert' }, 'الوضع المحلي مفعّل والمزامنة متوقفة. ', el('button', { class: 'ghost small', onclick: () => { Store.settings.localMode = false; Store.saveSettings(); App.logout(); } }, 'العودة للاتصال بالخادم')) : null, el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: () => { s.sbUrl = url.value.trim(); s.sbKey = key.value.trim(); Store.saveSettings(); UI.toast('حُفظ؛ أعيدي الدخول بالبريد'); } }, 'حفظ'), el('button', { class: 'ghost', onclick: () => UI.modal('إعداد الخادم', el('div', null, el('p', { class: 'small' }, 'أنشئ مشروعاً في supabase.com، ثم نفّذ هذا في SQL Editor، ثم أنشئ المستخدمين الثلاثة وضع لكل منهم الدور في جدول profiles.'), el('pre', null, SETUP_SQL))) }, 'تعليمات الإعداد')),
-    Sync.cfg() ? el('p', { class: 'small muted' }, Sync.lastOk ? `آخر تزامن ${hhmm(new Date(Sync.lastOk))}` : 'لم يتزامن بعد', Sync.lastError ? ` · ${Sync.lastError}` : '', ' ', el('button', { class: 'ghost small', onclick: () => Sync.run() }, 'تزامن الآن')) : null));
+  // الخادم والمرفوضات
+  wrap.append(ServerCard());
+  const rejCard = RejectedCard(); if (rejCard) wrap.append(rejCard);
   // التنبيهات والتقويم
-  const rej = Store.settings.syncRejected || [];
-  const rp = App.sub.rejPage || 0; const RP = 20; const rejPages = Math.ceil(rej.length / RP);
-  if (rej.length) wrap.append(el('div', { class: 'card' }, el('h2', null, `المرفوضات من المزامنة (${rej.length})`), el('p', { class: 'small muted' }, 'سجلات وصلت من الخادم ورُفضت محلياً. تبقى هنا كلها حتى تُعالَج: إعادة محاولة (إن أصلحت الشرط) أو تجاهل موثَّق.'),
-    rejPages > 1 ? el('div', { class: 'row between' }, el('button', { class: 'ghost small', disabled: rp <= 0, onclick: () => { App.sub.rejPage = rp - 1; UI.rerender(); } }, 'السابق'), el('span', { class: 'small muted' }, `صفحة ${rp + 1} من ${rejPages}`), el('button', { class: 'ghost small', disabled: rp >= rejPages - 1, onclick: () => { App.sub.rejPage = rp + 1; UI.rerender(); } }, 'التالي')) : null,
-    rej.slice().reverse().slice(rp * RP, rp * RP + RP).map(r => el('div', { class: 'alert red' }, el('div', null, el('b', null, `${r.type} · ${ROLES[r.by] ? ROLES[r.by].name : r.by} · ${r.child && CHILDREN[r.child] ? CHILDREN[r.child].name : ''} · ${fmtDay(r.day)}`)), el('div', { class: 'small' }, r.reason), el('div', { class: 'btns' },
-      el('button', { class: 'ghost', onclick: () => { if (r.direction === 'push') { const e = Store.raw.find(x => x.id === r.id); if (e) { e.synced = false; delete e.pushRejected; Store.saveEvents([e]); } Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Sync.schedule(); UI.toast('سيُعاد رفعه'); UI.rerender(); return; } try { Store.importEvents([r.payload]); Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); UI.toast('أُدرج السجل'); } catch (e) { UI.toast('ما زال مرفوضاً: ' + e.message); } UI.rerender(); } }, 'إعادة المحاولة'),
-      el('button', { class: 'ghost', onclick: () => UI.confirm('تجاهل هذا السجل نهائياً على هذا الجهاز؟ (يبقى على الخادم)', () => { Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Store.add({ type: 'note', child: r.child || null, text: `تجاهل سجل مرفوض من المزامنة: ${r.id} (${r.reason})` }); UI.rerender(); }) }, 'تجاهل موثَّق'))))));
   if (App.role.id !== 'parent') {
     const chk = el('input', { type: 'checkbox' }); chk.checked = Alarms.on();
     const chk2 = el('input', { type: 'checkbox' }); chk2.checked = Store.settings.endAlarm !== false;
@@ -2009,17 +2507,16 @@ Views.settings = function () {
       el('p', { class: 'small muted' }, 'التنبيه الداخلي يعمل ما دام البرنامج مفتوحاً على الشاشة. للتنبيه ولو كان مغلقاً: استوردي جدولك مرة واحدة في تقويم هاتفك (يرنّ قبل كل جلسة بخمس دقائق بتوقيتك المحلي).'),
       el('button', { class: 'ghost', onclick: () => downloadIcs(App.role.id) }, 'تنزيل جدولي كتقويم (.ics)')));
   }
-  // تصدير واستيراد
-  const fileIn = el('input', { type: 'file', accept: '.json' });
-  fileIn.addEventListener('change', async () => { const f = fileIn.files[0]; if (!f) return; try { const j = JSON.parse(await f.text()); const list = j.events || j; const n = Store.importEvents(list); UI.savedToast(`أُضيف ${n} سجلاً من ${list.length} وحُفظ`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } });
-  wrap.append(el('div', { class: 'card' }, el('h2', null, 'تبادل البيانات بالملفات'), el('p', { class: 'small muted' }, 'صدّري ملف الأحداث وأرسليه؛ الاستيراد يضيف ما ليس موجوداً ولا يكرر.'), el('div', { class: 'btns' }, el('button', { onclick: () => { const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), by: App.role.id, events: Store.events }, null, 0)], { type: 'application/json' }); const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-${todayKey()}-${App.role.id}.json` }); document.body.append(a); a.click(); a.remove(); } }, `تصدير (${Store.events.length} سجل)`), fileIn)));
+  // النسخ الاحتياطي والاستعادة
+  wrap.append(BackupCard());
+  if (App.role.id === 'parent') wrap.append(AdminRestoreCard());
   // محاكاة الوقت
   if (App.role.id !== 'asst') {
     const off = el('input', { type: 'datetime-local' });
     if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
   }
   if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.settings.sbCursor = null; Store.settings.syncRejected = []; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
-  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, 'لوحة المعلمة · الإصدار 0.11 · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً'));
+  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, `لوحة المعلمة · الإصدار ${BUILD.version} (${BUILD.commit}) · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً`));
   return wrap;
 };
 
