@@ -19,6 +19,7 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }  # بصمة الإصدار = آخر commit غيّر المصدر، وتحتاج التاريخ كاملاً
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - uses: actions/setup-python@v5
