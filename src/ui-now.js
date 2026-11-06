@@ -121,6 +121,7 @@ function endSession(s, note) {
 }
 /* تسجيل الإنهاء وبطاقة التسليم بمعرّفات ثابتة: إعادة المحاولة بعد فشل الحفظ لا تكرر ولا تفقد */
 async function commitEnd(s, a, status, rem, reason, note) {
+  const gen = Store.gen; /* حذفُ بيانات الجهاز أثناء انتظار الحفظ يلغي العملية: لا رسالة نجاح ولا كتابة بعده */
   const round = a.round || 1;
   try {
     for (const c of childrenOf(s)) {
@@ -140,6 +141,7 @@ async function commitEnd(s, a, status, rem, reason, note) {
     /* لا تُغلق الجلسة باعتبارها محفوظة قبل ثبوت الكتابة */
     if (!(await Store.durable())) throw new Error(Store.storageError || 'تعذّر الحفظ على الجهاز');
   } catch (e) { a.pendingEnd = { status, rem, reason, note }; saveActive(); UI.toast('لم يكتمل التسجيل: ' + e.message + ' — أعيدي المحاولة من «إنهاء الجلسة»'); UI.rerender(true); return false; }
+  if (Store.gen !== gen) { UI.rerender(); return false; }
   Store.settings.active = null; Store.saveSettings(); UI.toast('سُجّلت الجلسة وحُفظت'); UI.rerender(); return true;
 }
 /* بنود بطاقة التسليم من سجلات هذه الجلسة (بمعرّف الجلسة sid، لا بالتوقيت) */
@@ -610,7 +612,8 @@ function cancelModal() {
         } catch (e) { fail++; failed.push(s); }
       }
       /* الإلغاءات تُعدّ ناجحة بعد ثبوت حفظها فقط */
-      if (added.length) { if (await Store.durable()) { for (const [s, c] of added) { ok++; c.disabled = true; c.checked = false; } } else { for (const [s] of added) { fail++; failed.push(s); } } }
+      const gen = Store.gen;
+      if (added.length) { const dur = await Store.durable(); if (Store.gen !== gen) { bg.remove(); UI.rerender(); return; } if (dur) { for (const [s, c] of added) { ok++; c.disabled = true; c.checked = false; } } else { for (const [s] of added) { fail++; failed.push(s); } } }
       if (fail) { UI.toast(`أُلغيت ${ok} جلسة، وتعذّر ${fail}: ${failed.map(s => childName(s.child) + ' ' + fmtTime12(s.start)).join('، ')} — أعيدي المحاولة`); UI.rerender(true); return; }
       bg.remove(); UI.toast(`أُلغيت ${ok} جلسة`); UI.rerender(); } }, 'تأكيد الإلغاء')]);
 }

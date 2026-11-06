@@ -13,11 +13,13 @@ const Backup = {
     const events = Store.raw.map(e => Store.clean(e));
     const settings = {};
     for (const k of this.SETTINGS_KEYS) if (Store.settings[k] != null && Store.settings[k] !== '') settings[k] = Store.settings[k];
+    /* التعارضات بنسختيها وقراراتها جزء من بيانات الجهاز (LM0132-R4-03)؛ بلا علامات خادم */
+    const conflicts = Store.conflicts.map(x => Object.assign({ key: x.key, id: x.id, source: x.source, at: x.at, local: Store.clean(x.local), other: Store.clean(x.other) }, x.resolved ? { resolved: { at: x.resolved.at, by: x.resolved.by, choice: x.resolved.choice } } : {}));
     return {
-      format: BACKUP_FORMAT, formatVersion: 2, app: { version: BUILD.version, commit: BUILD.commit },
+      format: BACKUP_FORMAT, formatVersion: 3, app: { version: BUILD.version, commit: BUILD.commit },
       exported: new Date().toISOString(), device: Store.settings.deviceId, role: App.role ? App.role.id : null,
-      counts: { all: events.length, live: Store.events.length, undo: events.filter(e => e.type === 'undo').length },
-      settings, events,
+      counts: { all: events.length, live: Store.events.length, undo: events.filter(e => e.type === 'undo').length, conflicts: conflicts.length, openConflicts: conflicts.filter(x => !x.resolved).length },
+      settings, events, conflicts,
     };
   },
   download() {
@@ -34,16 +36,18 @@ const Backup = {
     const j = JSON.parse(text);
     if (j && j.format === BACKUP_FORMAT) {
       if (!Array.isArray(j.events)) throw new Error('ملف النسخة بلا سجلات');
-      return { full: true, meta: j, events: j.events, settings: j.settings || {} };
+      if (j.conflicts != null && !Array.isArray(j.conflicts)) throw new Error('ملف النسخة: التعارضات ليست قائمة');
+      return { full: true, meta: j, events: j.events, settings: j.settings || {}, conflicts: j.conflicts || [] };
     }
     const list = Array.isArray(j) ? j : j && j.events;
     if (!Array.isArray(list)) throw new Error('ليس ملف سجلات من لوحة المعلمة');
-    return { full: false, meta: Array.isArray(j) ? {} : j, events: list, settings: {} };
+    return { full: false, meta: Array.isArray(j) ? {} : j, events: list, settings: {}, conflicts: [] };
   },
   /* دمج بلا علامة «على الخادم»؛ مع خادم متصل تُطلب مطابقة كاملة تصحّح العلامات وتُظهر ما بقي */
   merge(parsed) {
     const n = Store.importEvents(parsed.events, { source: 'file' });
     this.lastConflicts = Store.lastConflicts || 0;
+    this.lastCfImport = Store.importConflicts(parsed.conflicts || []);
     const st = Sync.st();
     if (st) { st.needReconcile = true; Store.saveSettings(); Sync.schedule(); }
     return n;
@@ -64,7 +68,7 @@ const Backup = {
     const days = Math.floor((Date.now() - lb.at) / DAY_MS);
     if (days < 7) return null;
     /* وقت وصول السجل إلى الجهاز (la)، لا وقت إنشائه: سجل قديم وصل بعد آخر نسخة غير مشمول بها (LM0121-R2-12) */
-    return Store.raw.some(e => (e.la || e.ts || 0) > lb.at) ? days : null;
+    return Store.raw.some(e => (e.la || e.ts || 0) > lb.at) || Store.conflicts.some(x => Math.max(x.at || 0, x.resolved ? x.resolved.at || 0 : 0) > lb.at) ? days : null;
   },
 };
 
@@ -210,13 +214,15 @@ function ImportDialog(p) {
     Store.raw.length ? el('p', { class: 'small' }, missing ? `لا يحمل ${missing} من سجلات هذا الجهاز (${Store.raw.length}) — ليس نسخة كاملة منه.` : `يحمل كل سجلات هذا الجهاز (${Store.raw.length}).`) : null,
     clash ? el('div', { class: 'alert red' }, `${clash} سجلاً بمعرّف موجود هنا ومحتوى مختلف: لن يُغيَّر شيء منها، وستظهر في «التعارضات» للمراجعة.`) : null,
     p.full ? null : el('div', { class: 'alert' }, 'هذا الملف يحمل السجلات الحيّة فقط بلا تراجعات: ما تراجعتِ عنه في الجهاز المصدِّر لا يصل تراجعه إلى هنا.'),
+    p.full && (p.conflicts || []).length ? el('p', { class: 'small' }, `وفيه ${p.conflicts.length} تعارضاً بنسختيه (${p.conflicts.filter(x => x && !x.resolved).length} مفتوحاً): تُضاف إلى «التعارضات» ما انطبقت على سجلات هنا.`) : null,
+    p.full && m.formatVersion === 2 ? el('p', { class: 'small muted' }, 'نسخة من 0.12–0.13.1: لا تحمل التعارضات ونسخها البديلة.') : null,
     p.full && p.settings.sbUrl ? el('p', { class: 'small muted' }, `وفيه إعدادات الخادم: ${p.settings.sbUrl}`) : null);
   const canRestore = p.full && Store.raw.length === 0 && p.settings.sbUrl && p.settings.sbKey;
   let bg;
-  const merge = () => { bg.remove(); try { const n = Backup.merge(p); UI.savedToast(`أُضيف ${n} سجلاً وحُفظ${Backup.lastConflicts ? ` · ${Backup.lastConflicts} تعارض في «التعارضات»` : ''}`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } };
+  const merge = () => { bg.remove(); try { const n = Backup.merge(p); UI.savedToast(`أُضيف ${n} سجلاً وحُفظ${Backup.lastConflicts ? ` · ${Backup.lastConflicts} تعارض في «التعارضات»` : ''}${Backup.lastCfImport && Backup.lastCfImport.added ? ` · ${Backup.lastCfImport.added} تعارضاً من النسخة` : ''}`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } };
   const restore = () => {
     bg.remove();
-    try { const n = Backup.restoreDevice(p); App.logout(); UI.savedToast(`استُعيد ${n} سجلاً؛ ادخلي بحسابك على الخادم لتكتمل المطابقة`); }
+    try { const n = Backup.restoreDevice(p); App.logout(); UI.savedToast(`استُعيد ${n} سجلاً${Backup.lastCfImport && Backup.lastCfImport.added ? ` و${Backup.lastCfImport.added} تعارضاً بنسختيه` : ''}؛ ادخلي بحسابك على الخادم لتكتمل المطابقة`); }
     catch (e) { UI.modal('لم تُستعد النسخة', el('p', null, e.message)); }
   };
   bg = UI.modal('استيراد ملف', body, [
@@ -345,6 +351,7 @@ function ConflictsCard() {
   const resolve = (x, choice) => UI.confirm(choice === 'other' ? `اعتماد نسخة ${srcName(x)} بدل نسخة هذا الجهاز لهذا المعرّف؟ يُوثَّق القرار.` : `إبقاء نسخة هذا الجهاز؟ ${x.source === 'file' ? 'لا يتغير شيء ويُوثَّق القرار.' : 'تبقى مختلفة عن الخادم، ويظهر ذلك استثناءً في تقرير المطابقة حتى تعتمدي نسخة الخادم.'}`, async () => {
     UI.toast('جارٍ حفظ القرار…');
     const ok = await Store.resolveConflict(x, choice, App.role.id);
+    if (ok === null) return; /* حُذفت بيانات الجهاز أثناء الحسم: لا ملاحظة ولا رسالة نجاح */
     if (!ok) { UI.toast('لم يُحسم التعارض: تعذّر الحفظ (' + (Store.storageError || 'الكتابة لم تثبت') + '). بقي كما كان؛ أعيدي المحاولة.'); UI.rerender(); return; }
     Store.add({ type: 'note', child: x.local.child || null, text: `حُسم تعارض المعرّف ${x.id} (${x.source}): ${choice === 'other' ? 'اعتُمدت النسخة الأخرى' : 'أُبقيت نسخة الجهاز'}` });
     UI.savedToast('حُسم التعارض'); UI.rerender();

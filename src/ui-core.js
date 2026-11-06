@@ -99,7 +99,8 @@ const UI = {
     return [el('span', { class: 'dot ok' }), 'تمت المزامنة' + m];
   },
   /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ وإلا رسالة الفشل */
-  savedToast(msg) { Store.durable().then(ok => this.toast(ok ? msg : 'لم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ'))); },
+  /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ ولا تظهر إطلاقاً إن حُذفت بيانات الجهاز أثناء الانتظار (ما سُجّل حُذف) */
+  savedToast(msg) { const gen = Store.gen; Store.durable().then(ok => { if (Store.gen !== gen) return; this.toast(ok ? msg : 'لم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ')); }); },
   renderStatus() { const s = document.getElementById('status'); if (s) { s.innerHTML = ''; s.append(...this.statusInner()); } },
   nav() {
     const items = App.role.id === 'parent'

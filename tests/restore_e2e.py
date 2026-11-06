@@ -410,6 +410,14 @@ async def main():
         st = await k2.evaluate("({ text: Store.raw.find(e => e.id === 'K').text, status: UI.statusInner().map(n => typeof n === 'string' ? n : n.textContent).join('') })")
         ok('C10 «إبقاء نسخة الجهاز»: لا «اكتملت»، والاختلاف المُبقى مذكور، والخادم لم يتغير',
            r['report']['complete'] is False and r['report']['kept'] == 1 and r['report']['conflicts'] == 0 and srv == 'نسخة الخادم' and st['text'] == 'نسخة الجهاز' and 'يختلف عن الخادم' in st['status'], {'report': r['report'], 'srv': srv, **st})
+        # (LM0132-R4-03) نسخة كاملة ← حذف ← استعادة جهاز ← دخول ومطابقة: الاختلاف المُبقى يعود كما كان، لا تعارض جديد ولا «اكتملت»
+        bk = await k2.evaluate("JSON.stringify(Backup.build())")
+        await k2.evaluate(f"(async () => {{ await Store.reset(); Backup.restoreDevice(Backup.parse({json.dumps(bk)})); await Store.durable(); }})()")
+        await login(k2, 'aya')
+        r = await full(k2)
+        st = await k2.evaluate("({ text: Store.raw.find(e => e.id === 'K').text, open: Store.openConflicts().length, kept: Store.keptDiffs().length })")
+        ok('C10 بعد نسخة ← حذف ← استعادة ← مطابقة: الاختلاف المُبقى باقٍ بقراره، لا تعارض مفتوح جديد، ولا «اكتملت»',
+           st == {'text': 'نسخة الجهاز', 'open': 0, 'kept': 1} and r['report']['complete'] is False and r['report']['kept'] == 1, {'report': r['report'], **st})
         await k2.evaluate("(async () => { await Store.resolveConflict(Store.keptDiffs()[0], 'other', 'aya'); })()")
         r = await full(k2)
         st = await k2.evaluate("({ text: Store.raw.find(e => e.id === 'K').text, kept: Store.keptDiffs().length })")

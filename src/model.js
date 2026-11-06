@@ -64,6 +64,7 @@ const Store = {
       } else { this.raw = lsRaw; this.conflicts = lsCf.concat(legacyCf); }
     } else { this.raw = lsRaw; this.conflicts = lsCf.concat(legacyCf); }
     if (!this.idbOk && legacyCf.length) { try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); delete this.settings.conflicts; this.saveSettings(); } catch (e) {} }
+    this.checkResolutions();
     this.migrateV2();
     this.refresh();
   },
@@ -118,6 +119,43 @@ const Store = {
     }
     try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); return true; } catch (e) { this.storageError = 'تعذّر حفظ التعارض: امتلأت ذاكرة الجهاز. صدّري البيانات وأبلغي ولي الأمر.'; return false; }
   },
+  /* عند الفتح: قرار «اعتماد النسخة الأخرى» والسجل ما زال بالنسخة القديمة = الحسم لم يثبت مع الاستبدال
+     (نسخة طوارئ لتعارض لم يُحفظ أول مرة، أو تخزين بديل كتب القرار ولم يكتب السجل). لا يُقبل هذا المزيج: يعود التعارض مفتوحاً (LM0132-R4-01/02) */
+  checkResolutions() {
+    const byId = new Map(this.raw.map(e => [e.id, e])); const fixed = [];
+    /* يُفحص آخر «اعتماد النسخة الأخرى» لكل سجل فقط: اعتمادٌ لاحق لتعارض آخر على السجل نفسه قد يعيده عمداً إلى نسخة سابقة */
+    const latest = new Map();
+    for (const x of this.conflicts) if (x.resolved && x.resolved.choice === 'other') { const l = latest.get(x.id); if (!l || (x.resolved.at || 0) >= (l.resolved.at || 0)) latest.set(x.id, x); }
+    for (const x of latest.values()) {
+      const e = byId.get(x.id); if (!e) continue;
+      const fe = this.fp(e);
+      if (fe === this.fp(x.local) && fe !== this.fp(x.other)) { x.reopened = { at: Date.now(), was: x.resolved, why: 'الحسم لم يثبت مع السجل قبل إغلاق الصفحة' }; delete x.resolved; fixed.push(x); }
+    }
+    if (fixed.length) this.saveConflicts(fixed);
+    return fixed.length;
+  },
+  /* تعارضات من نسخة احتياطية: تُضاف بنسختيها وقرارها إن انطبقت على سجل هنا (محتواه = إحدى النسختين) ولم تكن موجودة.
+     لا تُنقل علامة «على الخادم» ولا اختلاف مع خادم: يُعاد اكتشافهما بالمزامنة (LM0132-R4-03) */
+  importConflicts(list) {
+    if (!Array.isArray(list) || !list.length) return { added: 0, skipped: 0 };
+    const byId = new Map(this.raw.map(e => [e.id, e])); const have = new Set(this.conflicts.map(x => x.key));
+    const ok = o => o && typeof o === 'object' && typeof o.type === 'string' && this.validEvent(o, [o]) && this.roleAllows(o.by, o);
+    const add = []; let skipped = 0;
+    for (const r of list) {
+      const x = r && typeof r === 'object' ? { key: r.key, id: r.id, source: r.source, at: r.at, local: r.local && this.clean(r.local), other: r.other && this.clean(r.other) } : null;
+      const valid = x && typeof x.key === 'string' && typeof x.id === 'string' && typeof x.source === 'string' && (x.source === 'file' || x.source.startsWith('server:')) && typeof x.at === 'number'
+        && ok(x.local) && ok(x.other) && x.local.id === x.id && x.other.id === x.id && this.fp(x.local) !== this.fp(x.other);
+      if (!valid) { skipped++; continue; }
+      if (r.resolved && typeof r.resolved === 'object' && ['local', 'other'].includes(r.resolved.choice)) x.resolved = { at: Number(r.resolved.at) || x.at, by: String(r.resolved.by || ''), choice: r.resolved.choice };
+      const e = byId.get(x.id); const fe = e && this.fp(e);
+      if (!e || (fe !== this.fp(x.local) && fe !== this.fp(x.other)) || have.has(x.key)) { skipped++; continue; }
+      add.push(x); have.add(x.key);
+    }
+    this.conflicts.push(...add);
+    if (add.length && !this.saveConflicts(add)) { for (const x of add) { this.conflicts.splice(this.conflicts.indexOf(x), 1); this.cdirty.delete(x.key); } throw new Error(this.storageError || 'تعذّر حفظ التعارضات'); }
+    this.checkResolutions();
+    return { added: add.length, skipped };
+  },
   openConflicts(source) { return this.conflicts.filter(x => !x.resolved && (!source || x.source === source)); },
   /* اختلاف أبقته المعلمة عمداً مع خادم: حُسم التعارض بـ«إبقاء نسخة الجهاز» والسجل ما زال مختلفاً عنه (LM0131-R3-03) */
   keptDiffs(source) {
@@ -132,25 +170,38 @@ const Store = {
   },
   /* حسم تعارض: الاستبدال (إن اختيرت النسخة الأخرى) والقرار يُكتبان في معاملة واحدة، ولا يُعلن الحسم قبل ثبوتهما.
      إن فشل الحفظ يعود كل شيء كما كان ويبقى التعارض مفتوحاً (LM0131-R3-02) */
+  /* القيمة: true = ثبت الحسم، false = لم يثبت وعاد كل شيء كما كان، null = حُذفت بيانات الجهاز أثناءه فأُلغي (لا يُكتب بعده شيء — LM0132-R4-04) */
   async resolveConflict(x, choice, by) {
     if (x.resolved && x.resolved.choice === choice) return true;
     const gen = this.gen;
     const prevRes = x.resolved || null;
     const i = this.raw.findIndex(e => e.id === x.id); const prev = i >= 0 ? this.raw[i] : null;
     let repl = null;
+    const rollback = () => {
+      if (repl) { const j = this.raw.findIndex(e => e.id === x.id); if (j >= 0 && this.raw[j] === repl) this.raw[j] = prev; }
+      if (prevRes) x.resolved = prevRes; else delete x.resolved;
+      this.refresh();
+    };
     if (choice === 'other' && prev) {
       const sid = x.source.startsWith('server:') ? x.source.slice(7) : null;
       repl = Object.assign(this.clean(x.other), { la: Date.now() });
       if (sid) repl.sv = [sid];
-      this.raw[i] = repl; this.saveEvents([repl]);
+      this.raw[i] = repl;
     }
     x.resolved = Object.assign({ at: Date.now(), by, choice }, prevRes ? { was: prevRes.choice } : {});
+    if (!this.idbOk) {
+      /* التخزين البديل: مفتاحان منفصلان. السجل أولاً؛ إن فشل لا يُكتب القرار. وإن فشل القرار بعده يُعاد السجل القديم
+         (والفحص عند الفتح يعيد فتح أي قرار بقي مع سجل قديم) — LM0132-R4-02 */
+      if (repl && !this.saveEvents([repl])) { rollback(); return false; }
+      if (!this.saveConflicts([x])) { rollback(); if (repl) this.saveEvents([prev]); return false; }
+      this.refresh(); return true;
+    }
+    if (repl) this.saveEvents([repl]);
     this.saveConflicts([x]); this.refresh();
     const ok = await this.durable();
-    if (ok || gen !== this.gen) return ok;
-    if (repl) { const j = this.raw.findIndex(e => e.id === x.id); if (j >= 0 && this.raw[j] === repl) this.raw[j] = prev; }
-    if (prevRes) x.resolved = prevRes; else delete x.resolved;
-    this.refresh();
+    if (gen !== this.gen) return null;
+    if (ok) return true;
+    rollback();
     return false;
   },
   clean(e) { const o = Object.assign({}, e); for (const k of this.LOCAL_FIELDS) delete o[k]; return o; },
