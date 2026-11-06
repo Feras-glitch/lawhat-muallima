@@ -19,7 +19,61 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # تشغيل التطبيق فعلاً على محاكي هاتف وتابلت (Android 14) قبل أي نشر: بناء اختبار منفصل (معاينة + فحص WebView) لا يُنشر
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: phone, profile: pixel_6 }
+          - { name: tablet, profile: pixel_tablet }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: بناء الاختبار
+        run: |
+          set -e
+          mkdir -p android/app/src/main/assets && cp dist/index.html android/app/src/main/assets/index.html
+          P=$(openssl rand -hex 16); echo "::add-mask::$P"
+          keytool -genkeypair -storetype PKCS12 -keystore android/release.p12 -alias lawhat -keyalg RSA -keysize 2048 -validity 30 -storepass "$P" -keypass "$P" -dname "CN=CI test"
+          KS_PASS="$P" gradle -p android assembleRelease --no-daemon -Ppreview=true -Pwebdebug=true
+          rm -f android/release.p12
+          python -m pip install -q websockets
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: المحاكي (${{ matrix.name }})
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: ${{ matrix.profile }}
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: ./android/ci/emulator_test.sh ${{ matrix.name }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'shots-${{ matrix.name }}', path: shots/ }
+      - name: اللقطات في فرع ci-shots-${{ matrix.name }}
+        if: always()
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          [ -d shots ] || exit 0
+          cd shots && git init -q -b s && git config user.name "github-actions[bot]" && git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A && git commit -q -m "لقطات ${{ matrix.name }} من $GITHUB_SHA" && git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:ci-shots-${{ matrix.name }}
+
   apk:
+    needs: emulator
     runs-on: ubuntu-latest
     env:
       KEY_PASSPHRASE: ${{ secrets.ANDROID_KEY_PASSPHRASE }}

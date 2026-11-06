@@ -6,6 +6,8 @@ def parts = (appVersion.tokenize('.') + ['0', '0', '0']).take(3).collect { it.is
 def code = parts[0] * 10000 + parts[1] * 100 + parts[2]
 // معاينة (-Ppreview=true): تطبيق منفصل (معرّف وأسم مختلفان) بمفتاح مؤقت، يُثبَّت بجانب الدائم ولا يتعارض معه
 def preview = (project.findProperty('preview') ?: 'false').toString() == 'true'
+// للاختبار الآلي على المحاكي فقط (لا يُنشر): تفعيل فحص WebView عن بُعد
+def webdebug = (project.findProperty('webdebug') ?: 'false').toString() == 'true'
 
 android {
     namespace 'app.lawhat.muallima'
@@ -17,6 +19,7 @@ android {
         versionCode code
         versionName appVersion + (preview ? '-preview' : '')
         buildConfigField 'boolean', 'PREVIEW', preview.toString()
+        buildConfigField 'boolean', 'WEBDEBUG', webdebug.toString()
         resValue 'string', 'app_name', preview ? 'لوحة المعلمة (معاينة)' : 'لوحة المعلمة'
     }
     // مفتاح توقيع ثابت (أسرار GitHub): بدونه لا يُثبَّت التحديث فوق القديم إلا بإلغاء التثبيت، وإلغاء التثبيت يمحو البيانات

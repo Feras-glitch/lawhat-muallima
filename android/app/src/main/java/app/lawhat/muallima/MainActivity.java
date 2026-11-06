@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        if (BuildConfig.WEBDEBUG) WebView.setWebContentsDebuggingEnabled(true); // بناء الاختبار الآلي وحده
         web = new WebView(this);
         setContentView(web);
 
