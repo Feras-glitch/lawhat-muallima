@@ -12,7 +12,9 @@ def git(*a):
 
 FILES = ['data.js', 'model.js', 'sync.js', 'ui-core.js', 'ui-now.js', 'ui-child.js', 'backup.js', 'ui-parent.js', 'ui-present.js']
 version = (root / 'VERSION').read_text(encoding='utf-8').strip()
-commit = git('rev-parse', '--short', 'HEAD') or 'غير معروف'
+# آخر commit غيّر المصدر (لا آخر commit في المستودع): البناء المحلي وبناء CI لنفس المصدر يحملان البصمة نفسها،
+# فلا تختلف بسبب commit للبناء أو للتوثيق أو لـ CI بعده
+commit = git('log', '-1', '--format=%h', '--', 'src', 'build.py', 'VERSION') or git('rev-parse', '--short', 'HEAD') or 'غير معروف'
 # مصادر تختلف عن الـ commit = بناء من نسخة غير ملتزمة
 if git('status', '--porcelain', '--', 'src', 'build.py', 'VERSION'):
     commit += '+تعديلات'
