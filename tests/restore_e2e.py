@@ -200,6 +200,20 @@ async def main():
         await connect(aya, 'srv_b2'); await login(aya, 'aya'); r = await sync(aya)
         ok('C2 آية على الخادم المستعاد إدارياً: «اكتملت» دون جهاز المساعدة', r['err'] is None and r['report']['complete'] is True, r['report'])
 
+        # ================= C2ب (LM012-02) نص يحمل فواصل SQL =================
+        pg.snapshot('snap_t0', 'srv_b3')
+        nasty = await device('nasty')
+        texts = ['$lm_do$', '$lm_json$', '$lm_do_x$ و $lm_json_x$', '$$ end $$; drop table public.events; --', "' ; select 1; -- \\ E'\\n' ـ", 'end $lm_do$; select pg_sleep(0); do $lm_do$ begin']
+        await nasty.evaluate("App.setRole('aya')")
+        for i, t in enumerate(texts):
+            await add(nasty, {'id': f'NASTY{i}', 'type': 'note', 'child': 'dalal', 'text': t})
+        sqls = await nasty.evaluate("ServerRestore.parts().map((ch, i, all) => ServerRestore.sql(ch, i + 1, all.length))")
+        rc, out, err = pg.psql('srv_b3', sqls[0], check=False)
+        got = pg.psql('srv_b3', "select json_agg(json_build_array(id, payload->>'text') order by id) from public.events where id like 'NASTY%';")[1].strip()
+        got = {k: v for k, v in json.loads(got or '[]')}
+        ok('C2ب ملاحظات تحمل فواصل الكتلة وJSON ونصوص SQL: الملف يعمل، والنصوص تُستعاد حرفياً، والجدول سليم',
+           rc == 0 and got == {f'NASTY{i}': t for i, t in enumerate(texts)} and len(pg.ids('srv_b3')) == len(t0) + len(texts), {'rc': rc, 'err': err.strip()[:300], 'got': got})
+
         # ================= C3 =================
         new, old, old2 = await device('new'), await device('old'), await device('old2')
         for d in (new, old, old2):
@@ -266,6 +280,22 @@ async def main():
         ok('C6 بعد الاستعادة في المكان: W1 فُقد من الخادم', 'W1' not in pg.ids('srv_x'))
         r = await sync(a2)
         ok('C6 الفحص الرخيص يكتشف الفقد فيُعاد الرفع تلقائياً دون تدخل', 'W1' in pg.ids('srv_x') and r['err'] is None and r['report'] and r['report']['complete'] is True, r)
+
+        # ================= C6ج (LM012-01) فقد سجل مع تساوي العدد =================
+        await a2.evaluate("Sync.st().reconciledAt = Date.now(); Store.saveSettings();")
+        n_srv = len(pg.ids('srv_x'))
+        ghost = {'id': 'GHOST', 'type': 'note', 'by': 'asst', 'child': 'farah', 'ts': 7, 'day': '2026-11-01', 'text': 'g'}
+        pg.psql('srv_x', f"delete from public.events where id = 'Y2'; insert into public.events (id, ts, day, by, child, type, payload, inserted_at) values ('GHOST', 7, '2026-11-01', 'asst', 'farah', 'note', '{json.dumps(ghost)}'::jsonb, '2000-01-01');")
+        ok('C6ج تجهيز: العدد على الخادم كما هو، وY2 مفقود، وGHOST قبل مؤشر السحب', len(pg.ids('srv_x')) == n_srv and 'Y2' not in pg.ids('srv_x'))
+        r = await sync(a2)
+        r1 = {'Y2': 'Y2' in pg.ids('srv_x'), 'ghost': await a2.evaluate("Store.raw.some(e => e.id === 'GHOST')")}
+        await a2.evaluate("Sync.st().reconciledAt = Date.now() - 7 * 3600e3; Store.saveSettings();")  # مضت نافذة المطابقة الدورية
+        r = await sync(a2)
+        r2 = {'Y2': 'Y2' in pg.ids('srv_x'), 'ghost': await a2.evaluate("Store.raw.some(e => e.id === 'GHOST')"), 'report': r['report']}
+        ok('C6ج المطابقة الدورية بالمعرّفات تكتشف الفقد رغم تساوي العدد: يُعاد رفع Y2 (سجل آية) ويُسحب GHOST، والتقرير مكتمل',
+           r2['Y2'] and r2['ghost'] and r2['report']['complete'] is True, {'قبل النافذة': r1, 'بعدها': r2})
+        txt = await a2.evaluate("(() => { App.view = 'settings'; UI.rerender(); return document.querySelector('main').innerText; })()")
+        ok('C6ج الإعدادات تعرض تاريخ آخر مطابقة كاملة وموعد التالية', 'آخر مطابقة كاملة' in txt and 'التالية تلقائياً' in txt, txt[txt.find('آخر مطابقة'):][:120])
 
         # ================= C6ب حذف السجلات المحلية =================
         n_before = len((await dig(a2))['raw'])

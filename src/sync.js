@@ -9,7 +9,7 @@ const PUSH_CHUNK = 500;
 const PAGE = 1000;
 
 const Sync = {
-  timer: null, busy: false, lastError: null, lastOk: null, incomplete: false, lastIds: null, RECHECK_MS: 60000,
+  timer: null, busy: false, lastError: null, lastOk: null, incomplete: false, lastIds: null, RECHECK_MS: 60000, RECONCILE_EVERY_MS: 6 * 3600e3,
   cfg() {
     const s = Store.settings;
     if (!s.sbUrl || !s.sbKey || s.localMode) return null;
@@ -98,13 +98,14 @@ const Sync = {
     try {
       if (!(await this.refresh())) { this.lastError = 'انتهت الجلسة، أعيدي الدخول'; return; }
       const st = this.st(c.id);
-      const full = !!st.needReconcile;
+      /* مطابقة بالمعرّفات كل 6 ساعات مهما كان العدد: فقدُ سجلٍ مع زيادة غيره يُبقي العدد كما هو ولا يكشفه فحص العدد */
+      const full = !!st.needReconcile || Date.now() - (st.reconciledAt || 0) > this.RECONCILE_EVERY_MS;
       if (full) await this.reconcile(c);
       await this.push(c);
       let n = await this.pull(c);
       /* ما سُحب (أو عُلّم «على الخادم») قد يكون هدفاً لتراجع منتظر: يُرفع في الجولة نفسها. بلا منتظر = لا طلب */
       await this.push(c);
-      /* فحص رخيص كل جولة: خادم يحمل أقل مما ثبت رفعه إليه = استُعيد من نسخة أقدم أو فُقد منه شيء */
+      /* اختصار رخيص كل جولة (لا يكشف كل نقص؛ المطابقة الدورية أعلاه تكشف الباقي): خادم يحمل أقل مما ثبت رفعه إليه */
       if (!full && !this.incomplete && await this.countMismatch(c)) { await this.reconcile(c); await this.push(c); n += await this.pull(c); }
       /* تقرير «لم تكتمل» يُعاد فحصه تلقائياً متى خلا الجهاز مما ينتظر، فيتحول إلى «اكتملت» دون تدخل */
       if (!this.incomplete && st.report && !st.report.complete && Date.now() - (st.reconciledAt || 0) > this.RECHECK_MS) {

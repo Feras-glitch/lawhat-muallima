@@ -103,7 +103,11 @@ const ServerRestore = {
   },
   sql(chunk, k, total) {
     const json = JSON.stringify(chunk);
-    let tag = 'lm_json'; while (json.includes('$' + tag + '$')) tag += '_x';
+    /* فاصلا السلسلتين (JSON داخل الكتلة، والكتلة نفسها) يُختاران غائبين عن كل ما يحيطان به؛ نص أي ملاحظة لا يُنهي أياً منهما */
+    const free = (base, text) => { let t = base; while (text.includes('$' + t + '$')) t += '_x'; return t; };
+    const tag = free('lm_json', json);
+    const body = this.body(json, tag, k);
+    const dtag = free('lm_do', body);
     return `-- لوحة المعلمة · استعادة الخادم · الجزء ${k} من ${total} · ${chunk.length} سجل
 -- الإصدار ${BUILD.version} (${BUILD.commit}) · أُعدّ ${new Date().toISOString()} من الجهاز ${Store.settings.deviceId}
 -- يُشغَّل في SQL Editor لمشروع Supabase بعد إعداد الجداول وإنشاء المستخدمين الثلاثة وأدوارهم في profiles.
@@ -111,8 +115,15 @@ const ServerRestore = {
 -- آمن للتكرار. شغّلي الأجزاء بالترتيب (التراجعات في الأجزاء الأخيرة).
 create temp table if not exists lm_restore_log (part int, id text, by text, type text, status text, reason text);
 delete from lm_restore_log where part = ${k};
-do $lm_do$
-declare
+do $${dtag}$
+${body}end $${dtag}$;
+select status as "الحالة", count(*) as "العدد",
+  string_agg(id || ' — ' || coalesce(reason, ''), E'\\n') filter (where status = 'rejected') as "المرفوض وسببه"
+from lm_restore_log where part = ${k} group by status order by status;
+`;
+  },
+  body(json, tag, k) {
+    return `declare
   js jsonb := $${tag}$${json}$${tag}$::jsonb;
   x jsonb; uid text; n int;
 begin
@@ -137,10 +148,6 @@ begin
       insert into lm_restore_log values (${k}, x->>'id', x->>'by', x->>'type', 'rejected', sqlerrm);
     end;
   end loop;
-end $lm_do$;
-select status as "الحالة", count(*) as "العدد",
-  string_agg(id || ' — ' || coalesce(reason, ''), E'\\n') filter (where status = 'rejected') as "المرفوض وسببه"
-from lm_restore_log where part = ${k} group by status order by status;
 `;
   },
   download(text, k, total) {
@@ -235,6 +242,16 @@ function syncReportView(st) {
   return el('div', { class: 'alert' }, el('div', null, el('b', null, `المطابقة لم تكتمل (${when}):`)), el('ul', { class: 'small', style: 'margin:4px 0' }, items.map(t => el('li', null, t))));
 }
 
+const hoursAr = h => h === 1 ? 'ساعة' : h === 2 ? 'ساعتين' : h <= 10 ? `${h} ساعات` : `${h} ساعة`;
+/* تاريخ آخر مطابقة كاملة وموعد التالية (تلقائية كل 6 ساعات) */
+function reconcileLine(st) {
+  if (!st.reconciledAt) return 'لم تُجرَ مطابقة كاملة مع هذا الخادم بعد؛ تُجرى عند التزامن التالي.';
+  const d = new Date(st.reconciledAt);
+  const left = st.reconciledAt + Sync.RECONCILE_EVERY_MS - Date.now();
+  const next = st.needReconcile || left <= 0 ? 'التالية تلقائياً عند التزامن القادم' : `التالية تلقائياً خلال ${hoursAr(Math.max(1, Math.ceil(left / 3600e3)))}`;
+  return `آخر مطابقة كاملة: ${fmtDay(dayKey(d))} ${hhmm(d)} · ${next}`;
+}
+
 function ServerCard() {
   const s = Store.settings; const c = Sync.cfg();
   const url = el('input', { value: s.sbUrl || '', placeholder: 'https://xxxx.supabase.co', dir: 'ltr' });
@@ -260,7 +277,8 @@ function ServerCard() {
     const others = Object.entries(k.others).map(([by, n]) => `${roleName(by)} ${n}`).join('، ');
     card.append(el('p', { class: 'small muted' }, Sync.lastOk ? `آخر تزامن ${hhmm(new Date(Sync.lastOk))}` : 'لم يتزامن بعد في هذه الجلسة', Sync.lastError ? ` · ${Sync.lastError}` : ''),
       el('p', { class: 'small' }, Sync.role() ? `سجلات دورك بانتظار الرفع: ${k.ownPending}` : 'لم يُدخل إلى هذا الخادم بعد', k.othersTotal ? ` · سجلات أدوار أخرى ليست على الخادم: ${others}` : ''),
-      syncReportView(st) || el('p', { class: 'small muted' }, st.needReconcile ? 'مطابقة كاملة مطلوبة: تُجرى عند التزامن التالي.' : 'لم تُجرَ مطابقة كاملة مع هذا الخادم بعد.'),
+      el('p', { class: 'small muted' }, reconcileLine(st)),
+      syncReportView(st),
       el('div', { class: 'btns' },
         el('button', { class: 'ghost small', onclick: async () => { await Sync.run(); UI.rerender(); } }, 'تزامن الآن'),
         el('button', { class: 'ghost small', onclick: async () => { st.needReconcile = true; Store.saveSettings(); UI.toast('تجري المطابقة…'); await Sync.run(); UI.rerender(); } }, 'مطابقة كاملة')));
