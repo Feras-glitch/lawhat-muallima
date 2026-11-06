@@ -99,14 +99,27 @@ async def main():
         await p.ev("(() => { App.setRole('aya'); App.view = 'logs'; UI.rerender(); UI.confirm('اختبار الرجوع', () => {}); return true; })()")
         return True
     await session(back_modal)
-    sh('shell', 'input', 'keyevent', 'KEYCODE_BACK'); time.sleep(1.5)
 
     async def after_back(p):
-        return await p.ev("({ modal: !!document.querySelector('.modal'), view: App.view })")
-    r = await session(after_back)
+        return await p.ev("({ modal: !!document.querySelector('.modal'), view: App.view, focus: document.hasFocus() })")
+
+    async def poll(pred, tries=10):
+        r = None
+        for _ in range(tries):
+            r = await session(after_back)
+            if pred(r):
+                break
+            time.sleep(0.5)
+        return r
+    # الواجهة في المقدمة ومستقرة قبل ضغط الرجوع (ضغطة واحدة لكل خطوة؛ لا إعادة)
+    time.sleep(2)
+    print('قبل الرجوع:', sh('shell', 'dumpsys', 'activity', 'activities', check=False).count('app.lawhat.muallima'), flush=True)
+    sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+    r = await poll(lambda r: not r['modal'])
     ok('زر الرجوع يغلق النافذة المفتوحة', r['modal'] is False and r['view'] == 'logs', r)
-    sh('shell', 'input', 'keyevent', 'KEYCODE_BACK'); time.sleep(1.5)
-    r = await session(after_back)
+    time.sleep(1)
+    sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+    r = await poll(lambda r: r['view'] == 'now')
     ok('الرجوع التالي يعود إلى الشاشة الرئيسية لا يخرج', r['view'] == 'now', r)
     shot('now')
 
@@ -141,8 +154,12 @@ async def main():
         return await p.ev("({ m: window.__mark, w: innerWidth, h: innerHeight })")
     before = await session(get_mark)
     sh('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
-    sh('shell', 'settings', 'put', 'system', 'user_rotation', '1'); time.sleep(3)
-    r = await session(get_mark)
+    sh('shell', 'settings', 'put', 'system', 'user_rotation', '1')
+    for _ in range(20):
+        time.sleep(0.5)
+        r = await session(get_mark)
+        if (r['w'] > r['h']) != (before['w'] > before['h']):
+            break
     ok('الدوران لا يعيد تحميل الصفحة (والأبعاد تنقلب)', r['m'] == m and (r['w'] > r['h']) != (before['w'] > before['h']), {'before': before, 'after': r})
 
     async def land(p):
