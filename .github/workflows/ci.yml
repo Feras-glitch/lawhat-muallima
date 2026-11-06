@@ -44,7 +44,7 @@ jobs:
         run: python3 tests/audit_failures.py
       - name: انحدار المراجعة المستقلة 0.12.1 (R2-01..R2-14)
         run: python3 tests/audit_r2.py
-      - name: انحدار المراجعة المستقلة 0.13.1 (R3: التعارضات حفظاً وحسماً وحذفاً، وترقية القاعدة)
+      - name: "انحدار المراجعة المستقلة 0.13.1 (R3 — التعارضات حفظاً وحسماً وحذفاً، وترقية القاعدة)"
         run: python3 tests/audit_r3.py
       - name: مسح كل الأزرار في كل الشاشات والأدوار
         run: python3 tests/crawl.py
