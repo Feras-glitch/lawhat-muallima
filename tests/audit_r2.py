@@ -179,7 +179,7 @@ async def main():
             Object.assign(Sync.st(), { needReconcile: false, reconciledAt: Date.now() }); App.view = 'settings'; UI.rerender();
             const inp = document.querySelector('input[placeholder="https://xxxx.supabase.co"]'); inp.focus(); inp.value = 'https://new-typed-url'; inp.setSelectionRange(5, 5);
             window.fetch = async (u, o) => String(u).includes('select=id&limit=1') ? { ok: true, headers: { get: () => '0-0/1' }, json: async () => [] } : { ok: true, json: async () => [{ id: 'newly-arrived', by: 'aya', type: 'note', payload: { ts: 1, day: todayKey(), text: 'remote' }, inserted_at: '2026-11-07T00:00:00Z' }] };
-            await Sync.run(); const n = document.querySelector('input[placeholder="https://xxxx.supabase.co"]');
+            Sync.serverRole = async () => Store.settings.sbRole; await Sync.run(); const n = document.querySelector('input[placeholder="https://xxxx.supabase.co"]');
             return { arrived: Store.raw.some(e => e.id === 'newly-arrived'), after: n.value, focus: document.activeElement === n, caret: n.selectionStart }; })()""")
         ok('R2-13 بعد مزامنة جلبت سجلاً: النص المكتوب والتركيز والمؤشر باقية', r == {'arrived': True, 'after': 'https://new-typed-url', 'focus': True, 'caret': 5}, r)
 

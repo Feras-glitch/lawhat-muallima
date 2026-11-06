@@ -366,6 +366,34 @@ async def main():
         srv = pg.psql('srv_cf', "select payload->>'text' from public.events where id = 'Y';")[1].strip()
         ok('C8 الاستعادة الإدارية: المعرّف الموجود بمحتوى مختلف = conflict بسببه، والخادم لم يتغير', 'conflict|1|Y — المعرّف موجود على الخادم بمحتوى مختلف' in out and srv == 'ي على الخادم', out.strip())
 
+        # ================= C9 سحب الدور أثناء عمل الجهاز (read_family تعيد صفراً، والرفع 403) =================
+        pg.create_server('srv_rv')
+        rv, demo = await device('rv'), await device('rv-old')
+        asst_uid = USERS['asst@lm.test'][0]
+        for d in (rv, demo):
+            await connect(d, 'srv_rv'); await login(d, 'asst')
+        for i in range(3):
+            await add(rv, {'id': f'RV{i}', 'type': 'note', 'child': 'dalal', 'text': f'م{i}'})
+        await sync(rv); await sync(demo)
+        await add(rv, {'id': 'RV_PEND', 'type': 'note', 'child': 'dalal', 'text': 'بعد سحب الدور'})
+        pg.psql('srv_rv', f"delete from public.profiles where user_id = '{asst_uid}';")
+        # بلا فحص الدور (سلوك ما قبل الإصلاح): المطابقة ترى خادماً فارغاً فتُعيد الرفع، و403 يُعلَّم مرفوضاً — هذا ما يمنعه الإصلاح
+        r = await demo.evaluate("(async () => { Sync.serverRole = async () => Store.settings.sbRole; Sync.st().needReconcile = true; await T.sync(); return Store.raw.filter(e => (e.rj || []).length).length; })()")
+        ok('C9 (إثبات العيب) بلا فحص الدور: سجلات حساب سُحب دوره تُعلَّم مرفوضة', r == 3, r)
+        r = await rv.evaluate("(async () => { Sync.st().needReconcile = true; Store.saveSettings(); const x = await T.sync(); return { err: x.err, session: Store.settings.sbSession, role: Sync.role(), rj: Store.raw.filter(e => (e.rj || []).length).length, rejected: Sync.st().rejected.length, on: Store.raw.filter(e => (e.sv || []).length).map(e => e.id).sort() }; })()")
+        ok('C9 الدور سُحب: يخرج الجهاز من الحساب برسالة صريحة، ولا يُعلَّم شيء مرفوضاً، وعلامات «على الخادم» باقية',
+           r['session'] is None and r['role'] is None and 'دور' in (r['err'] or '') and r['rj'] == 0 and r['rejected'] == 0 and r['on'] == ['RV0', 'RV1', 'RV2'], r)
+        # سباق: الدور سُحب بعد بدء الجولة (الرفع يلقى 403): لا رفض قبل التحقق من الدور
+        pg.psql('srv_rv', f"insert into public.profiles values ('{asst_uid}', 'asst');")
+        await login(rv, 'asst')
+        pg.psql('srv_rv', f"delete from public.profiles where user_id = '{asst_uid}';")
+        r = await rv.evaluate("(async () => { let err = null; try { await Sync.push(Sync.cfg()); } catch (e) { err = e.message; } return { err, session: Store.settings.sbSession, rj: Store.raw.filter(e => (e.rj || []).length).length }; })()")
+        ok('C9 سباق: 403 أثناء الرفع والدور سُحب = خروج من الحساب، لا مرفوضات', r['session'] is None and r['rj'] == 0 and 'دور' in (r['err'] or ''), r)
+        pg.psql('srv_rv', f"insert into public.profiles values ('{asst_uid}', 'asst');")
+        await login(rv, 'asst')
+        r = await full(rv)
+        ok('C9 بعد إعادة الدور والدخول: يُرفع المنتظر، وتكتمل المطابقة بلا مرفوضات', 'RV_PEND' in pg.ids('srv_rv') and r['report']['complete'] is True and r['report']['rejected'] == 0 and r['err'] is None, {'report': r['report'], 'err': r['err']})
+
         assert not errors, errors
         await b.close()
     shim.close(); pg.close()

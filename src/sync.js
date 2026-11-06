@@ -40,6 +40,7 @@ const Sync = {
       const rows = await pr.json(); role = rows && rows[0] && rows[0].role;
     } catch (e) {}
     Store.settings.sbRole = ROLES[role] ? role : null;
+    this.revokedMsg = null;
     if (!Store.settings.sbRole) Store.settings.sbSession = null; /* حساب بلا دور لا تُحفظ جلسته على الجهاز */
     Store.saveSettings();
     return Store.settings.sbRole;
@@ -54,6 +55,18 @@ const Sync = {
     Store.saveSettings(); return true;
   },
   logout() { Store.settings.sbSession = null; Store.settings.sbRole = null; Store.saveSettings(); },
+  /* دور الحساب على الخادم الآن (سياسة read_own_profile تعيد صف الحساب وحده): null = لا دور، undefined = تعذّر التحقق.
+     يُفحص كل جولة: حساب سُحب دوره يقرأ صفراً (read_family) ويُرفض رفعه، فلو استمرت الجولة لظن الجهاز أن الخادم فقد سجلاته
+     ولَعَلَّم سجلاته مرفوضة. لذلك يخرج من الحساب ولا يُغيّر شيئاً من سجلاته */
+  async serverRole(c) {
+    try { const r = await fetch(`${c.url}/rest/v1/profiles?select=role`, { headers: this.headers() }); if (!r.ok) return undefined; const rows = await r.json(); const role = Array.isArray(rows) && rows[0] ? rows[0].role : null; return ROLES[role] ? role : null; } catch (e) { return undefined; }
+  },
+  revokedMsg: null,
+  revoke(role) {
+    Store.settings.sbSession = null; Store.settings.sbRole = null; Store.saveSettings();
+    this.revokedMsg = role ? `تغيّر دور هذا الحساب على الخادم إلى «${ROLES[role].name}»؛ أعيدي الدخول` : 'لم يعد لهذا الحساب دور على الخادم (سُحب أو حُذف)؛ خرج الجهاز من الحساب، وسجلاته باقية كما هي ولم يُعلَّم منها شيء مرفوضاً';
+    this.lastError = this.revokedMsg;
+  },
 
   /* ===== تغيير الخادم ===== */
   isKnown(url) { const all = Store.settings.servers || {}; const x = all[serverId(url)]; return !!(x && x.accepted); },
@@ -65,7 +78,7 @@ const Sync = {
     Object.assign(s.servers[id], { accepted: true, needReconcile: true });
     s.sbUrl = url.trim(); s.sbKey = key.trim(); s.localMode = false;
     s.sbSession = null; s.sbRole = null;
-    this.lastError = null; this.lastOk = null; this.incomplete = false; this.lastIds = null;
+    this.lastError = null; this.lastOk = null; this.incomplete = false; this.lastIds = null; this.revokedMsg = null;
     Store.saveSettings();
   },
   /* عدد سجلات هذا الجهاز بحسب حالتها على خادم: سجلات الدور الحالي المنتظرة، وسجلات أدوار أخرى ليست عليه */
@@ -102,7 +115,9 @@ const Sync = {
     if (!c || this.busy || !navigator.onLine) return;
     this.busy = true;
     try {
-      if (!(await this.refresh())) { this.lastError = 'انتهت الجلسة، أعيدي الدخول'; return; }
+      if (!(await this.refresh())) { this.lastError = this.revokedMsg || 'انتهت الجلسة، أعيدي الدخول'; return; }
+      const sr = await this.serverRole(c); this.guard(c);
+      if (sr !== undefined && sr !== Store.settings.sbRole) { this.revoke(sr); return; }
       const st = this.st(c.id);
       /* مطابقة بالمعرّفات كل 6 ساعات مهما كان العدد: فقدُ سجلٍ مع زيادة غيره يُبقي العدد كما هو ولا يكشفه فحص العدد */
       const full = !!st.needReconcile || Date.now() - (st.reconciledAt || 0) > this.RECONCILE_EVERY_MS;
@@ -144,6 +159,7 @@ const Sync = {
     };
     const all = Store.raw.filter(e => e.by === me && !hasIn(e.sv, c.id) && !hasIn(e.rj, c.id) && !hasIn(e.cf, c.id));
     const byId = new Map(Store.raw.map(e => [e.id, e]));
+    let roleChecked = false;
     /* التراجع يُرفع بعد أن يثبت هدفه على هذا الخادم (سياسة الخادم تشترطه)؛ هدف لم يصل بعد (سجل دور آخر لم يرفعه صاحبه) = ينتظر ولا يُعدّ مرفوضاً */
     const undoReady = () => all.filter(e => e.type === 'undo' && !hasIn(e.sv, c.id) && (t => t && hasIn(t.sv, c.id))(byId.get(e.target)));
     for (const getPhase of [() => all.filter(e => e.type !== 'undo'), undoReady]) {
@@ -161,6 +177,13 @@ const Sync = {
           this.guard(c);
           if (r1.ok) { await settle(r1, [e]); continue; }
           if (!this.isPermanent(r1.status)) throw new Error(this.transientMsg(r1.status));
+          /* 403 قد يعني أن الدور سُحب أثناء الجولة: لا يُعلَّم شيء مرفوضاً قبل التأكد أن الدور ما زال قائماً */
+          if (r1.status === 403 && !roleChecked) {
+            const sr = await this.serverRole(c); this.guard(c);
+            if (sr === undefined) throw new Error('تعذّر التحقق من دور الحساب بعد رفض الخادم؛ سيُعاد الرفع تلقائياً');
+            if (sr !== me) { this.revoke(sr); throw new Error(this.revokedMsg); }
+            roleChecked = true;
+          }
           let why = 'رفض الخادم (' + r1.status + ')'; try { const j = await r1.json(); if (j && j.message) why += ': ' + j.message; } catch (x) {}
           e.rj = (e.rj || []).filter(x => x !== c.id).concat(c.id);
           const st = this.st(c.id);

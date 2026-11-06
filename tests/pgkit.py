@@ -149,8 +149,9 @@ class Shim:
         if not uid:
             return h.send_json(401, {'message': 'no session'})
         if res == 'profiles':
-            want = q.get('user_id', '').replace('eq.', '')
-            rc, out, err = self.pg.as_user(db, uid, f"select coalesce(json_agg(t), '[]') from (select role from public.profiles where user_id = '{want}') t;")
+            want = q.get('user_id', '').replace('eq.', '').replace("'", "''")
+            where = f"where user_id = '{want}'" if 'user_id' in q else ''  # بلا مرشّح: سياسة read_own_profile تعيد صف الحساب وحده، كما في Supabase
+            rc, out, err = self.pg.as_user(db, uid, f"select coalesce(json_agg(t), '[]') from (select role from public.profiles {where}) t;")
             return h.send_json(200 if rc == 0 else 400, out.strip() or '[]')
         if res == 'events' and method == 'POST':
             rows = json.loads(body)
