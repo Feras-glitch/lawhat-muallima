@@ -116,7 +116,7 @@ header.top{flex-wrap:wrap}
 <body>
 <div id="app"></div>
 <script>
-const BUILD = {"version": "0.13.1", "commit": "22e2a42", "src": "8dc8157cfb", "built": "2026-11-06"};
+const BUILD = {"version": "0.13.2", "commit": "538b1fc", "src": "2d354f6461", "built": "2026-11-06"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 const CHILDREN = {
   dalal: { id: 'dalal', name: 'دلال', age: 10, unit: 'page', unitLabel: 'صفحة' },
@@ -305,19 +305,35 @@ const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأر
 const LS_EVENTS = 'lm_events_v1';
 const LS_SETTINGS = 'lm_settings_v1';
 const LS_SESSION = 'lm_session_v1';
+/* التعارضات (نسختا سجل بمعرّف واحد) بيانات أحداث: تُحفظ في IndexedDB مع السجلات في المعاملة نفسها، لا في الإعدادات.
+   هذا المفتاح نسخة طوارئ لها (أو مخزنها حين لا يتاح IndexedDB) */
+const LS_CONFLICTS = 'lm_conflicts_v1';
 
 const Store = {
   events: [],
   settings: {},
+  conflicts: [],
   /* ===== التخزين: IndexedDB (سعة كبيرة، كتابة سجل واحد لا الكل) مع ترحيل تلقائي من localStorage وبديل عند تعذّر IDB ===== */
   db: null, idbOk: false, pending: new Map(), flushTimer: null,
   async openDb() {
     if (!window.indexedDB) return null;
     return new Promise((res) => {
-      let req; try { req = indexedDB.open('lawhat_muallima', 1); } catch (e) { res(null); return; }
-      req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains('events')) db.createObjectStore('events', { keyPath: 'id' }); };
-      req.onsuccess = () => res(req.result); req.onerror = () => res(null); req.onblocked = () => res(null);
+      let req; try { req = indexedDB.open('lawhat_muallima', 2); } catch (e) { res(null); return; }
+      req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains('events')) db.createObjectStore('events', { keyPath: 'id' }); if (!db.objectStoreNames.contains('conflicts')) db.createObjectStore('conflicts', { keyPath: 'key' }); };
+      /* الترقية إلى الإصدار 2 تنتظر إغلاق أي تبويب بإصدار أقدم: لا يُفتح البرنامج فارغاً على التخزين البديل، بل يُطلب الإغلاق ويُكمل وحده بعده */
+      req.onblocked = () => this.blockNotice('البرنامج مفتوح بإصدار أقدم في تبويب أو نافذة أخرى على هذا الجهاز. أغلقيها ليكتمل التحديث؛ تُفتح هذه الصفحة تلقائياً بعدها، ولا يضيع شيء.');
+      req.onsuccess = () => {
+        const db = req.result;
+        /* تبويب آخر يحتاج ترقية القاعدة: يُحفظ المعلّق ويُغلق الاتصال هنا، ويُطلب إعادة التحميل */
+        db.onversionchange = () => { try { this.emergencySave(); } catch (e) {} db.close(); this.idbOk = false; this.blockNotice('حُدّث البرنامج في تبويب آخر. أعيدي تحميل هذه الصفحة للمتابعة (ما لم يُحفظ بعد محفوظ في نسخة طوارئ تُدمج عند الفتح).'); };
+        const n = document.getElementById('lm-block'); if (n) n.remove();
+        res(db);
+      };
+      req.onerror = () => res(null);
     });
+  },
+  blockNotice(msg) {
+    try { let n = document.getElementById('lm-block'); if (!n) { n = document.createElement('div'); n.id = 'lm-block'; n.setAttribute('style', 'position:fixed;inset:0;z-index:9999;background:#fff;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font-size:18px;line-height:1.8'); document.body.append(n); } n.textContent = msg; } catch (e) {}
   },
   async load() {
     try { this.settings = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'); } catch (e) { this.settings = {}; }
@@ -325,18 +341,32 @@ const Store = {
     if (!this.settings.deviceId) this.settings.deviceId = 'd' + Math.random().toString(36).slice(2, 10);
     this.saveSettings();
     let lsRaw = []; try { lsRaw = JSON.parse(localStorage.getItem(LS_EVENTS) || '[]'); } catch (e) { lsRaw = []; }
+    let lsCf = []; try { lsCf = JSON.parse(localStorage.getItem(LS_CONFLICTS) || '[]'); } catch (e) { lsCf = []; }
+    /* 0.12–0.13.1 كانت تحفظ التعارضات داخل الإعدادات: تُنقل منها */
+    const legacyCf = Array.isArray(this.settings.conflicts) ? this.settings.conflicts.map(x => Object.assign({ key: this.cfKey(x.id, x.source) }, x)) : [];
     this.db = await this.openDb();
     if (this.db) {
-      const fromDb = await new Promise((res) => { try { const tx = this.db.transaction('events', 'readonly'); const r = tx.objectStore('events').getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res(null); } catch (e) { res(null); } });
+      const fromDb = await new Promise((res) => { try { const tx = this.db.transaction(['events', 'conflicts'], 'readonly'); const r = tx.objectStore('events').getAll(), q = tx.objectStore('conflicts').getAll(); tx.oncomplete = () => res({ ev: r.result || [], cf: q.result || [] }); tx.onerror = tx.onabort = () => res(null); } catch (e) { res(null); } });
       if (fromDb) {
         this.idbOk = true;
-        const have = new Set(fromDb.map(e => e.id));
+        /* نسخ الطوارئ تُضيف ما ليس في القاعدة فقط؛ تعديلُ موجودٍ (استبدال سجل أو حسم تعارض) لم يثبت = لم يحدث،
+           ولأن الاستبدال والحسم يُكتبان في معاملة واحدة فلا يُستعاد أحدهما دون الآخر (LM0131-R3-02) */
+        const have = new Set(fromDb.ev.map(e => e.id));
         const migrate = lsRaw.filter(e => e && e.id && !have.has(e.id));
-        this.raw = fromDb.concat(migrate).sort((a, b) => a.ts - b.ts);
-        if (migrate.length) { const ok = await this.putMany(migrate); if (ok) { try { localStorage.removeItem(LS_EVENTS); } catch (e) {} } }
-        else if (lsRaw.length && !migrate.length) { try { localStorage.removeItem(LS_EVENTS); } catch (e) {} }
-      } else { this.raw = lsRaw; }
-    } else { this.raw = lsRaw; }
+        this.raw = fromDb.ev.concat(migrate).sort((a, b) => a.ts - b.ts);
+        const haveCf = new Set(fromDb.cf.map(x => x.key));
+        const cfAdd = lsCf.concat(legacyCf).filter(x => x && x.key && !haveCf.has(x.key) && (haveCf.add(x.key), true));
+        this.conflicts = fromDb.cf.concat(cfAdd).sort((a, b) => a.at - b.at);
+        if (migrate.length || cfAdd.length) {
+          const ok = await this.putMany(migrate, cfAdd);
+          if (ok) { try { localStorage.removeItem(LS_EVENTS); localStorage.removeItem(LS_CONFLICTS); } catch (e) {} if (legacyCf.length) { delete this.settings.conflicts; this.saveSettings(); } }
+        } else {
+          try { if (lsRaw.length) localStorage.removeItem(LS_EVENTS); if (lsCf.length) localStorage.removeItem(LS_CONFLICTS); } catch (e) {}
+          if (legacyCf.length) { delete this.settings.conflicts; this.saveSettings(); }
+        }
+      } else { this.raw = lsRaw; this.conflicts = lsCf.concat(legacyCf); }
+    } else { this.raw = lsRaw; this.conflicts = lsCf.concat(legacyCf); }
+    if (!this.idbOk && legacyCf.length) { try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); delete this.settings.conflicts; this.saveSettings(); } catch (e) {} }
     this.migrateV2();
     this.refresh();
   },
@@ -371,25 +401,72 @@ const Store = {
     const o = Object.assign({}, e); for (const k of this.LOCAL_FIELDS) delete o[k];
     return JSON.stringify(norm(o));
   },
-  /* تعارض: معرّف واحد بمحتوى مختلف (LM0121-R2-04). تُحفظ النسختان للمراجعة، ولا يُختار شيء صامتاً */
+  /* تعارض: معرّف واحد بمحتوى مختلف (LM0121-R2-04). تُحفظ النسختان للمراجعة، ولا يُختار شيء صامتاً.
+     الحفظ كحفظ السجلات: «جارٍ الحفظ» حتى يثبت، وفشله معلن ويُعاد، ولا يتقدم مؤشر سحب قبله (LM0131-R3-04) */
+  cfKey(id, source) { return `${id}|${source}|${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`; },
   noteConflict(local, other, source) {
-    const list = this.settings.conflicts || (this.settings.conflicts = []);
-    const ofp = this.fp(other);
-    if (!list.some(x => x.id === local.id && x.source === source && !x.resolved && this.fp(x.other) === ofp)) list.push({ id: local.id, source, at: Date.now(), local: this.clean(local), other: this.clean(other) });
-    try { this.saveSettings(); } catch (e) {}
+    const ofp = this.fp(other), lfp = this.fp(local);
+    /* لا يُكرَّر: تعارض مفتوح للزوج نفسه، أو قرار «إبقاء نسخة الجهاز» للنسختين نفسيهما (السحب الكامل التالي يعيد الصف نفسه) */
+    if (this.conflicts.some(x => x.id === local.id && x.source === source && this.fp(x.other) === ofp && (!x.resolved || (x.resolved.choice === 'local' && this.fp(x.local) === lfp)))) return;
+    const rec = { key: this.cfKey(local.id, source), id: local.id, source, at: Date.now(), local: this.clean(local), other: this.clean(other) };
+    this.conflicts.push(rec);
+    if (!this.saveConflicts([rec])) throw new Error(this.storageError || 'تعذّر حفظ التعارض');
   },
-  openConflicts(source) { return (this.settings.conflicts || []).filter(x => !x.resolved && (!source || x.source === source)); },
+  saveConflicts(list) {
+    if (this.idbOk) {
+      for (const x of list) this.cdirty.add(x.key);
+      clearTimeout(this.flushTimer); this.flushTimer = setTimeout(() => this.flush(), 20);
+      try { UI.renderStatus(); } catch (x) {}
+      return true;
+    }
+    try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); return true; } catch (e) { this.storageError = 'تعذّر حفظ التعارض: امتلأت ذاكرة الجهاز. صدّري البيانات وأبلغي ولي الأمر.'; return false; }
+  },
+  openConflicts(source) { return this.conflicts.filter(x => !x.resolved && (!source || x.source === source)); },
+  /* اختلاف أبقته المعلمة عمداً مع خادم: حُسم التعارض بـ«إبقاء نسخة الجهاز» والسجل ما زال مختلفاً عنه (LM0131-R3-03) */
+  keptDiffs(source) {
+    const open = new Set(this.openConflicts().map(x => x.id + '|' + x.source));
+    const out = new Map();
+    for (const x of this.conflicts) {
+      if (!x.resolved || x.resolved.choice !== 'local' || !x.source.startsWith('server:') || (source && x.source !== source) || open.has(x.id + '|' + x.source)) continue;
+      const e = this.raw.find(r => r.id === x.id); if (!e || !hasIn(e.cf, x.source.slice(7))) continue;
+      out.set(x.id + '|' + x.source, x);
+    }
+    return [...out.values()];
+  },
+  /* حسم تعارض: الاستبدال (إن اختيرت النسخة الأخرى) والقرار يُكتبان في معاملة واحدة، ولا يُعلن الحسم قبل ثبوتهما.
+     إن فشل الحفظ يعود كل شيء كما كان ويبقى التعارض مفتوحاً (LM0131-R3-02) */
+  async resolveConflict(x, choice, by) {
+    if (x.resolved && x.resolved.choice === choice) return true;
+    const gen = this.gen;
+    const prevRes = x.resolved || null;
+    const i = this.raw.findIndex(e => e.id === x.id); const prev = i >= 0 ? this.raw[i] : null;
+    let repl = null;
+    if (choice === 'other' && prev) {
+      const sid = x.source.startsWith('server:') ? x.source.slice(7) : null;
+      repl = Object.assign(this.clean(x.other), { la: Date.now() });
+      if (sid) repl.sv = [sid];
+      this.raw[i] = repl; this.saveEvents([repl]);
+    }
+    x.resolved = Object.assign({ at: Date.now(), by, choice }, prevRes ? { was: prevRes.choice } : {});
+    this.saveConflicts([x]); this.refresh();
+    const ok = await this.durable();
+    if (ok || gen !== this.gen) return ok;
+    if (repl) { const j = this.raw.findIndex(e => e.id === x.id); if (j >= 0 && this.raw[j] === repl) this.raw[j] = prev; }
+    if (prevRes) x.resolved = prevRes; else delete x.resolved;
+    this.refresh();
+    return false;
+  },
   clean(e) { const o = Object.assign({}, e); for (const k of this.LOCAL_FIELDS) delete o[k]; return o; },
   markOn(e, id) { if (!hasIn(e.sv, id)) e.sv = (e.sv || []).concat(id); if (hasIn(e.rj, id)) e.rj = e.rj.filter(x => x !== id); },
   /* كتابة سجلات بعينها إلى IDB */
-  putMany(list) {
+  putMany(list, clist) {
     if (!this.idbOk || !this.db) return Promise.resolve(false);
-    return new Promise((res) => { try { const tx = this.db.transaction('events', 'readwrite'); const st = tx.objectStore('events'); for (const e of list) st.put(e); tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false); } catch (e) { res(false); } });
+    return new Promise((res) => { try { const tx = this.db.transaction(['events', 'conflicts'], 'readwrite'); const st = tx.objectStore('events'), cs = tx.objectStore('conflicts'); for (const e of list) st.put(e); for (const x of (clist || [])) cs.put(x); tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false); } catch (e) { res(false); } });
   },
-  clearDb() { if (!this.idbOk || !this.db) return Promise.resolve(false); return new Promise((res) => { try { const tx = this.db.transaction('events', 'readwrite'); tx.objectStore('events').clear(); tx.oncomplete = () => res(true); tx.onerror = () => res(false); } catch (e) { res(false); } }); },
+  clearDb() { if (!this.idbOk || !this.db) return Promise.resolve(false); return new Promise((res) => { try { const tx = this.db.transaction(['events', 'conflicts'], 'readwrite'); tx.objectStore('events').clear(); tx.objectStore('conflicts').clear(); tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false); } catch (e) { res(false); } }); },
   /* الحفظ: مع IDB تُكتب السجلات المتغيرة فقط؛ بدونه يُكتب الكل في localStorage (متزامن).
      مع IDB: add يعيد فوراً والسجل «جارٍ حفظه» (dirty) حتى تكتمل المعاملة؛ نقاط الالتزام (إنهاء جلسة، سحب) تنتظر durable(). */
-  dirty: new Set(), flushing: null, retryTimer: null,
+  dirty: new Set(), cdirty: new Set(), cinflight: null, flushing: null, retryTimer: null,
   saveEvents(changed) {
     if (this.idbOk) {
       for (const e of (changed || this.raw)) this.dirty.add(e.id);
@@ -399,19 +476,20 @@ const Store = {
     }
     try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); this.storageError = null; return true; } catch (e) { this.storageError = 'تعذّر الحفظ: امتلأت ذاكرة الجهاز. صدّري البيانات وأبلغي ولي الأمر.'; return false; } },
   /* هل كل ما في الذاكرة محفوظ دائماً الآن؟ */
-  saved() { return this.idbOk ? this.dirty.size === 0 && !this.inflight && !this.storageError : !this.storageError; },
+  saved() { return this.idbOk ? this.dirty.size === 0 && this.cdirty.size === 0 && !this.inflight && !this.cinflight && !this.storageError : !this.storageError; },
   /* ما لم يثبت على القرص بعد: المعلّق + الدفعة الجارية (LM0121-R2-03: الجارية كانت تُحسب محفوظة) */
-  pendingCount() { return this.dirty.size + (this.inflight ? this.inflight.size : 0); },
+  pendingCount() { return this.dirty.size + this.cdirty.size + (this.inflight ? this.inflight.size : 0) + (this.cinflight ? this.cinflight.size : 0); },
   /* عند مغادرة الصفحة وفي الذاكرة ما لم يثبت: نسخة طوارئ متزامنة في localStorage تُدمج عند الفتح التالي.
      تُدمج مع أي نسخة طوارئ موجودة ولا تستبدلها */
   emergencySave() {
     if (!this.idbOk || this.saved()) return false;
     const ids = new Set([...this.dirty, ...(this.inflight || [])]);
-    const pend = this.raw.filter(e => ids.has(e.id)); if (!pend.length) return false;
+    const cks = new Set([...this.cdirty, ...(this.cinflight || [])]);
+    const pend = this.raw.filter(e => ids.has(e.id)); const cpend = this.conflicts.filter(x => cks.has(x.key));
+    if (!pend.length && !cpend.length) return false;
     try {
-      let prev = []; try { prev = JSON.parse(localStorage.getItem(LS_EVENTS) || '[]'); } catch (e) { prev = []; }
-      const have = new Set(prev.map(e => e && e.id));
-      localStorage.setItem(LS_EVENTS, JSON.stringify(prev.concat(pend.filter(e => !have.has(e.id)))));
+      const merge = (key, list, k) => { if (!list.length) return; let prev = []; try { prev = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { prev = []; } const have = new Set(prev.map(x => x && x[k])); localStorage.setItem(key, JSON.stringify(prev.concat(list.filter(x => !have.has(x[k]))))); };
+      merge(LS_EVENTS, pend, 'id'); merge(LS_CONFLICTS, cpend, 'key');
       return true;
     } catch (e) { return false; }
   },
@@ -422,22 +500,24 @@ const Store = {
   async flushOnce() {
     const gen = this.gen;
     const ids = this.dirty; this.dirty = new Set(); this.inflight = ids;
-    const list = this.raw.filter(e => ids.has(e.id));
+    const cks = this.cdirty; this.cdirty = new Set(); this.cinflight = cks;
+    const list = this.raw.filter(e => ids.has(e.id)); const clist = this.conflicts.filter(x => cks.has(x.key));
     let ok = false;
-    try { ok = await this.putMany(list); } finally { if (this.inflight === ids) this.inflight = null; }
+    try { ok = await this.putMany(list, clist); } finally { if (this.inflight === ids) this.inflight = null; if (this.cinflight === cks) this.cinflight = null; }
     if (!ok) {
       if (gen === this.gen) {
         for (const id of ids) this.dirty.add(id);
+        for (const k of cks) this.cdirty.add(k);
         /* طوارئ: نسخة كاملة في localStorage إن اتسعت؛ تُدمج عند الفتح التالي وتُمحى فور نجاح الحفظ */
-        let lsOk = false; try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); lsOk = true; } catch (e) {}
+        let lsOk = false; try { localStorage.setItem(LS_EVENTS, JSON.stringify(this.raw)); if (this.conflicts.length) localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); lsOk = true; } catch (e) {}
         this.storageError = lsOk ? 'تعذّر الحفظ في قاعدة الجهاز (حُفظت نسخة احتياطية مؤقتة)؛ صدّري البيانات' : 'تعذّر الحفظ في قاعدة الجهاز وامتلأت الذاكرة؛ صدّري البيانات فوراً ولا تغلقي الصفحة';
         try { UI.toast(this.storageError); } catch (x) {}
         clearTimeout(this.retryTimer); this.retryTimer = setTimeout(() => this.flush(), 5000);
       }
-    } else if (!this.dirty.size && gen === this.gen) {
+    } else if (!this.dirty.size && !this.cdirty.size && gen === this.gen) {
       this.storageError = null; /* كل شيء ثابت في IDB الآن */
       /* كل السجلات في IDB الآن: نسخة الطوارئ لم تعد لازمة، ومحوها يمنع إحياء ما حُذف لاحقاً */
-      try { localStorage.removeItem(LS_EVENTS); } catch (e) {}
+      try { localStorage.removeItem(LS_EVENTS); localStorage.removeItem(LS_CONFLICTS); } catch (e) {}
     }
     try { UI.renderStatus(); } catch (x) {}
     return ok;
@@ -446,7 +526,7 @@ const Store = {
   async flush() {
     for (;;) {
       if (this.flushing) { const ok = await this.flushing; if (!ok) return false; continue; }
-      if (!this.dirty.size) return !this.storageError;
+      if (!this.dirty.size && !this.cdirty.size) return !this.storageError;
       const pr = this.flushOnce(); this.flushing = pr;
       const ok = await pr; if (this.flushing === pr) this.flushing = null;
       if (!ok) return false;
@@ -473,18 +553,20 @@ const Store = {
   },
   ofType(t) { return this.byTypeMap.get(t) || []; },
   ofKey(k) { return this.byKeyMap.get(k) || []; },
-  /* مسح كل نسخ السجلات على الجهاز (IDB ونسخة الطوارئ/القديمة في localStorage). المسح في الذاكرة فوري،
-     ومعاملة المسح تُنشأ فوراً فتسبق أي كتابة لاحقة؛ القيمة: وعد بنجاح المسح الدائم */
+  /* مسح كل نسخ بيانات الأحداث على الجهاز: السجلات والتعارضات (مفتوحة ومحسومة بنسختيها) في IDB، ونسخ الطوارئ،
+     وما في الإعدادات منها (تعارضات الإصدارات السابقة، الجلسة الجارية بمسوداتها، المرفوضات بنسخها، التقارير).
+     المسح في الذاكرة فوري، ومعاملة المسح تُنشأ فوراً فتسبق أي كتابة لاحقة؛ القيمة: وعد بنجاح المسح الدائم كله (LM0131-R3-01) */
   reset() {
     clearTimeout(this.flushTimer); clearTimeout(this.retryTimer);
     this.gen++;
-    this.raw = []; this.dirty = new Set(); this.inflight = null; this.refresh();
+    this.raw = []; this.dirty = new Set(); this.inflight = null; this.conflicts = []; this.cdirty = new Set(); this.cinflight = null; this.lastConflicts = 0; this.refresh();
     /* بلا سجلات محلية لا يصح مؤشر سحب ولا مرفوضات لأي خادم: يُسحب كل شيء من جديد وتُجرى مطابقة كاملة */
     for (const st of Object.values(this.settings.servers || {})) Object.assign(st, { cursor: null, rejected: [], report: null, needReconcile: true });
-    try { this.saveSettings(); } catch (e) {}
-    let lsOk = true; try { localStorage.removeItem(LS_EVENTS); } catch (e) { lsOk = false; }
+    delete this.settings.conflicts; this.settings.active = null;
+    let setOk = true; try { this.saveSettings(); } catch (e) { setOk = false; }
+    let lsOk = true; try { localStorage.removeItem(LS_EVENTS); localStorage.removeItem(LS_CONFLICTS); } catch (e) { lsOk = false; }
     const cleared = this.idbOk ? this.clearDb() : Promise.resolve(true);
-    return cleared.then(ok => { ok = ok && lsOk; if (ok && this.storageError) this.storageError = null; try { UI.renderStatus(); } catch (x) {} return ok; });
+    return cleared.then(ok => { ok = ok && lsOk && setOk; if (ok && this.storageError) this.storageError = null; try { UI.renderStatus(); } catch (x) {} return ok; });
   },
   saveSettings() { localStorage.setItem(LS_SETTINGS, JSON.stringify(this.settings)); },
   add(ev) {
@@ -570,28 +652,38 @@ const Store = {
     const bad = items.filter(e => !this.validEvent(e, items) || !this.roleAllows(e.by, e));
     if (bad.length) throw new Error(`رُفض الملف كاملاً: ${bad.length} سجل غير صالح أو غير مسموح لدوره (مثال: ${JSON.stringify(bad[0]).slice(0, 80)})`);
     const have = new Map(this.raw.map(e => [e.id, e]));
-    const before = this.raw.slice();
-    let n = 0; const added = [], touched = []; this.lastConflicts = 0;
+    const before = this.raw.slice(); const cBefore = this.conflicts.length;
+    let n = 0; const added = [], touched = [], cfMarked = []; this.lastConflicts = 0;
+    /* فشل الحفظ: لا يبقى شيء من هذا الدمج في الذاكرة (لا سجل ولا تعارض ولا علامة تعارض) فلا نجاح وهمي */
+    const undo = () => {
+      this.raw = before;
+      for (const x of this.conflicts.splice(cBefore)) this.cdirty.delete(x.key);
+      for (const ex of cfMarked) { ex.cf = (ex.cf || []).filter(x => x !== opts.server); if (!ex.cf.length) delete ex.cf; }
+      if (!this.idbOk) { try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); } catch (x) {} }
+      this.lastConflicts = 0; this.refresh();
+    };
     const source = opts.server ? 'server:' + opts.server : (opts.source || 'file');
     const now = Date.now();
-    for (const e of items) {
-      const ex = have.get(e.id);
-      if (ex) {
-        /* المعرّف نفسه لا يثبت أن السجل نفسه: المحتوى يُقارن قبل أي علامة «مطابق» */
-        if (this.fp(ex) !== this.fp(e)) {
-          this.noteConflict(ex, e, source); this.lastConflicts++;
-          if (opts.server && !hasIn(ex.cf, opts.server)) { ex.cf = (ex.cf || []).concat(opts.server); touched.push(ex); }
+    try {
+      for (const e of items) {
+        const ex = have.get(e.id);
+        if (ex) {
+          /* المعرّف نفسه لا يثبت أن السجل نفسه: المحتوى يُقارن قبل أي علامة «مطابق» */
+          if (this.fp(ex) !== this.fp(e)) {
+            this.noteConflict(ex, e, source); this.lastConflicts++;
+            if (opts.server && !hasIn(ex.cf, opts.server)) { ex.cf = (ex.cf || []).concat(opts.server); touched.push(ex); cfMarked.push(ex); }
+            continue;
+          }
+          if (opts.server && !hasIn(ex.sv, opts.server)) { this.markOn(ex, opts.server); touched.push(ex); }
           continue;
         }
-        if (opts.server && !hasIn(ex.sv, opts.server)) { this.markOn(ex, opts.server); touched.push(ex); }
-        continue;
+        if (opts.server) e.sv = [opts.server];
+        e.la = now;
+        this.raw.push(e); have.set(e.id, e); n++; added.push(e);
       }
-      if (opts.server) e.sv = [opts.server];
-      e.la = now;
-      this.raw.push(e); have.set(e.id, e); n++; added.push(e);
-    }
+    } catch (err) { undo(); throw err; }
     this.raw.sort((a, b) => a.ts - b.ts);
-    if (!this.saveEvents(added.concat(touched))) { this.raw = before; throw new Error(this.storageError); }
+    if (!this.saveEvents(added.concat(touched))) { undo(); throw new Error(this.storageError); }
     this.refresh();
     return n;
   },
@@ -966,12 +1058,14 @@ const Sync = {
   },
   /* عدد سجلات هذا الجهاز بحسب حالتها على خادم: سجلات الدور الحالي المنتظرة، وسجلات أدوار أخرى ليست عليه */
   counts(id) {
-    id = id || this.sid(); const me = this.role(); const r = { ownPending: 0, waitingTarget: 0, others: {}, othersTotal: 0, rejected: 0, conflicts: 0 };
+    id = id || this.sid(); const me = this.role(); const r = { ownPending: 0, waitingTarget: 0, others: {}, othersTotal: 0, rejected: 0, conflicts: 0, kept: 0 };
     if (!id) return r;
     let byId = null;
+    /* علامة التعارض مع تعارض مفتوح = ينتظر الحسم؛ وبلا مفتوح = اختلاف أُبقي عمداً (نسخة الجهاز) — كلاهما ليس «مطابقاً» */
+    const open = new Set(Store.openConflicts('server:' + id).map(x => x.id));
     for (const e of Store.raw) {
       if (hasIn(e.sv, id)) continue;
-      if (hasIn(e.cf, id)) { r.conflicts++; continue; }
+      if (hasIn(e.cf, id)) { if (open.has(e.id)) r.conflicts++; else r.kept++; continue; }
       if (hasIn(e.rj, id)) { r.rejected++; continue; }
       if (me && e.by === me) {
         r.ownPending++;
@@ -1012,7 +1106,8 @@ const Sync = {
       /* اختصار رخيص كل جولة (لا يكشف كل نقص؛ المطابقة الدورية أعلاه تكشف الباقي): خادم يحمل أقل مما ثبت رفعه إليه */
       if (!full && !this.incomplete && await this.countMismatch(c)) { await this.reconcile(c); await this.push(c); n += await this.pull(c); }
       /* تقرير «لم تكتمل» يُعاد فحصه تلقائياً متى خلا الجهاز مما ينتظر، فيتحول إلى «اكتملت» دون تدخل */
-      if (!this.incomplete && st.report && !st.report.complete && Date.now() - (st.reconciledAt || 0) > this.RECHECK_MS) {
+      const rp = st.report; const otherThanKept = rp && (rp.ownPending || rp.othersTotal || rp.rejected || rp.conflicts || rp.serverOnly || rp.incomplete);
+      if (!this.incomplete && rp && !rp.complete && otherThanKept && Date.now() - (st.reconciledAt || 0) > this.RECHECK_MS) {
         const k = this.counts(c.id);
         if (!k.ownPending && !k.othersTotal && !st.rejected.length && !Store.openConflicts('server:' + c.id).length) { await this.reconcile(c); n += await this.pull(c); }
       }
@@ -1189,8 +1284,9 @@ const Sync = {
     const local = new Set(Store.raw.map(e => e.id)); const rej = new Set(st.rejected.map(x => x.id));
     let serverOnly = 0; for (const id of this.lastIds.ids) if (!local.has(id) && !rej.has(id)) serverOnly++;
     const conflicts = Store.openConflicts('server:' + c.id).length;
-    const rep = { at: Date.now(), ownPending: k.ownPending, waitingTarget: k.waitingTarget, others: k.others, othersTotal: k.othersTotal, rejected: st.rejected.length, conflicts, serverOnly, incomplete: this.incomplete };
-    rep.complete = !rep.ownPending && !rep.othersTotal && !rep.rejected && !rep.conflicts && !rep.serverOnly && !rep.incomplete;
+    const rep = { at: Date.now(), ownPending: k.ownPending, waitingTarget: k.waitingTarget, others: k.others, othersTotal: k.othersTotal, rejected: st.rejected.length, conflicts, kept: k.kept, serverOnly, incomplete: this.incomplete };
+    /* اختلاف أُبقي عمداً ليس تطابقاً: يُذكر استثناءً صريحاً ولا تُعلن المطابقة كاملة (LM0131-R3-03) */
+    rep.complete = !rep.ownPending && !rep.othersTotal && !rep.rejected && !rep.conflicts && !rep.kept && !rep.serverOnly && !rep.incomplete;
     st.report = rep; this.lastIds = null;
   },
   started: false,
@@ -1345,6 +1441,7 @@ const UI = {
     const k = Sync.counts();
     if (k.ownPending) return [el('span', { class: 'dot ok' }), `حُفظ على الجهاز · ${k.ownPending} بانتظار الرفع` + m];
     if (k.othersTotal) return [el('span', { class: 'dot off' }), `تمت مزامنة سجلاتك · ${k.othersTotal} لأدوار أخرى ليست على الخادم (الإعدادات ← الخادم)` + m];
+    if (k.kept) return [el('span', { class: 'dot off' }), `تمت المزامنة · ${k.kept} سجل يختلف عن الخادم بقرار «إبقاء نسخة الجهاز» (الإعدادات ← التعارضات)` + m];
     return [el('span', { class: 'dot ok' }), 'تمت المزامنة' + m];
   },
   /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ وإلا رسالة الفشل */
@@ -1363,7 +1460,13 @@ const UI = {
   },
   toast(msg) { const t = el('div', { class: 'toast' }, msg); document.body.append(t); setTimeout(() => t.remove(), 2200); },
   /* بديل prompt() الأصلي: نافذة داخلية؛ cb(text) أو null عند الإلغاء */
-  prompt(title, placeholder, cb, initial) { const t = el('input', { placeholder: placeholder || '', value: initial || '' }); const bg = this.modal(title, el('div', null, t), [el('button', { class: 'primary', onclick: () => { const v = t.value.trim(); if (!v) { this.toast('اكتبي ' + (placeholder || 'القيمة')); return; } if (cb(v) === false) return; bg.remove(); } }, 'حفظ'), el('button', { class: 'ghost', onclick: () => { bg.remove(); cb(null); } }, 'إلغاء')]); setTimeout(() => t.focus(), 50); t.addEventListener('keydown', e => { if (e.key === 'Enter') { const v = t.value.trim(); if (v) { bg.remove(); cb(v); } } }); return bg; },
+  prompt(title, placeholder, cb, initial) {
+    const t = el('input', { placeholder: placeholder || '', value: initial || '' });
+    /* إرسال واحد للزر وEnter: النافذة لا تُغلق إلا إذا قُبلت القيمة (cb لا يعيد false)؛ عند الرفض تبقى بقيمتها وتركيزها */
+    const submit = () => { const v = t.value.trim(); if (!v) { this.toast('اكتبي ' + (placeholder || 'القيمة')); t.focus(); return; } if (cb(v) === false) { t.focus(); return; } bg.remove(); };
+    const bg = this.modal(title, el('div', null, t), [el('button', { class: 'primary', onclick: submit }, 'حفظ'), el('button', { class: 'ghost', onclick: () => { bg.remove(); cb(null); } }, 'إلغاء')]);
+    setTimeout(() => t.focus(), 50); t.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }); return bg;
+  },
   confirm(msg, cb) { const bg = this.modal('تأكيد', el('p', null, msg), [el('button', { class: 'primary', onclick: () => { bg.remove(); cb(); } }, 'نعم'), el('button', { class: 'ghost', onclick: () => bg.remove() }, 'لا')]); },
 };
 
@@ -1828,7 +1931,7 @@ function cardHtml(card) {
 function FluencyBox(c, a, st) {
   const page = fluencyPage(c);
   const sec = el('input', { type: 'number', placeholder: 'ثوانٍ', style: 'width:110px', value: a['sec_' + c] || '', oninput: e => { a['sec_' + c] = e.target.value; saveActive(); } });
-  return el('div', { class: 'small row' }, el('span', null, pageLabel(page)), sec, el('button', { onclick: () => { const v = Number(sec.value); if (!(Number.isInteger(v) && v >= 1 && v <= 7200)) { UI.toast('اكتبي الزمن بالثواني: عدد صحيح بين 1 و7200'); return; } Store.add({ type: 'fluency_time', child: c, page, seconds: v }); if (v < 180) { if (page < 604) { Store.add({ type: 'fluency_page', child: c, page: page + 1, why: 'نزلت تحت 3 دقائق' }); UI.toast('نزلت تحت 3 دقائق؛ الصفحة التالية غداً'); } else UI.toast('نزلت تحت 3 دقائق في آخر صفحة من المصحف؛ تختار آية صفحة الطلاقة التالية («تغيير الصفحة»)'); } if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.rerender(true); } }, 'تسجيل الزمن'), el('button', { class: 'ghost', onclick: () => UI.prompt('رقم صفحة الطلاقة', 'رقم الصفحة', v => { const n = Number(v); if (!(Number.isInteger(n) && n >= 1 && n <= 604)) { UI.toast('رقم الصفحة بين 1 و604'); return false; } { Store.add({ type: 'fluency_page', child: c, page: n, why: 'تغيير يدوي' }); UI.rerender(true); } }, String(page)) }, 'تغيير الصفحة'));
+  return el('div', { class: 'small row' }, el('span', null, pageLabel(page)), sec, el('button', { onclick: () => { const v = Number(sec.value); if (!(Number.isInteger(v) && v >= 1 && v <= 7200)) { UI.toast('اكتبي الزمن بالثواني: عدد صحيح بين 1 و7200'); return; } Store.add({ type: 'fluency_time', child: c, page, seconds: v }); if (v < 180) { if (page < 604) { Store.add({ type: 'fluency_page', child: c, page: page + 1, why: 'نزلت تحت 3 دقائق' }); UI.toast('نزلت تحت 3 دقائق؛ الصفحة التالية غداً'); } else UI.toast('نزلت تحت 3 دقائق في آخر صفحة من المصحف؛ تختار آية صفحة الطلاقة التالية («تغيير الصفحة»)'); } if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.rerender(true); } }, 'تسجيل الزمن'), el('button', { class: 'ghost', onclick: () => UI.prompt('رقم صفحة الطلاقة', 'رقم الصفحة', v => { if (v == null) return; const n = Number(v); if (!(Number.isInteger(n) && n >= 1 && n <= 604)) { UI.toast('رقم الصفحة بين 1 و604'); return false; } { Store.add({ type: 'fluency_page', child: c, page: n, why: 'تغيير يدوي' }); UI.rerender(true); } }, String(page)) }, 'تغيير الصفحة'));
 }
 
 function MemorizeBox(c, a, st) {
@@ -2542,6 +2645,7 @@ function syncReportView(st) {
   for (const [by, n] of Object.entries(r.others || {})) items.push(`${n} من سجلات ${roleName(by)} ليست على الخادم — يرفعها جهاز ${roleName(by)} عند دخوله، أو «استعادة الخادم» من جهاز ولي الأمر`);
   if (r.rejected) items.push(`${r.rejected} سجلاً رفضها الخادم أو رفضها الجهاز — انظري المرفوضات`);
   if (r.conflicts) items.push(`${r.conflicts} تعارضاً: معرّف واحد بمحتوى مختلف بين الجهاز والخادم — انظري «التعارضات»`);
+  if (r.kept) items.push(`${r.kept} سجلاً أُبقيت فيه نسخة الجهاز عمداً فيختلف عن الخادم (استثناء مقصود، لا تطابق) — انظري «التعارضات»`);
   if (r.serverOnly) items.push(`${r.serverOnly} سجلاً على الخادم لم تصل هذا الجهاز بعد — تُسحب في الجولة التالية`);
   if (r.incomplete) items.push('السحب لم يكتمل (دفعة كبيرة) — يُستكمل تلقائياً');
   return el('div', { class: 'alert' }, el('div', null, el('b', null, `المطابقة لم تكتمل (${when}):`)), el('ul', { class: 'small', style: 'margin:4px 0' }, items.map(t => el('li', null, t))));
@@ -2626,23 +2730,27 @@ function ServerSwitchDialog(u, k) {
 /* التعارضات: النسختان محفوظتان؛ القرار صريح وموثَّق (آية أو ولي الأمر)، ولا تعديل صامت */
 function evSummary(e) { return `${e.type} · ${roleName(e.by)}${e.child && CHILDREN[e.child] ? ' · ' + CHILDREN[e.child].name : ''} · ${e.day || ''}${e.text ? ' · ' + String(e.text).slice(0, 40) : ''}${e.page ? ' · ص' + e.page : ''}${e.result ? ' · ' + e.result : ''}${e.kind ? ' · ' + e.kind : ''}`; }
 function ConflictsCard() {
-  const list = Store.openConflicts(); if (!list.length) return null;
+  const list = Store.openConflicts(); const kept = Store.keptDiffs();
+  if (!list.length && !kept.length) return null;
   const can = App.role && (App.role.id === 'aya' || App.role.id === 'parent');
-  const resolve = (x, choice) => UI.confirm(choice === 'other' ? 'اعتماد النسخة الأخرى بدل نسخة هذا الجهاز لهذا المعرّف؟ يُوثَّق القرار.' : 'إبقاء نسخة هذا الجهاز؟ تبقى الأخرى مختلفة ويُوثَّق القرار.', () => {
-    if (choice === 'other') {
-      const i = Store.raw.findIndex(e => e.id === x.id);
-      if (i >= 0) { const sid = x.source.startsWith('server:') ? x.source.slice(7) : null; const repl = Object.assign(Store.clean(x.other), { la: Date.now() }); if (sid) repl.sv = [sid]; Store.raw[i] = repl; Store.saveEvents([repl]); Store.refresh(); }
-    }
-    x.resolved = { at: Date.now(), by: App.role.id, choice };
-    Store.saveSettings();
+  const srcName = x => x.source === 'file' ? 'الملف' : 'الخادم';
+  /* الحسم لا يُعلن قبل ثبوت الاستبدال والقرار معاً؛ وإن فشل الحفظ يبقى التعارض كما كان */
+  const resolve = (x, choice) => UI.confirm(choice === 'other' ? `اعتماد نسخة ${srcName(x)} بدل نسخة هذا الجهاز لهذا المعرّف؟ يُوثَّق القرار.` : `إبقاء نسخة هذا الجهاز؟ ${x.source === 'file' ? 'لا يتغير شيء ويُوثَّق القرار.' : 'تبقى مختلفة عن الخادم، ويظهر ذلك استثناءً في تقرير المطابقة حتى تعتمدي نسخة الخادم.'}`, async () => {
+    UI.toast('جارٍ حفظ القرار…');
+    const ok = await Store.resolveConflict(x, choice, App.role.id);
+    if (!ok) { UI.toast('لم يُحسم التعارض: تعذّر الحفظ (' + (Store.storageError || 'الكتابة لم تثبت') + '). بقي كما كان؛ أعيدي المحاولة.'); UI.rerender(); return; }
     Store.add({ type: 'note', child: x.local.child || null, text: `حُسم تعارض المعرّف ${x.id} (${x.source}): ${choice === 'other' ? 'اعتُمدت النسخة الأخرى' : 'أُبقيت نسخة الجهاز'}` });
-    UI.rerender();
+    UI.savedToast('حُسم التعارض'); UI.rerender();
   });
-  return el('div', { class: 'card' }, el('h2', null, `التعارضات (${list.length})`),
-    el('p', { class: 'small muted' }, 'معرّف واحد بمحتويين مختلفين. لم يُغيَّر شيء تلقائياً، ولا تُعلن المطابقة مكتملة حتى يُحسم كل تعارض.'),
+  return el('div', { class: 'card' }, el('h2', null, `التعارضات (${list.length})${kept.length ? ` · اختلافات مُبقاة (${kept.length})` : ''}`),
+    list.length ? el('p', { class: 'small muted' }, 'معرّف واحد بمحتويين مختلفين. لم يُغيَّر شيء تلقائياً، ولا تُعلن المطابقة مكتملة حتى يُحسم كل تعارض.') : null,
     list.map(x => el('div', { class: 'alert red' }, el('div', { class: 'small' }, el('b', null, x.id), ` · المصدر: ${x.source === 'file' ? 'ملف' : 'الخادم'}`),
-      el('div', { class: 'small' }, 'هذا الجهاز: ', evSummary(x.local)), el('div', { class: 'small' }, (x.source === 'file' ? 'الملف' : 'الخادم') + ': ', evSummary(x.other)),
-      can ? el('div', { class: 'btns' }, el('button', { class: 'ghost', onclick: () => resolve(x, 'local') }, 'إبقاء نسخة الجهاز'), el('button', { class: 'ghost', onclick: () => resolve(x, 'other') }, x.source === 'file' ? 'اعتماد نسخة الملف' : 'اعتماد نسخة الخادم')) : el('div', { class: 'small muted' }, 'تحسمه آية أو ولي الأمر.'))));
+      el('div', { class: 'small' }, 'هذا الجهاز: ', evSummary(x.local)), el('div', { class: 'small' }, srcName(x) + ': ', evSummary(x.other)),
+      can ? el('div', { class: 'btns' }, el('button', { class: 'ghost', onclick: () => resolve(x, 'local') }, 'إبقاء نسخة الجهاز'), el('button', { class: 'ghost', onclick: () => resolve(x, 'other') }, x.source === 'file' ? 'اعتماد نسخة الملف' : 'اعتماد نسخة الخادم')) : el('div', { class: 'small muted' }, 'تحسمه آية أو ولي الأمر.'))),
+    kept.length ? el('p', { class: 'small muted' }, 'اختلافات أُبقيت فيها نسخة الجهاز عمداً: هذا الجهاز يختلف فيها عن الخادم، فلا تُعلن المطابقة كاملة ما بقيت. تُحسم باعتماد نسخة الخادم متى شئتِ.') : null,
+    kept.map(x => el('div', { class: 'alert' }, el('div', { class: 'small' }, el('b', null, x.id), ` · أُبقيت نسخة الجهاز ${fmtDay(dayKey(new Date(x.resolved.at)))}`),
+      el('div', { class: 'small' }, 'هذا الجهاز: ', evSummary(Store.raw.find(e => e.id === x.id) || x.local)), el('div', { class: 'small' }, 'الخادم: ', evSummary(x.other)),
+      can ? el('div', { class: 'btns' }, el('button', { class: 'ghost', onclick: () => resolve(x, 'other') }, 'اعتماد نسخة الخادم')) : null)));
 }
 
 function RejectedCard() {
@@ -2656,7 +2764,7 @@ function RejectedCard() {
       if (e) { e.rj = (e.rj || []).filter(x => x !== sid); Store.saveEvents([e]); }
       st.rejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Sync.schedule(); UI.toast('سيُعاد رفعه'); UI.rerender(); return;
     }
-    try { Store.importEvents([r.payload], { server: sid }); st.rejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); UI.toast('أُدرج السجل'); }
+    try { Store.importEvents([r.payload], { server: sid }); st.rejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); UI.savedToast('أُدرج السجل'); }
     catch (e) { UI.toast('ما زال مرفوضاً: ' + e.message); }
     UI.rerender();
   };
@@ -2763,7 +2871,7 @@ Views.settings = function () {
     const inv = el('div', { class: 'card' }, el('h2', null, 'الجرد الأولي'), el('p', { class: 'small muted' }, 'يُنفَّذ مرة واحدة بعد تسميع المحفوظ الحالي. يضع الصفحات في البعيد؛ ثم تُعدَّل ألوان صفحات مفردة من خريطة المصحف.'),
       el('div', { class: 'btns' },
         el('button', { onclick: () => UI.confirm('وضع جزءي عمّ وتبارك (562–604) في البعيد لدلال وفرح باللون الأخضر؟', () => { for (const c of ['dalal', 'farah']) for (let p = 562; p <= 604; p++) Store.add({ type: 'layer', child: c, page: p, layer: 'far', color: 'green' }); UI.savedToast('تم'); UI.rerender(); }) }, 'دلال وفرح: عمّ وتبارك'),
-        el('button', { onclick: () => UI.prompt('كريم: من أي صفحة إلى 604 في البعيد؟ (نصف جزء عمّ ≈ من 595)', 'رقم الصفحة', v => { const n = Number(v); if (!(Number.isInteger(n) && n >= 562 && n <= 604)) { UI.toast('رقم صفحة صحيح بين 562 و604'); return false; } for (let p = n; p <= 604; p++) Store.add({ type: 'layer', child: 'karim', page: p, layer: 'far', color: 'green' }); UI.savedToast('تم'); UI.rerender(); }, '595') }, 'كريم: نصف عمّ')));
+        el('button', { onclick: () => UI.prompt('كريم: من أي صفحة إلى 604 في البعيد؟ (نصف جزء عمّ ≈ من 595)', 'رقم الصفحة', v => { if (v == null) return; const n = Number(v); if (!(Number.isInteger(n) && n >= 562 && n <= 604)) { UI.toast('رقم صفحة صحيح بين 562 و604'); return false; } for (let p = n; p <= 604; p++) Store.add({ type: 'layer', child: 'karim', page: p, layer: 'far', color: 'green' }); UI.savedToast('تم'); UI.rerender(); }, '595') }, 'كريم: نصف عمّ')));
     wrap.append(inv);
   }
   if (App.role.id === 'aya' || App.role.id === 'parent') {
