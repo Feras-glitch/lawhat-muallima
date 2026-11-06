@@ -87,7 +87,7 @@ async def main():
            r['n'] == 0 and r['conflicts'] == [['same', 'server:https://family-b', 'decision']] and r['localType'] == 'note' and not r['onB'] and r['cf'] == ['https://family-b']
            and not r['paused'] and r['n2'] == 0 and r['onC'] and 'تعارض' in r['status'], r)
         r = await pg.evaluate("""(() => { const x = Store.openConflicts()[0]; App.view = 'settings'; UI.rerender(); const txt = document.querySelector('main').innerText;
-            return { card: txt.includes('التعارضات (1)'), both: txt.includes('هذا الجهاز: note') && txt.includes('الخادم: decision') }; })()""")
+            return { card: txt.includes('التعارضات (1)'), both: txt.includes('هذا الجهاز الآن: note') && txt.includes('الخادم: decision') }; })()""")
         ok('R2-04 بطاقة «التعارضات» تعرض النسختين للحسم الصريح', r == {'card': True, 'both': True}, r)
         r = await pg.evaluate("""(() => { const p = Backup.parse(JSON.stringify({ format: 'lawhat-muallima-backup', events: [{ id: 'same', type: 'note', child: 'dalal', by: 'aya', ts: 1, day: '2026-11-01', text: 'نص آخر' }], settings: {} }));
             ImportDialog(p); const t = document.querySelector('.modal').innerText; document.querySelector('.modal-bg').remove();

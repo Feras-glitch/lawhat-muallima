@@ -124,9 +124,10 @@ const Store = {
   checkResolutions() {
     const byId = new Map(this.raw.map(e => [e.id, e])); const fixed = [];
     /* يُفحص آخر «اعتماد النسخة الأخرى» لكل سجل فقط: اعتمادٌ لاحق لتعارض آخر على السجل نفسه قد يعيده عمداً إلى نسخة سابقة */
-    const latest = new Map();
-    for (const x of this.conflicts) if (x.resolved && x.resolved.choice === 'other') { const l = latest.get(x.id); if (!l || (x.resolved.at || 0) >= (l.resolved.at || 0)) latest.set(x.id, x); }
-    for (const x of latest.values()) {
+    const maxAt = new Map();
+    for (const x of this.conflicts) if (x.resolved && x.resolved.choice === 'other') maxAt.set(x.id, Math.max(maxAt.get(x.id) || 0, x.resolved.at || 0));
+    /* القرارات المتزامنة (حسمٌ أغلق معه تعارضاً آخر على السجل نفسه) تُفحص كلها */
+    for (const x of this.conflicts.filter(x => x.resolved && x.resolved.choice === 'other' && (x.resolved.at || 0) === maxAt.get(x.id))) {
       const e = byId.get(x.id); if (!e) continue;
       const fe = this.fp(e);
       if (fe === this.fp(x.local) && fe !== this.fp(x.other)) { x.reopened = { at: Date.now(), was: x.resolved, why: 'الحسم لم يثبت مع السجل قبل إغلاق الصفحة' }; delete x.resolved; fixed.push(x); }
@@ -134,27 +135,35 @@ const Store = {
     if (fixed.length) this.saveConflicts(fixed);
     return fixed.length;
   },
-  /* تعارضات من نسخة احتياطية: تُضاف بنسختيها وقرارها إن انطبقت على سجل هنا (محتواه = إحدى النسختين) ولم تكن موجودة.
-     لا تُنقل علامة «على الخادم» ولا اختلاف مع خادم: يُعاد اكتشافهما بالمزامنة (LM0132-R4-03) */
+  /* تعارضات من نسخة احتياطية (LM0132-R4-03، LM0133-R5-01): التاريخ يُحفظ كما هو، والتطبيق على الحالة الحالية منفصل عنه.
+     - المحسوم (اعتماد أو إبقاء) تاريخ: يُضاف ما دام سجله موجوداً هنا، ولو تغيّر محتواه بقرار لاحق (سلسلة A→B→C)؛ ولا يُطبَّق على النص الحالي.
+     - المفتوح لا يُضاف إلا إن كان محتوى السجل هنا إحدى نسختيه؛ وإلا يُعدّ «غير مرتبط» ويُذكر صراحة لا يُتخطى صامتاً.
+     لا تُنقل علامة «على الخادم» ولا اختلاف مع خادم: يُعاد اكتشافهما بالمزامنة. المكرر (المفتاح نفسه) لا يُضاعف */
   importConflicts(list) {
-    if (!Array.isArray(list) || !list.length) return { added: 0, skipped: 0 };
+    const res = { added: 0, history: 0, skipped: 0, unlinked: [] };
+    if (!Array.isArray(list) || !list.length) return res;
     const byId = new Map(this.raw.map(e => [e.id, e])); const have = new Set(this.conflicts.map(x => x.key));
     const ok = o => o && typeof o === 'object' && typeof o.type === 'string' && this.validEvent(o, [o]) && this.roleAllows(o.by, o);
-    const add = []; let skipped = 0;
+    const add = [];
     for (const r of list) {
       const x = r && typeof r === 'object' ? { key: r.key, id: r.id, source: r.source, at: r.at, local: r.local && this.clean(r.local), other: r.other && this.clean(r.other) } : null;
       const valid = x && typeof x.key === 'string' && typeof x.id === 'string' && typeof x.source === 'string' && (x.source === 'file' || x.source.startsWith('server:')) && typeof x.at === 'number'
         && ok(x.local) && ok(x.other) && x.local.id === x.id && x.other.id === x.id && this.fp(x.local) !== this.fp(x.other);
-      if (!valid) { skipped++; continue; }
-      if (r.resolved && typeof r.resolved === 'object' && ['local', 'other'].includes(r.resolved.choice)) x.resolved = { at: Number(r.resolved.at) || x.at, by: String(r.resolved.by || ''), choice: r.resolved.choice };
-      const e = byId.get(x.id); const fe = e && this.fp(e);
-      if (!e || (fe !== this.fp(x.local) && fe !== this.fp(x.other)) || have.has(x.key)) { skipped++; continue; }
+      if (!valid) { res.skipped++; continue; }
+      if (have.has(x.key)) continue; /* موجود: لا تكرار */
+      if (r.resolved && typeof r.resolved === 'object' && ['local', 'other'].includes(r.resolved.choice)) x.resolved = Object.assign({ at: Number(r.resolved.at) || x.at, by: String(r.resolved.by || ''), choice: r.resolved.choice }, r.resolved.auto ? { auto: true } : {});
+      if (r.localAtDetection && ok(this.clean(r.localAtDetection)) && r.localAtDetection.id === x.id) x.localAtDetection = this.clean(r.localAtDetection);
+      const e = byId.get(x.id);
+      if (!e) { res.unlinked.push(x.id); continue; }
+      if (!x.resolved) { const fe = this.fp(e); if (fe !== this.fp(x.local) && fe !== this.fp(x.other)) { res.unlinked.push(x.id); continue; } }
+      else res.history++;
       add.push(x); have.add(x.key);
     }
     this.conflicts.push(...add);
     if (add.length && !this.saveConflicts(add)) { for (const x of add) { this.conflicts.splice(this.conflicts.indexOf(x), 1); this.cdirty.delete(x.key); } throw new Error(this.storageError || 'تعذّر حفظ التعارضات'); }
     this.checkResolutions();
-    return { added: add.length, skipped };
+    res.added = add.length;
+    return res;
   },
   openConflicts(source) { return this.conflicts.filter(x => !x.resolved && (!source || x.source === source)); },
   /* اختلاف أبقته المعلمة عمداً مع خادم: حُسم التعارض بـ«إبقاء نسخة الجهاز» والسجل ما زال مختلفاً عنه (LM0131-R3-03) */
@@ -180,24 +189,40 @@ const Store = {
     const rollback = () => {
       if (repl) { const j = this.raw.findIndex(e => e.id === x.id); if (j >= 0 && this.raw[j] === repl) this.raw[j] = prev; }
       if (prevRes) x.resolved = prevRes; else delete x.resolved;
+      for (const [y, snap] of snaps) { for (const k of Object.keys(y)) delete y[k]; Object.assign(y, JSON.parse(snap)); }
       this.refresh();
     };
+    const at = Date.now(); const touched = [x]; const snaps = [];
     if (choice === 'other' && prev) {
       const sid = x.source.startsWith('server:') ? x.source.slice(7) : null;
-      repl = Object.assign(this.clean(x.other), { la: Date.now() });
-      if (sid) repl.sv = [sid];
+      repl = Object.assign(this.clean(x.other), { la: at });
+      const sv = new Set(sid ? [sid] : []), cf = new Set();
+      /* تغيّر السجل: تُعاد قراءة تعارضاته الأخرى (LM0133-R5-03). ما صار مطابقاً لنسخته الأخرى يُغلق تلقائياً؛
+         وما بقي مختلفاً يُعرض بالمحتوى الحالي (وتُحفظ نسخة الاكتشاف)، وقرار «إبقاء» سابق عليه يُعاد فتحه لأنه كان لمحتوى آخر */
+      for (const y of this.conflicts) {
+        if (y === x || y.id !== x.id || (y.resolved && y.resolved.choice === 'other')) continue;
+        snaps.push([y, JSON.stringify(y)]); touched.push(y);
+        const ysid = y.source.startsWith('server:') ? y.source.slice(7) : null;
+        if (this.fp(y.other) === this.fp(repl)) { y.resolved = { at, by, choice: 'other', auto: true }; if (ysid) sv.add(ysid); continue; }
+        if (!y.localAtDetection) y.localAtDetection = y.local;
+        y.local = this.clean(repl);
+        if (y.resolved) { y.reopened = { at, was: y.resolved, why: 'تغيّر محتوى السجل بعد قرار «إبقاء نسخة الجهاز»' }; delete y.resolved; }
+        if (ysid) cf.add(ysid);
+      }
+      if (sv.size) repl.sv = [...sv];
+      if (cf.size) repl.cf = [...cf];
       this.raw[i] = repl;
     }
-    x.resolved = Object.assign({ at: Date.now(), by, choice }, prevRes ? { was: prevRes.choice } : {});
+    x.resolved = Object.assign({ at, by, choice }, prevRes ? { was: prevRes.choice } : {});
     if (!this.idbOk) {
       /* التخزين البديل: مفتاحان منفصلان. السجل أولاً؛ إن فشل لا يُكتب القرار. وإن فشل القرار بعده يُعاد السجل القديم
          (والفحص عند الفتح يعيد فتح أي قرار بقي مع سجل قديم) — LM0132-R4-02 */
       if (repl && !this.saveEvents([repl])) { rollback(); return false; }
-      if (!this.saveConflicts([x])) { rollback(); if (repl) this.saveEvents([prev]); return false; }
+      if (!this.saveConflicts(touched)) { rollback(); if (repl) this.saveEvents([prev]); return false; }
       this.refresh(); return true;
     }
     if (repl) this.saveEvents([repl]);
-    this.saveConflicts([x]); this.refresh();
+    this.saveConflicts(touched); this.refresh();
     const ok = await this.durable();
     if (gen !== this.gen) return null;
     if (ok) return true;

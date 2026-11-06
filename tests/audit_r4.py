@@ -101,6 +101,8 @@ async def main():
         await reopen(pg)
         r = await pg.evaluate(STATE)
         ok('R4-02 التخزين البديل بلا عطل: الحسم والنسخة الجديدة ثابتان', r['text'] == 'new' and r['open'] == 0 and r['cf'][0]['resolved'] == 'other', r)
+        r = await pg.evaluate("document.querySelector('main').innerText.includes('التخزين البديل (localStorage)')")
+        ok('R4-02 الإعدادات تُظهر أن الجهاز على التخزين البديل', r, r)
 
         # ================= R4-03 النسخة الكاملة تحمل التعارضات =================
         pg = await fresh('parent')
@@ -128,7 +130,7 @@ async def main():
         # ملف يحمل تعارضاً لا ينطبق على سجلات هذا الجهاز: لا يُضاف
         r = await pg.evaluate("""(() => { const res = Store.importConflicts([{ key: 'zz|file|1', id: 'nowhere', source: 'file', at: 1, local: { id: 'nowhere', type: 'note', by: 'aya', ts: 1, day: '2026-11-01', text: 'a' }, other: { id: 'nowhere', type: 'note', by: 'aya', ts: 1, day: '2026-11-01', text: 'b' } },
             { key: 'bad', id: 'base', source: 'x', at: 1 }]); return res; })()""")
-        ok('R4-03 تعارض لا ينطبق على سجل هنا أو سجل تالف: يُتخطى', r == {'added': 0, 'skipped': 2}, r)
+        ok('R4-03 تعارض لا سجل له هنا: «غير مرتبط» يُذكر بمعرّفه؛ والتالف يُتخطى؛ ولا يُضاف أيهما', r == {'added': 0, 'history': 0, 'skipped': 1, 'unlinked': ['nowhere']}, r)
 
         # اعتماد نسخة الملف ثم اعتماد نسخة الخادم لتعارض لاحق على السجل نفسه (يعيده إلى الأصل): لا يُعاد فتح الأول عند الفتح ولا بعد نسخة واستعادة
         pg = await fresh('parent')

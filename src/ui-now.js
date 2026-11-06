@@ -121,7 +121,7 @@ function endSession(s, note) {
 }
 /* تسجيل الإنهاء وبطاقة التسليم بمعرّفات ثابتة: إعادة المحاولة بعد فشل الحفظ لا تكرر ولا تفقد */
 async function commitEnd(s, a, status, rem, reason, note) {
-  const gen = Store.gen; /* حذفُ بيانات الجهاز أثناء انتظار الحفظ يلغي العملية: لا رسالة نجاح ولا كتابة بعده */
+  const op = UI.opGuard(); /* حذفُ بيانات الجهاز أو تغيّر الحساب أثناء انتظار الحفظ يلغي العملية: لا رسالة نجاح ولا كتابة بعده */
   const round = a.round || 1;
   try {
     for (const c of childrenOf(s)) {
@@ -140,8 +140,8 @@ async function commitEnd(s, a, status, rem, reason, note) {
     }
     /* لا تُغلق الجلسة باعتبارها محفوظة قبل ثبوت الكتابة */
     if (!(await Store.durable())) throw new Error(Store.storageError || 'تعذّر الحفظ على الجهاز');
-  } catch (e) { a.pendingEnd = { status, rem, reason, note }; saveActive(); UI.toast('لم يكتمل التسجيل: ' + e.message + ' — أعيدي المحاولة من «إنهاء الجلسة»'); UI.rerender(true); return false; }
-  if (Store.gen !== gen) { UI.rerender(); return false; }
+  } catch (e) { if (!op.alive()) { UI.rerender(); return false; } a.pendingEnd = { status, rem, reason, note }; saveActive(); UI.toast('لم يكتمل التسجيل: ' + e.message + ' — أعيدي المحاولة من «إنهاء الجلسة»'); UI.rerender(true); return false; }
+  if (!op.alive()) { UI.rerender(); return false; }
   Store.settings.active = null; Store.saveSettings(); UI.toast('سُجّلت الجلسة وحُفظت'); UI.rerender(); return true;
 }
 /* بنود بطاقة التسليم من سجلات هذه الجلسة (بمعرّف الجلسة sid، لا بالتوقيت) */
@@ -603,17 +603,20 @@ function cancelModal() {
   const reasonSel = el('select', null, ['مرض طفل', 'سفر أو ظرف عائلي', 'انقطاع الإنترنت', 'غياب معلمة', 'سبب آخر'].map(x => el('option', { value: x }, x)));
   const txt = el('input', { placeholder: 'تفصيل (اختياري)' });
   const bg = UI.modal('إلغاء جلسات اليوم', el('div', null, el('p', { class: 'small muted' }, 'تُلغى الجلسات المختارة غير المنفذة فقط. النتائج المسجلة سابقاً تبقى. الجلسة الجارية تُحفظ بما أُنجز ويظهر الباقي.'), checks.map(([s, c]) => el('label', { class: 'row', style: 'margin:4px 0' }, c, ` ${fmtTime12(s.start)} ${childName(s.child)} · ${SESSION_KINDS[s.kind].name}`)), label('السبب'), reasonSel, txt),
-    [el('button', { class: 'danger', onclick: async () => { const reason = reasonSel.value + (txt.value.trim() ? ': ' + txt.value.trim() : ''); let ok = 0, fail = 0; const failed = []; const added = [];
+    [el('button', { class: 'danger', onclick: async ev => { const reason = reasonSel.value + (txt.value.trim() ? ': ' + txt.value.trim() : ''); let ok = 0, fail = 0; const failed = []; const added = [];
+      /* العملية كلها تُلغى إن حُذفت بيانات الجهاز أو تغيّر الحساب أثناء أي انتظار: لا إلغاء ولا رسالة بعدها (LM0133-R5-02) */
+      const op = UI.opGuard(); const btn = ev && ev.currentTarget; if (btn) btn.disabled = true;
+      const abort = () => { bg.remove(); UI.rerender(); };
       for (const [s, c] of checks) { if (!c.checked) continue; const key = sessionKey(s, dayK);
+        if (!op.alive()) return abort();
         try {
-          if (act && act.key === key) { if (await commitEnd(s, act, 'stopped', SESSION_KINDS[s.kind].steps.filter(st => !act.steps.includes(st.id)).map(st => st.id), 'إلغاء: ' + reason, act.note || '')) ok++; else { fail++; failed.push(s); } continue; }
+          if (act && act.key === key) { const done = await commitEnd(s, act, 'stopped', SESSION_KINDS[s.kind].steps.filter(st => !act.steps.includes(st.id)).map(st => st.id), 'إلغاء: ' + reason, act.note || ''); if (!op.alive()) return abort(); if (done) ok++; else { fail++; failed.push(s); } continue; }
           for (const ch of childrenOf(s)) if (!Store.events.some(e => e.type === 'session_cancel' && e.key === key && e.child === ch)) Store.add({ type: 'session_cancel', key, child: ch, kind: s.kind, start: s.start, reason });
           added.push([s, c]);
         } catch (e) { fail++; failed.push(s); }
       }
       /* الإلغاءات تُعدّ ناجحة بعد ثبوت حفظها فقط */
-      const gen = Store.gen;
-      if (added.length) { const dur = await Store.durable(); if (Store.gen !== gen) { bg.remove(); UI.rerender(); return; } if (dur) { for (const [s, c] of added) { ok++; c.disabled = true; c.checked = false; } } else { for (const [s] of added) { fail++; failed.push(s); } } }
-      if (fail) { UI.toast(`أُلغيت ${ok} جلسة، وتعذّر ${fail}: ${failed.map(s => childName(s.child) + ' ' + fmtTime12(s.start)).join('، ')} — أعيدي المحاولة`); UI.rerender(true); return; }
+      if (added.length) { const dur = await Store.durable(); if (!op.alive()) return abort(); if (dur) { for (const [s, c] of added) { ok++; c.disabled = true; c.checked = false; } } else { for (const [s] of added) { fail++; failed.push(s); } } }
+      if (fail) { if (btn) btn.disabled = false; UI.toast(`أُلغيت ${ok} جلسة، وتعذّر ${fail}: ${failed.map(s => childName(s.child) + ' ' + fmtTime12(s.start)).join('، ')} — أعيدي المحاولة`); UI.rerender(true); return; }
       bg.remove(); UI.toast(`أُلغيت ${ok} جلسة`); UI.rerender(); } }, 'تأكيد الإلغاء')]);
 }

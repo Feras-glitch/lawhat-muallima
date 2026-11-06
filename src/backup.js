@@ -14,7 +14,9 @@ const Backup = {
     const settings = {};
     for (const k of this.SETTINGS_KEYS) if (Store.settings[k] != null && Store.settings[k] !== '') settings[k] = Store.settings[k];
     /* التعارضات بنسختيها وقراراتها جزء من بيانات الجهاز (LM0132-R4-03)؛ بلا علامات خادم */
-    const conflicts = Store.conflicts.map(x => Object.assign({ key: x.key, id: x.id, source: x.source, at: x.at, local: Store.clean(x.local), other: Store.clean(x.other) }, x.resolved ? { resolved: { at: x.resolved.at, by: x.resolved.by, choice: x.resolved.choice } } : {}));
+    const conflicts = Store.conflicts.map(x => Object.assign({ key: x.key, id: x.id, source: x.source, at: x.at, local: Store.clean(x.local), other: Store.clean(x.other) },
+      x.resolved ? { resolved: Object.assign({ at: x.resolved.at, by: x.resolved.by, choice: x.resolved.choice }, x.resolved.auto ? { auto: true } : {}) } : {},
+      x.localAtDetection ? { localAtDetection: Store.clean(x.localAtDetection) } : {}));
     return {
       format: BACKUP_FORMAT, formatVersion: 3, app: { version: BUILD.version, commit: BUILD.commit },
       exported: new Date().toISOString(), device: Store.settings.deviceId, role: App.role ? App.role.id : null,
@@ -190,8 +192,9 @@ function BackupCard() {
   const persistLine = el('p', { class: 'small muted' }, Persist.text());
   Persist.check().then(() => { persistLine.textContent = Persist.text(); });
   return el('div', { class: 'card' }, el('h2', null, 'النسخ الاحتياطي وتبادل الملفات'),
-    el('p', { class: 'small muted' }, 'النسخة الكاملة تحمل كل السجلات بالتراجعات ومعرّفاتها وأصحابها، وإعدادات الخادم بلا كلمات سر ولا جلسات ولا رموز دخول. الاستيراد يدمج ولا يكرر.'),
+    el('p', { class: 'small muted' }, 'النسخة الكاملة تحمل كل السجلات بالتراجعات ومعرّفاتها وأصحابها، والتعارضات بنسختيها وقراراتها، وإعدادات الخادم بلا كلمات سر ولا جلسات ولا رموز دخول. الاستيراد يدمج ولا يكرر.'),
     el('p', { class: 'small' }, lb ? `آخر تنزيل نسخة من هذا الجهاز: ${fmtDay(dayKey(new Date(lb.at)))} ${hhmm(new Date(lb.at))} (${lb.count} سجل). للتأكد أن الملف المحفوظ صالح: اختاريه في «استيراد ملف» فيُعرض ما يحمله قبل أي دمج.` : 'لم تُصدَّر نسخة من هذا الجهاز بعد'),
+    el('p', { class: 'small' + (Store.idbOk ? ' muted' : '') }, Store.idbOk ? 'التخزين: قاعدة الجهاز (IndexedDB).' : '⚠ التخزين البديل (localStorage): تعذّر فتح قاعدة الجهاز، والسعة محدودة (~5 م.ب). صدّري نسخة كاملة، وأغلقي التبويبات الأخرى ثم أعيدي التحميل.'),
     persistLine,
     el('div', { class: 'btns' },
       el('button', { class: 'primary', onclick: () => { Backup.download(); UI.toast('صُدّرت النسخة'); UI.rerender(); } }, `تصدير نسخة كاملة (${Store.raw.length} سجل)`),
@@ -215,14 +218,15 @@ function ImportDialog(p) {
     clash ? el('div', { class: 'alert red' }, `${clash} سجلاً بمعرّف موجود هنا ومحتوى مختلف: لن يُغيَّر شيء منها، وستظهر في «التعارضات» للمراجعة.`) : null,
     p.full ? null : el('div', { class: 'alert' }, 'هذا الملف يحمل السجلات الحيّة فقط بلا تراجعات: ما تراجعتِ عنه في الجهاز المصدِّر لا يصل تراجعه إلى هنا.'),
     p.full && (p.conflicts || []).length ? el('p', { class: 'small' }, `وفيه ${p.conflicts.length} تعارضاً بنسختيه (${p.conflicts.filter(x => x && !x.resolved).length} مفتوحاً): تُضاف إلى «التعارضات» ما انطبقت على سجلات هنا.`) : null,
-    p.full && m.formatVersion === 2 ? el('p', { class: 'small muted' }, 'نسخة من 0.12–0.13.1: لا تحمل التعارضات ونسخها البديلة.') : null,
+    p.full && !(m.formatVersion >= 3) ? el('p', { class: 'small muted' }, `نسخة بصيغة أقدم (${m.formatVersion || 1}) لا تحمل التعارضات ونسخها البديلة وقراراتها.`) : null,
     p.full && p.settings.sbUrl ? el('p', { class: 'small muted' }, `وفيه إعدادات الخادم: ${p.settings.sbUrl}`) : null);
   const canRestore = p.full && Store.raw.length === 0 && p.settings.sbUrl && p.settings.sbKey;
   let bg;
-  const merge = () => { bg.remove(); try { const n = Backup.merge(p); UI.savedToast(`أُضيف ${n} سجلاً وحُفظ${Backup.lastConflicts ? ` · ${Backup.lastConflicts} تعارض في «التعارضات»` : ''}${Backup.lastCfImport && Backup.lastCfImport.added ? ` · ${Backup.lastCfImport.added} تعارضاً من النسخة` : ''}`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } };
+  const unlinked = () => { const u = Backup.lastCfImport && Backup.lastCfImport.unlinked; if (u && u.length) UI.modal('تعارضات لم تُربط', el('div', null, el('p', null, `${u.length} تعارضاً مفتوحاً في النسخة لا ينطبق على سجلات هذا الجهاز (محتوى السجل هنا ليس إحدى نسختيه، أو السجل غائب)، فلم يُضف:`), el('p', { class: 'small', dir: 'ltr' }, u.join(', ')), el('p', { class: 'small muted' }, 'الملف نفسه لم يتغير ويحملها كاملة.'))); };
+  const merge = () => { bg.remove(); try { const n = Backup.merge(p); unlinked(); UI.savedToast(`أُضيف ${n} سجلاً وحُفظ${Backup.lastConflicts ? ` · ${Backup.lastConflicts} تعارض في «التعارضات»` : ''}${Backup.lastCfImport && Backup.lastCfImport.added ? ` · ${Backup.lastCfImport.added} تعارضاً من النسخة` : ''}`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } };
   const restore = () => {
     bg.remove();
-    try { const n = Backup.restoreDevice(p); App.logout(); UI.savedToast(`استُعيد ${n} سجلاً${Backup.lastCfImport && Backup.lastCfImport.added ? ` و${Backup.lastCfImport.added} تعارضاً بنسختيه` : ''}؛ ادخلي بحسابك على الخادم لتكتمل المطابقة`); }
+    try { const n = Backup.restoreDevice(p); App.logout(); unlinked(); UI.savedToast(`استُعيد ${n} سجلاً${Backup.lastCfImport && Backup.lastCfImport.added ? ` و${Backup.lastCfImport.added} تعارضاً بنسختيه` : ''}؛ ادخلي بحسابك على الخادم لتكتمل المطابقة`); }
     catch (e) { UI.modal('لم تُستعد النسخة', el('p', null, e.message)); }
   };
   bg = UI.modal('استيراد ملف', body, [
@@ -350,8 +354,9 @@ function ConflictsCard() {
   /* الحسم لا يُعلن قبل ثبوت الاستبدال والقرار معاً؛ وإن فشل الحفظ يبقى التعارض كما كان */
   const resolve = (x, choice) => UI.confirm(choice === 'other' ? `اعتماد نسخة ${srcName(x)} بدل نسخة هذا الجهاز لهذا المعرّف؟ يُوثَّق القرار.` : `إبقاء نسخة هذا الجهاز؟ ${x.source === 'file' ? 'لا يتغير شيء ويُوثَّق القرار.' : 'تبقى مختلفة عن الخادم، ويظهر ذلك استثناءً في تقرير المطابقة حتى تعتمدي نسخة الخادم.'}`, async () => {
     UI.toast('جارٍ حفظ القرار…');
+    const op = UI.opGuard();
     const ok = await Store.resolveConflict(x, choice, App.role.id);
-    if (ok === null) return; /* حُذفت بيانات الجهاز أثناء الحسم: لا ملاحظة ولا رسالة نجاح */
+    if (ok === null || !op.alive()) { UI.rerender(); return; } /* حُذفت بيانات الجهاز أو تغيّر الحساب أثناء الحسم: لا ملاحظة ولا رسالة نجاح */
     if (!ok) { UI.toast('لم يُحسم التعارض: تعذّر الحفظ (' + (Store.storageError || 'الكتابة لم تثبت') + '). بقي كما كان؛ أعيدي المحاولة.'); UI.rerender(); return; }
     Store.add({ type: 'note', child: x.local.child || null, text: `حُسم تعارض المعرّف ${x.id} (${x.source}): ${choice === 'other' ? 'اعتُمدت النسخة الأخرى' : 'أُبقيت نسخة الجهاز'}` });
     UI.savedToast('حُسم التعارض'); UI.rerender();
@@ -359,7 +364,9 @@ function ConflictsCard() {
   return el('div', { class: 'card' }, el('h2', null, `التعارضات (${list.length})${kept.length ? ` · اختلافات مُبقاة (${kept.length})` : ''}`),
     list.length ? el('p', { class: 'small muted' }, 'معرّف واحد بمحتويين مختلفين. لم يُغيَّر شيء تلقائياً، ولا تُعلن المطابقة مكتملة حتى يُحسم كل تعارض.') : null,
     list.map(x => el('div', { class: 'alert red' }, el('div', { class: 'small' }, el('b', null, x.id), ` · المصدر: ${x.source === 'file' ? 'ملف' : 'الخادم'}`),
-      el('div', { class: 'small' }, 'هذا الجهاز: ', evSummary(x.local)), el('div', { class: 'small' }, srcName(x) + ': ', evSummary(x.other)),
+      el('div', { class: 'small' }, 'هذا الجهاز الآن: ', evSummary(Store.raw.find(e => e.id === x.id) || x.local)),
+      x.localAtDetection ? el('div', { class: 'small muted' }, '(عند اكتشاف التعارض كان: ', evSummary(x.localAtDetection), ')') : null,
+      el('div', { class: 'small' }, srcName(x) + ': ', evSummary(x.other)),
       can ? el('div', { class: 'btns' }, el('button', { class: 'ghost', onclick: () => resolve(x, 'local') }, 'إبقاء نسخة الجهاز'), el('button', { class: 'ghost', onclick: () => resolve(x, 'other') }, x.source === 'file' ? 'اعتماد نسخة الملف' : 'اعتماد نسخة الخادم')) : el('div', { class: 'small muted' }, 'تحسمه آية أو ولي الأمر.'))),
     kept.length ? el('p', { class: 'small muted' }, 'اختلافات أُبقيت فيها نسخة الجهاز عمداً: هذا الجهاز يختلف فيها عن الخادم، فلا تُعلن المطابقة كاملة ما بقيت. تُحسم باعتماد نسخة الخادم متى شئتِ.') : null,
     kept.map(x => el('div', { class: 'alert' }, el('div', { class: 'small' }, el('b', null, x.id), ` · أُبقيت نسخة الجهاز ${fmtDay(dayKey(new Date(x.resolved.at)))}`),

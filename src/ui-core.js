@@ -100,7 +100,9 @@ const UI = {
   },
   /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ وإلا رسالة الفشل */
   /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ ولا تظهر إطلاقاً إن حُذفت بيانات الجهاز أثناء الانتظار (ما سُجّل حُذف) */
-  savedToast(msg) { const gen = Store.gen; Store.durable().then(ok => { if (Store.gen !== gen) return; this.toast(ok ? msg : 'لم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ')); }); },
+  savedToast(msg) { const op = this.opGuard(); Store.durable().then(ok => { if (!op.alive()) return; this.toast(ok ? msg : 'لم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ')); }); },
+  /* عملية تنتظر (حفظاً أو خادماً): تبقى «حيّة» ما دامت بيانات الجهاز لم تُحذف والحساب نفسه داخل. بعد أي انتظار تُفحص قبل أي كتابة أو رسالة (LM0133-R5-02) */
+  opGuard() { const gen = Store.gen, role = App.role && App.role.id; return { alive: () => Store.gen === gen && (App.role && App.role.id) === role }; },
   renderStatus() { const s = document.getElementById('status'); if (s) { s.innerHTML = ''; s.append(...this.statusInner()); } },
   nav() {
     const items = App.role.id === 'parent'
