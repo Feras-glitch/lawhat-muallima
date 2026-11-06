@@ -116,7 +116,7 @@ header.top{flex-wrap:wrap}
 <body>
 <div id="app"></div>
 <script>
-const BUILD = {"version": "0.13.2", "commit": "4a84441", "src": "2d354f6461", "built": "2026-11-06"};
+const BUILD = {"version": "0.13.3", "commit": "da35059", "src": "0d1a968c72", "built": "2026-11-06"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 const CHILDREN = {
   dalal: { id: 'dalal', name: 'دلال', age: 10, unit: 'page', unitLabel: 'صفحة' },
@@ -367,6 +367,7 @@ const Store = {
       } else { this.raw = lsRaw; this.conflicts = lsCf.concat(legacyCf); }
     } else { this.raw = lsRaw; this.conflicts = lsCf.concat(legacyCf); }
     if (!this.idbOk && legacyCf.length) { try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); delete this.settings.conflicts; this.saveSettings(); } catch (e) {} }
+    this.checkResolutions();
     this.migrateV2();
     this.refresh();
   },
@@ -421,6 +422,43 @@ const Store = {
     }
     try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); return true; } catch (e) { this.storageError = 'تعذّر حفظ التعارض: امتلأت ذاكرة الجهاز. صدّري البيانات وأبلغي ولي الأمر.'; return false; }
   },
+  /* عند الفتح: قرار «اعتماد النسخة الأخرى» والسجل ما زال بالنسخة القديمة = الحسم لم يثبت مع الاستبدال
+     (نسخة طوارئ لتعارض لم يُحفظ أول مرة، أو تخزين بديل كتب القرار ولم يكتب السجل). لا يُقبل هذا المزيج: يعود التعارض مفتوحاً (LM0132-R4-01/02) */
+  checkResolutions() {
+    const byId = new Map(this.raw.map(e => [e.id, e])); const fixed = [];
+    /* يُفحص آخر «اعتماد النسخة الأخرى» لكل سجل فقط: اعتمادٌ لاحق لتعارض آخر على السجل نفسه قد يعيده عمداً إلى نسخة سابقة */
+    const latest = new Map();
+    for (const x of this.conflicts) if (x.resolved && x.resolved.choice === 'other') { const l = latest.get(x.id); if (!l || (x.resolved.at || 0) >= (l.resolved.at || 0)) latest.set(x.id, x); }
+    for (const x of latest.values()) {
+      const e = byId.get(x.id); if (!e) continue;
+      const fe = this.fp(e);
+      if (fe === this.fp(x.local) && fe !== this.fp(x.other)) { x.reopened = { at: Date.now(), was: x.resolved, why: 'الحسم لم يثبت مع السجل قبل إغلاق الصفحة' }; delete x.resolved; fixed.push(x); }
+    }
+    if (fixed.length) this.saveConflicts(fixed);
+    return fixed.length;
+  },
+  /* تعارضات من نسخة احتياطية: تُضاف بنسختيها وقرارها إن انطبقت على سجل هنا (محتواه = إحدى النسختين) ولم تكن موجودة.
+     لا تُنقل علامة «على الخادم» ولا اختلاف مع خادم: يُعاد اكتشافهما بالمزامنة (LM0132-R4-03) */
+  importConflicts(list) {
+    if (!Array.isArray(list) || !list.length) return { added: 0, skipped: 0 };
+    const byId = new Map(this.raw.map(e => [e.id, e])); const have = new Set(this.conflicts.map(x => x.key));
+    const ok = o => o && typeof o === 'object' && typeof o.type === 'string' && this.validEvent(o, [o]) && this.roleAllows(o.by, o);
+    const add = []; let skipped = 0;
+    for (const r of list) {
+      const x = r && typeof r === 'object' ? { key: r.key, id: r.id, source: r.source, at: r.at, local: r.local && this.clean(r.local), other: r.other && this.clean(r.other) } : null;
+      const valid = x && typeof x.key === 'string' && typeof x.id === 'string' && typeof x.source === 'string' && (x.source === 'file' || x.source.startsWith('server:')) && typeof x.at === 'number'
+        && ok(x.local) && ok(x.other) && x.local.id === x.id && x.other.id === x.id && this.fp(x.local) !== this.fp(x.other);
+      if (!valid) { skipped++; continue; }
+      if (r.resolved && typeof r.resolved === 'object' && ['local', 'other'].includes(r.resolved.choice)) x.resolved = { at: Number(r.resolved.at) || x.at, by: String(r.resolved.by || ''), choice: r.resolved.choice };
+      const e = byId.get(x.id); const fe = e && this.fp(e);
+      if (!e || (fe !== this.fp(x.local) && fe !== this.fp(x.other)) || have.has(x.key)) { skipped++; continue; }
+      add.push(x); have.add(x.key);
+    }
+    this.conflicts.push(...add);
+    if (add.length && !this.saveConflicts(add)) { for (const x of add) { this.conflicts.splice(this.conflicts.indexOf(x), 1); this.cdirty.delete(x.key); } throw new Error(this.storageError || 'تعذّر حفظ التعارضات'); }
+    this.checkResolutions();
+    return { added: add.length, skipped };
+  },
   openConflicts(source) { return this.conflicts.filter(x => !x.resolved && (!source || x.source === source)); },
   /* اختلاف أبقته المعلمة عمداً مع خادم: حُسم التعارض بـ«إبقاء نسخة الجهاز» والسجل ما زال مختلفاً عنه (LM0131-R3-03) */
   keptDiffs(source) {
@@ -435,25 +473,38 @@ const Store = {
   },
   /* حسم تعارض: الاستبدال (إن اختيرت النسخة الأخرى) والقرار يُكتبان في معاملة واحدة، ولا يُعلن الحسم قبل ثبوتهما.
      إن فشل الحفظ يعود كل شيء كما كان ويبقى التعارض مفتوحاً (LM0131-R3-02) */
+  /* القيمة: true = ثبت الحسم، false = لم يثبت وعاد كل شيء كما كان، null = حُذفت بيانات الجهاز أثناءه فأُلغي (لا يُكتب بعده شيء — LM0132-R4-04) */
   async resolveConflict(x, choice, by) {
     if (x.resolved && x.resolved.choice === choice) return true;
     const gen = this.gen;
     const prevRes = x.resolved || null;
     const i = this.raw.findIndex(e => e.id === x.id); const prev = i >= 0 ? this.raw[i] : null;
     let repl = null;
+    const rollback = () => {
+      if (repl) { const j = this.raw.findIndex(e => e.id === x.id); if (j >= 0 && this.raw[j] === repl) this.raw[j] = prev; }
+      if (prevRes) x.resolved = prevRes; else delete x.resolved;
+      this.refresh();
+    };
     if (choice === 'other' && prev) {
       const sid = x.source.startsWith('server:') ? x.source.slice(7) : null;
       repl = Object.assign(this.clean(x.other), { la: Date.now() });
       if (sid) repl.sv = [sid];
-      this.raw[i] = repl; this.saveEvents([repl]);
+      this.raw[i] = repl;
     }
     x.resolved = Object.assign({ at: Date.now(), by, choice }, prevRes ? { was: prevRes.choice } : {});
+    if (!this.idbOk) {
+      /* التخزين البديل: مفتاحان منفصلان. السجل أولاً؛ إن فشل لا يُكتب القرار. وإن فشل القرار بعده يُعاد السجل القديم
+         (والفحص عند الفتح يعيد فتح أي قرار بقي مع سجل قديم) — LM0132-R4-02 */
+      if (repl && !this.saveEvents([repl])) { rollback(); return false; }
+      if (!this.saveConflicts([x])) { rollback(); if (repl) this.saveEvents([prev]); return false; }
+      this.refresh(); return true;
+    }
+    if (repl) this.saveEvents([repl]);
     this.saveConflicts([x]); this.refresh();
     const ok = await this.durable();
-    if (ok || gen !== this.gen) return ok;
-    if (repl) { const j = this.raw.findIndex(e => e.id === x.id); if (j >= 0 && this.raw[j] === repl) this.raw[j] = prev; }
-    if (prevRes) x.resolved = prevRes; else delete x.resolved;
-    this.refresh();
+    if (gen !== this.gen) return null;
+    if (ok) return true;
+    rollback();
     return false;
   },
   clean(e) { const o = Object.assign({}, e); for (const k of this.LOCAL_FIELDS) delete o[k]; return o; },
@@ -1445,7 +1496,8 @@ const UI = {
     return [el('span', { class: 'dot ok' }), 'تمت المزامنة' + m];
   },
   /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ وإلا رسالة الفشل */
-  savedToast(msg) { Store.durable().then(ok => this.toast(ok ? msg : 'لم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ'))); },
+  /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ ولا تظهر إطلاقاً إن حُذفت بيانات الجهاز أثناء الانتظار (ما سُجّل حُذف) */
+  savedToast(msg) { const gen = Store.gen; Store.durable().then(ok => { if (Store.gen !== gen) return; this.toast(ok ? msg : 'لم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ')); }); },
   renderStatus() { const s = document.getElementById('status'); if (s) { s.innerHTML = ''; s.append(...this.statusInner()); } },
   nav() {
     const items = App.role.id === 'parent'
@@ -1663,6 +1715,7 @@ function endSession(s, note) {
 }
 /* تسجيل الإنهاء وبطاقة التسليم بمعرّفات ثابتة: إعادة المحاولة بعد فشل الحفظ لا تكرر ولا تفقد */
 async function commitEnd(s, a, status, rem, reason, note) {
+  const gen = Store.gen; /* حذفُ بيانات الجهاز أثناء انتظار الحفظ يلغي العملية: لا رسالة نجاح ولا كتابة بعده */
   const round = a.round || 1;
   try {
     for (const c of childrenOf(s)) {
@@ -1682,6 +1735,7 @@ async function commitEnd(s, a, status, rem, reason, note) {
     /* لا تُغلق الجلسة باعتبارها محفوظة قبل ثبوت الكتابة */
     if (!(await Store.durable())) throw new Error(Store.storageError || 'تعذّر الحفظ على الجهاز');
   } catch (e) { a.pendingEnd = { status, rem, reason, note }; saveActive(); UI.toast('لم يكتمل التسجيل: ' + e.message + ' — أعيدي المحاولة من «إنهاء الجلسة»'); UI.rerender(true); return false; }
+  if (Store.gen !== gen) { UI.rerender(); return false; }
   Store.settings.active = null; Store.saveSettings(); UI.toast('سُجّلت الجلسة وحُفظت'); UI.rerender(); return true;
 }
 /* بنود بطاقة التسليم من سجلات هذه الجلسة (بمعرّف الجلسة sid، لا بالتوقيت) */
@@ -2152,7 +2206,8 @@ function cancelModal() {
         } catch (e) { fail++; failed.push(s); }
       }
       /* الإلغاءات تُعدّ ناجحة بعد ثبوت حفظها فقط */
-      if (added.length) { if (await Store.durable()) { for (const [s, c] of added) { ok++; c.disabled = true; c.checked = false; } } else { for (const [s] of added) { fail++; failed.push(s); } } }
+      const gen = Store.gen;
+      if (added.length) { const dur = await Store.durable(); if (Store.gen !== gen) { bg.remove(); UI.rerender(); return; } if (dur) { for (const [s, c] of added) { ok++; c.disabled = true; c.checked = false; } } else { for (const [s] of added) { fail++; failed.push(s); } } }
       if (fail) { UI.toast(`أُلغيت ${ok} جلسة، وتعذّر ${fail}: ${failed.map(s => childName(s.child) + ' ' + fmtTime12(s.start)).join('، ')} — أعيدي المحاولة`); UI.rerender(true); return; }
       bg.remove(); UI.toast(`أُلغيت ${ok} جلسة`); UI.rerender(); } }, 'تأكيد الإلغاء')]);
 }
@@ -2406,11 +2461,13 @@ const Backup = {
     const events = Store.raw.map(e => Store.clean(e));
     const settings = {};
     for (const k of this.SETTINGS_KEYS) if (Store.settings[k] != null && Store.settings[k] !== '') settings[k] = Store.settings[k];
+    /* التعارضات بنسختيها وقراراتها جزء من بيانات الجهاز (LM0132-R4-03)؛ بلا علامات خادم */
+    const conflicts = Store.conflicts.map(x => Object.assign({ key: x.key, id: x.id, source: x.source, at: x.at, local: Store.clean(x.local), other: Store.clean(x.other) }, x.resolved ? { resolved: { at: x.resolved.at, by: x.resolved.by, choice: x.resolved.choice } } : {}));
     return {
-      format: BACKUP_FORMAT, formatVersion: 2, app: { version: BUILD.version, commit: BUILD.commit },
+      format: BACKUP_FORMAT, formatVersion: 3, app: { version: BUILD.version, commit: BUILD.commit },
       exported: new Date().toISOString(), device: Store.settings.deviceId, role: App.role ? App.role.id : null,
-      counts: { all: events.length, live: Store.events.length, undo: events.filter(e => e.type === 'undo').length },
-      settings, events,
+      counts: { all: events.length, live: Store.events.length, undo: events.filter(e => e.type === 'undo').length, conflicts: conflicts.length, openConflicts: conflicts.filter(x => !x.resolved).length },
+      settings, events, conflicts,
     };
   },
   download() {
@@ -2427,16 +2484,18 @@ const Backup = {
     const j = JSON.parse(text);
     if (j && j.format === BACKUP_FORMAT) {
       if (!Array.isArray(j.events)) throw new Error('ملف النسخة بلا سجلات');
-      return { full: true, meta: j, events: j.events, settings: j.settings || {} };
+      if (j.conflicts != null && !Array.isArray(j.conflicts)) throw new Error('ملف النسخة: التعارضات ليست قائمة');
+      return { full: true, meta: j, events: j.events, settings: j.settings || {}, conflicts: j.conflicts || [] };
     }
     const list = Array.isArray(j) ? j : j && j.events;
     if (!Array.isArray(list)) throw new Error('ليس ملف سجلات من لوحة المعلمة');
-    return { full: false, meta: Array.isArray(j) ? {} : j, events: list, settings: {} };
+    return { full: false, meta: Array.isArray(j) ? {} : j, events: list, settings: {}, conflicts: [] };
   },
   /* دمج بلا علامة «على الخادم»؛ مع خادم متصل تُطلب مطابقة كاملة تصحّح العلامات وتُظهر ما بقي */
   merge(parsed) {
     const n = Store.importEvents(parsed.events, { source: 'file' });
     this.lastConflicts = Store.lastConflicts || 0;
+    this.lastCfImport = Store.importConflicts(parsed.conflicts || []);
     const st = Sync.st();
     if (st) { st.needReconcile = true; Store.saveSettings(); Sync.schedule(); }
     return n;
@@ -2457,7 +2516,7 @@ const Backup = {
     const days = Math.floor((Date.now() - lb.at) / DAY_MS);
     if (days < 7) return null;
     /* وقت وصول السجل إلى الجهاز (la)، لا وقت إنشائه: سجل قديم وصل بعد آخر نسخة غير مشمول بها (LM0121-R2-12) */
-    return Store.raw.some(e => (e.la || e.ts || 0) > lb.at) ? days : null;
+    return Store.raw.some(e => (e.la || e.ts || 0) > lb.at) || Store.conflicts.some(x => Math.max(x.at || 0, x.resolved ? x.resolved.at || 0 : 0) > lb.at) ? days : null;
   },
 };
 
@@ -2603,13 +2662,15 @@ function ImportDialog(p) {
     Store.raw.length ? el('p', { class: 'small' }, missing ? `لا يحمل ${missing} من سجلات هذا الجهاز (${Store.raw.length}) — ليس نسخة كاملة منه.` : `يحمل كل سجلات هذا الجهاز (${Store.raw.length}).`) : null,
     clash ? el('div', { class: 'alert red' }, `${clash} سجلاً بمعرّف موجود هنا ومحتوى مختلف: لن يُغيَّر شيء منها، وستظهر في «التعارضات» للمراجعة.`) : null,
     p.full ? null : el('div', { class: 'alert' }, 'هذا الملف يحمل السجلات الحيّة فقط بلا تراجعات: ما تراجعتِ عنه في الجهاز المصدِّر لا يصل تراجعه إلى هنا.'),
+    p.full && (p.conflicts || []).length ? el('p', { class: 'small' }, `وفيه ${p.conflicts.length} تعارضاً بنسختيه (${p.conflicts.filter(x => x && !x.resolved).length} مفتوحاً): تُضاف إلى «التعارضات» ما انطبقت على سجلات هنا.`) : null,
+    p.full && m.formatVersion === 2 ? el('p', { class: 'small muted' }, 'نسخة من 0.12–0.13.1: لا تحمل التعارضات ونسخها البديلة.') : null,
     p.full && p.settings.sbUrl ? el('p', { class: 'small muted' }, `وفيه إعدادات الخادم: ${p.settings.sbUrl}`) : null);
   const canRestore = p.full && Store.raw.length === 0 && p.settings.sbUrl && p.settings.sbKey;
   let bg;
-  const merge = () => { bg.remove(); try { const n = Backup.merge(p); UI.savedToast(`أُضيف ${n} سجلاً وحُفظ${Backup.lastConflicts ? ` · ${Backup.lastConflicts} تعارض في «التعارضات»` : ''}`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } };
+  const merge = () => { bg.remove(); try { const n = Backup.merge(p); UI.savedToast(`أُضيف ${n} سجلاً وحُفظ${Backup.lastConflicts ? ` · ${Backup.lastConflicts} تعارض في «التعارضات»` : ''}${Backup.lastCfImport && Backup.lastCfImport.added ? ` · ${Backup.lastCfImport.added} تعارضاً من النسخة` : ''}`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } };
   const restore = () => {
     bg.remove();
-    try { const n = Backup.restoreDevice(p); App.logout(); UI.savedToast(`استُعيد ${n} سجلاً؛ ادخلي بحسابك على الخادم لتكتمل المطابقة`); }
+    try { const n = Backup.restoreDevice(p); App.logout(); UI.savedToast(`استُعيد ${n} سجلاً${Backup.lastCfImport && Backup.lastCfImport.added ? ` و${Backup.lastCfImport.added} تعارضاً بنسختيه` : ''}؛ ادخلي بحسابك على الخادم لتكتمل المطابقة`); }
     catch (e) { UI.modal('لم تُستعد النسخة', el('p', null, e.message)); }
   };
   bg = UI.modal('استيراد ملف', body, [
@@ -2738,6 +2799,7 @@ function ConflictsCard() {
   const resolve = (x, choice) => UI.confirm(choice === 'other' ? `اعتماد نسخة ${srcName(x)} بدل نسخة هذا الجهاز لهذا المعرّف؟ يُوثَّق القرار.` : `إبقاء نسخة هذا الجهاز؟ ${x.source === 'file' ? 'لا يتغير شيء ويُوثَّق القرار.' : 'تبقى مختلفة عن الخادم، ويظهر ذلك استثناءً في تقرير المطابقة حتى تعتمدي نسخة الخادم.'}`, async () => {
     UI.toast('جارٍ حفظ القرار…');
     const ok = await Store.resolveConflict(x, choice, App.role.id);
+    if (ok === null) return; /* حُذفت بيانات الجهاز أثناء الحسم: لا ملاحظة ولا رسالة نجاح */
     if (!ok) { UI.toast('لم يُحسم التعارض: تعذّر الحفظ (' + (Store.storageError || 'الكتابة لم تثبت') + '). بقي كما كان؛ أعيدي المحاولة.'); UI.rerender(); return; }
     Store.add({ type: 'note', child: x.local.child || null, text: `حُسم تعارض المعرّف ${x.id} (${x.source}): ${choice === 'other' ? 'اعتُمدت النسخة الأخرى' : 'أُبقيت نسخة الجهاز'}` });
     UI.savedToast('حُسم التعارض'); UI.rerender();
