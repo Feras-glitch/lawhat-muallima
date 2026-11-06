@@ -54,7 +54,7 @@ async def session(fn):
     async with websockets.connect(url, max_size=None) as ws:
         p = Page(ws)
         for _ in range(60):
-            if await p.ev("!!(window.Store && Store.raw && window.UI)"):
+            if await p.ev("typeof Store !== 'undefined' && !!Store.raw && typeof UI !== 'undefined'"):
                 break
             await asyncio.sleep(0.5)
         return await fn(p)
@@ -121,7 +121,7 @@ async def main():
     sh('shell', 'input', 'keyevent', 'KEYCODE_BACK'); time.sleep(1.5)
 
     async def chooser_closed(p):
-        return await p.ev("({ ok: !!(window.Store && Store.raw), errors: UI.errors.length })")
+        return await p.ev("({ ok: typeof Store !== 'undefined' && Array.isArray(Store.raw) && document.querySelector('main') !== null, errors: UI.errors.length })")
     r = await session(chooser_closed)
     ok('إغلاق نافذة الملفات دون اختيار يعيد التطبيق سليماً', r['ok'] and r['errors'] == 0, r)
 
