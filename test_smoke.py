@@ -303,65 +303,64 @@ async def asserts():
             return {a:a.color,b:b.color,b2:c2.color,un:c2.unassigned,reason:c2.reasons.join('|')}; })()""")
         assert r['a'] == 'yellow' and r['b'] == 'green' and r['b2'] == 'green' and r['un'] == 1 and 'للمراجعة' in r['reason'], r
         # (LM071-01) رفض أثناء المزامنة يبقى ظاهراً بعد انتهائها وبعد إعادة فتح الصفحة
-        r = await page.evaluate("""(async()=>{ Store.reset(); Store.settings.syncRejected=[]; Store.saveSettings();
+        r = await page.evaluate("""(async()=>{ Store.reset(); Sync.switchTo('https://x.invalid','k'); Sync.st().needReconcile=false; Sync.st().rejected=[]; Store.settings.sbSession={sid:Sync.sid(),access_token:'t',refresh_token:'r',expires_at:Date.now()+3600e3}; Store.settings.sbRole='aya'; Store.saveSettings();
             const t0=Date.UTC(2026,10,10,2);
             const rows=[{id:'ok9',by:'aya',type:'note',child:null,inserted_at:'2026-11-10T02:00:00Z',payload:{id:'ok9',type:'note',ts:t0,day:'2026-11-10',by:'aya',text:'x'}},
                         {id:'bad9',by:'asst',type:'outcome',child:'dalal',inserted_at:'2026-11-10T02:00:01Z',payload:{id:'bad9',type:'outcome',ts:t0+1,day:'2026-11-10',by:'asst',child:'dalal',page:999,step:'far',result:'clean'}}];
-            Store.settings.sbUrl='https://x.invalid'; Store.settings.sbKey='k'; Store.settings.localMode=false; Store.settings.sbSession={access_token:'t'}; Store.saveSettings();
             const of=window.fetch; let calls=0; window.fetch=async(u,o)=>{ calls++; if(String(u).includes('/events?select=id')) return {ok:true,json:async()=>calls<3?rows:[]}; return {ok:true,json:async()=>({})}; };
             Sync.refresh=async()=>true; await Sync.run(); window.fetch=of;
-            return {rej:(Store.settings.syncRejected||[]).length, reason:(Store.settings.syncRejected||[{}])[0].reason, err:Sync.lastError, okIn:Store.events.some(e=>e.id==='ok9'), badIn:Store.raw.some(e=>e.id==='bad9')}; })()""")
+            return {rej:Sync.st().rejected.length, reason:(Sync.st().rejected[0]||{}).reason, err:Sync.lastError, okIn:Store.events.some(e=>e.id==='ok9'), badIn:Store.raw.some(e=>e.id==='bad9')}; })()""")
         assert r['rej'] == 1 and r['okIn'] and not r['badIn'] and r['err'] and 'مرفوض' in r['err'], r
         await page.reload(); await page.wait_for_timeout(500)
         txt = await page.evaluate("document.getElementById('status') ? document.getElementById('status').innerText : ''")
         assert 'مرفوض' in txt, txt
         # الدفع على مرحلتين وعزل المرفوض: الخادم يرفض الدفعة ثم يقبل كل سجل إلا واحداً
-        r = await page.evaluate("""(async()=>{ Store.reset(); Store.settings.syncRejected=[]; Store.settings.sbRole='asst'; Store.saveSettings(); App.setRole('asst');
+        r = await page.evaluate("""(async()=>{ Store.reset(); Sync.switchTo('https://x.invalid','k'); Sync.st().needReconcile=false; Sync.st().rejected=[]; Store.settings.sbSession={sid:Sync.sid(),access_token:'t',refresh_token:'r',expires_at:Date.now()+3600e3}; Store.settings.sbRole='asst'; Store.saveSettings(); App.setRole('asst');
             const a=Store.add({type:'note',child:'dalal',text:'n1'}); const b=Store.add({type:'note',child:'dalal',text:'n2'}); const u=Store.add({type:'undo',target:a.id,child:'dalal'});
             const other=Store.add({type:'note',child:'dalal',text:'n-aya',by:'aya'}); /* سجل دور آخر لا يُرفع بتوكن المساعدة */
             const posts=[]; const of=window.fetch; window.fetch=async(url,o)=>{ const s=String(url); if(o&&o.method==='POST'&&s.includes('/events?on_conflict')){ const rows=JSON.parse(o.body); posts.push(rows.map(x=>x.type)); if(rows.some(x=>x.id===b.id)) return {ok:false,status:403,json:async()=>({message:'policy'})}; return {ok:true,status:201,json:async()=>({})}; } if(s.includes('/events?select=id')) return {ok:true,json:async()=>[]}; return {ok:true,json:async()=>({})}; };
             Sync.refresh=async()=>true; await Sync.run(); window.fetch=of;
-            return { posts, aSynced: a.synced, bRej: !!b.pushRejected, uSynced: u.synced, otherSynced: other.synced, rej:(Store.settings.syncRejected||[]).map(x=>x.id), err: Sync.lastError }; })()""")
-        assert r['posts'][0] == ['note','note'] and r['posts'][-1] == ['undo'] and r['aSynced'] and r['bRej'] and r['uSynced'] and r['otherSynced'] is False and r['rej'] == [await page.evaluate("Store.raw.find(e=>e.pushRejected).id")], r
+            return { posts, aSynced: hasIn(a.sv,Sync.sid()), bRej: hasIn(b.rj,Sync.sid()), uSynced: hasIn(u.sv,Sync.sid()), otherSynced: hasIn(other.sv,Sync.sid()), rej:Sync.st().rejected.map(x=>x.id), err: Sync.lastError }; })()""")
+        assert r['posts'][0] == ['note','note'] and r['posts'][-1] == ['undo'] and r['aSynced'] and r['bRej'] and r['uSynced'] and r['otherSynced'] is False and r['rej'] == [await page.evaluate("Store.raw.find(e=>hasIn(e.rj,Sync.sid())).id")], r
         # (LM093-01) رفض دفعة ثم 503 أثناء الفحص الفردي: السجل يبقى منتظراً، ويُرفع تلقائياً بعد التعافي
-        r = await page.evaluate("""(async()=>{ Store.reset(); Store.settings.syncRejected=[]; Store.settings.sbRole='asst'; Store.saveSettings(); App.setRole('asst');
+        r = await page.evaluate("""(async()=>{ Store.reset(); Sync.switchTo('https://x.invalid','k'); Sync.st().needReconcile=false; Sync.st().rejected=[]; Store.settings.sbSession={sid:Sync.sid(),access_token:'t',refresh_token:'r',expires_at:Date.now()+3600e3}; Store.settings.sbRole='asst'; Store.saveSettings(); App.setRole('asst');
             const a=Store.add({type:'note',child:'dalal',text:'n1'}); const b=Store.add({type:'note',child:'dalal',text:'n2'});
             let down=true; const of=window.fetch; window.fetch=async(url,o)=>{ const s=String(url); if(o&&o.method==='POST'&&s.includes('/events?on_conflict')){ const rows=JSON.parse(o.body); if(rows.length>1) return {ok:false,status:403,json:async()=>({})}; if(down && rows[0].id===b.id) return {ok:false,status:503,json:async()=>({})}; return {ok:true,status:201,json:async()=>({})}; } if(s.includes('/events?select=id')) return {ok:true,json:async()=>[]}; return {ok:true,json:async()=>({})}; };
-            Sync.refresh=async()=>true; await Sync.run(); const mid={aS:a.synced,bS:b.synced,rej:(Store.settings.syncRejected||[]).length,err:Sync.lastError};
+            Sync.refresh=async()=>true; await Sync.run(); const mid={aS:hasIn(a.sv,Sync.sid()),bS:hasIn(b.sv,Sync.sid()),rej:Sync.st().rejected.length,err:Sync.lastError};
             down=false; await Sync.run(); window.fetch=of;
-            return { mid, after:{aS:a.synced,bS:b.synced,rej:(Store.settings.syncRejected||[]).length,err:Sync.lastError} }; })()""")
+            return { mid, after:{aS:hasIn(a.sv,Sync.sid()),bS:hasIn(b.sv,Sync.sid()),rej:Sync.st().rejected.length,err:Sync.lastError} }; })()""")
         assert r['mid'] == {'aS': True, 'bS': False, 'rej': 0, 'err': r['mid']['err']} and 'مؤقت' in r['mid']['err'] and r['after'] == {'aS': True, 'bS': True, 'rej': 0, 'err': None}, r
-        await page.evaluate("Store.settings.syncRejected=[]; Store.saveSettings(); App.setRole('aya');")
+        await page.evaluate("Sync.st().rejected=[]; Store.settings.sbRole='aya'; Store.saveSettings(); App.setRole('aya');")
         # (LM072-01) 101 مرفوضاً تبقى كلها بعد إعادة التحميل؛ وفشل الحفظ يوقف المؤشر
-        r = await page.evaluate("""(async()=>{ Store.settings.syncRejected=[]; Store.settings.sbCursor=null; Store.saveSettings(); const t0=Date.UTC(2026,10,10,3);
+        r = await page.evaluate("""(async()=>{ Sync.st().rejected=[]; Sync.st().cursor=null; Store.saveSettings(); const t0=Date.UTC(2026,10,10,3);
             const rows=[]; for(let i=0;i<101;i++) rows.push({id:'b'+i,by:'asst',type:'outcome',child:'dalal',inserted_at:'2026-11-10T03:00:'+String(i%60).padStart(2,'0')+'Z',payload:{id:'b'+i,type:'outcome',ts:t0+i,day:'2026-11-10',by:'asst',child:'dalal',page:999,step:'far',result:'clean'}});
             const of=window.fetch; let calls=0; window.fetch=async(u)=>{ calls++; if(String(u).includes('/events?select=id')) return {ok:true,json:async()=>calls<2?rows:[]}; return {ok:true,json:async()=>({})}; };
-            Sync.refresh=async()=>true; await Sync.run(); window.fetch=of; return (Store.settings.syncRejected||[]).length; })()""")
+            Sync.refresh=async()=>true; await Sync.run(); window.fetch=of; return Sync.st().rejected.length; })()""")
         assert r == 101, r
         await page.reload(); await page.wait_for_timeout(500)
-        assert await page.evaluate("(Store.settings.syncRejected||[]).length") == 101
-        assert await page.evaluate("(Store.settings.syncRejected||[]).every(x=>x.payload&&x.reason)")
-        r = await page.evaluate("""(async()=>{ const cur0=JSON.stringify(Store.settings.sbCursor); const t0=Date.UTC(2026,10,10,4);
+        assert await page.evaluate("Sync.st().rejected.length") == 101
+        assert await page.evaluate("Sync.st().rejected.every(x=>x.payload&&x.reason)")
+        r = await page.evaluate("""(async()=>{ const cur0=JSON.stringify(Sync.st().cursor); const t0=Date.UTC(2026,10,10,4);
             const rows=[{id:'z1',by:'asst',type:'outcome',child:'dalal',inserted_at:'2026-11-10T04:00:00Z',payload:{id:'z1',type:'outcome',ts:t0,day:'2026-11-10',by:'asst',child:'dalal',page:999,step:'far',result:'clean'}}];
             const of=window.fetch; let calls=0; window.fetch=async(u)=>{ calls++; if(String(u).includes('/events?select=id')) return {ok:true,json:async()=>calls<2?rows:[]}; return {ok:true,json:async()=>({})}; };
-            const os=Store.saveSettings; Store.saveSettings=function(){ if ((this.settings.syncRejected||[]).some(x=>x.id==='z1')) throw new Error('quota'); return os.call(this); };
+            const os=Store.saveSettings; Store.saveSettings=function(){ if ((Sync.st().rejected||[]).some(x=>x.id==='z1')) throw new Error('quota'); return os.call(this); };
             Sync.refresh=async()=>true; await Sync.run(); Store.saveSettings=os; window.fetch=of;
-            return { same: JSON.stringify(Store.settings.sbCursor)===cur0, n:(Store.settings.syncRejected||[]).length, err: Sync.lastError }; })()""")
+            return { same: JSON.stringify(Sync.st().cursor)===cur0, n:Sync.st().rejected.length, err: Sync.lastError }; })()""")
         assert r['same'] and r['n'] == 101 and 'تعذّر' in r['err'], r
         # (LM073-01) دفعة فيها مكرر (b0) وجديد (z2)، فشل حفظ ثم نجاح: القديمة كاملة والجديد مرة واحدة
         r = await page.evaluate("""(async()=>{ const t0=Date.UTC(2026,10,10,5); const mk=(id,sec)=>({id,by:'asst',type:'outcome',child:'dalal',inserted_at:'2026-11-10T05:00:'+sec+'Z',payload:{id,type:'outcome',ts:t0,day:'2026-11-10',by:'asst',child:'dalal',page:999,step:'far',result:'clean'}});
             const rows=[mk('b0','00'),mk('z2','01')];
             const run=async(fail)=>{ const of=window.fetch; let calls=0; window.fetch=async(u)=>{ calls++; if(String(u).includes('/events?select=id')) return {ok:true,json:async()=>calls<2?rows:[]}; return {ok:true,json:async()=>({})}; };
-              const os=Store.saveSettings; if(fail) Store.saveSettings=function(){ if ((this.settings.syncRejected||[]).some(x=>x.id==='z2')) throw new Error('quota'); return os.call(this); };
+              const os=Store.saveSettings; if(fail) Store.saveSettings=function(){ if ((Sync.st().rejected||[]).some(x=>x.id==='z2')) throw new Error('quota'); return os.call(this); };
               Sync.refresh=async()=>true; await Sync.run(); Store.saveSettings=os; window.fetch=of; };
-            const before=Store.settings.syncRejected.map(x=>x.id);
-            await run(true); const afterFail=Store.settings.syncRejected.map(x=>x.id);
-            await run(false); const afterOk=Store.settings.syncRejected.map(x=>x.id);
+            const before=Sync.st().rejected.map(x=>x.id);
+            await run(true); const afterFail=Sync.st().rejected.map(x=>x.id);
+            await run(false); const afterOk=Sync.st().rejected.map(x=>x.id);
             return { failSame: JSON.stringify(afterFail)===JSON.stringify(before), okLen: afterOk.length, z2: afterOk.filter(x=>x==='z2').length, b0: afterOk.filter(x=>x==='b0').length, oldKept: before.every(x=>afterOk.includes(x)) }; })()""")
         assert r == {'failSame': True, 'okLen': 102, 'z2': 1, 'b0': 1, 'oldKept': True}, r
         await page.reload(); await page.wait_for_timeout(400)
-        assert await page.evaluate("(Store.settings.syncRejected||[]).length") == 102
-        await page.evaluate("Store.settings.sbUrl=''; Store.settings.sbKey=''; Store.settings.sbSession=null; Store.settings.syncRejected=[]; Store.settings.sbCursor=null; Store.saveSettings();")
+        assert await page.evaluate("Sync.st().rejected.length") == 102
+        await page.evaluate("Store.settings.sbUrl=''; Store.settings.sbKey=''; Store.settings.sbSession=null; Store.settings.sbRole=null; Store.settings.servers={}; Store.saveSettings();")
         await page.evaluate("App.setRole('aya'); Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'dalal',page:p,layer:'far',color:'green'});")
         # --- 0.8 ---
         # (2) الباقي مستقل في البعيد لا يصبح «بانتظار الاعتماد»؛ الصفحة الجديدة تبقى كذلك

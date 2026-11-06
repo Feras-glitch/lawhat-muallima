@@ -34,8 +34,35 @@ const Store = {
         else if (lsRaw.length && !migrate.length) { try { localStorage.removeItem(LS_EVENTS); } catch (e) {} }
       } else { this.raw = lsRaw; }
     } else { this.raw = lsRaw; }
+    this.migrateV2();
     this.refresh();
   },
+  /* ترحيل 0.11 ← 0.12: حالة المزامنة لكل خادم. «مرفوع» القديم يصير «على الخادم الحالي»، والمؤشر والمرفوضات تنتقل إلى حالة ذلك الخادم،
+     وتُطلب مطابقة كاملة عند أول تزامن لتصحيح أي علامة قديمة غير دقيقة */
+  migrateV2() {
+    const s = this.settings; if (s.schema >= 2) return;
+    const id = s.sbUrl ? serverId(s.sbUrl) : null;
+    s.servers = s.servers || {};
+    if (id) {
+      const cur = typeof s.sbCursor === 'string' ? { t: s.sbCursor, id: '' } : (s.sbCursor || null);
+      s.servers[id] = Object.assign({ cursor: cur, rejected: s.syncRejected || [], since: Date.now() }, s.servers[id] || {}, { accepted: true, needReconcile: true });
+      if (s.sbSession) s.sbSession.sid = id;
+    }
+    delete s.sbCursor; delete s.syncRejected;
+    const changed = [];
+    for (const e of this.raw) {
+      if (!('synced' in e) && !('pushRejected' in e)) continue;
+      if (id && e.synced === true) { if (e.pushRejected) e.rj = [id]; else e.sv = [id]; }
+      delete e.synced; delete e.pushRejected; changed.push(e);
+    }
+    s.schema = 2;
+    if (changed.length) this.saveEvents(changed);
+    this.saveSettings();
+  },
+  /* حقول محلية لا تخرج من الجهاز (لا إلى الخادم ولا إلى ملف) */
+  LOCAL_FIELDS: ['sv', 'rj', 'synced', 'pushRejected'],
+  clean(e) { const o = Object.assign({}, e); for (const k of this.LOCAL_FIELDS) delete o[k]; return o; },
+  markOn(e, id) { if (!hasIn(e.sv, id)) e.sv = (e.sv || []).concat(id); if (hasIn(e.rj, id)) e.rj = e.rj.filter(x => x !== id); },
   /* كتابة سجلات بعينها إلى IDB */
   putMany(list) {
     if (!this.idbOk || !this.db) return Promise.resolve(false);
@@ -131,7 +158,6 @@ const Store = {
     ev.dev = this.settings.deviceId;
     const act = this.settings.active;
     if (act && act.sid && !ev.sid && ev.by === act.role && ['outcome', 'error', 'new_page', 'fluency_time', 'fluency_page', 'yellow_pass', 'card', 'note', 'tilawa', 'juz_exam'].includes(ev.type)) ev.sid = act.sid;
-    ev.synced = false;
     if (!this.validEvent(ev)) { const msg = 'سجل غير صالح لم يُحفظ: ' + ev.type; try { UI.toast(msg); } catch (x) {} throw new Error(msg); }
     if (!this.roleAllows(ev.by, ev)) { const msg = `لا يُسمح لحساب ${ROLES[ev.by] ? ROLES[ev.by].name : ev.by} بتسجيل «${ev.type}»؛ يُطلب من آية`; try { UI.toast(msg); } catch (x) {} throw new Error(msg); }
     this.raw.push(ev);
@@ -146,6 +172,7 @@ const Store = {
     if (typeof e.id !== 'string' || typeof e.type !== 'string' || typeof e.ts !== 'number' || !/^\d{4}-\d{2}-\d{2}$/.test(e.day || '')) return 'حقول أساسية ناقصة أو غير صالحة';
     if (e.by != null && !ROLES[e.by]) return 'دور غير معروف: ' + e.by;
     if (e.child != null && !CHILDREN[e.child]) return 'طفل غير معروف';
+    if (e.type !== 'undo' && e.by != null && !this.roleAllows(e.by, e) && this.validEvent(e, batch)) return `لا صلاحية لـ${ROLES[e.by].name} بتسجيل «${e.type}»`;
     if (e.type === 'undo') { const t = this.raw.find(x => x.id === e.target) || (batch || []).find(x => x && x.id === e.target); return t ? `لا صلاحية لـ${ROLES[e.by] ? ROLES[e.by].name : e.by} للتراجع عن سجل ${ROLES[t.by] ? ROLES[t.by].name : t.by}` : 'هدف التراجع غير موجود'; }
     return 'حقول النوع ' + e.type + ' غير صالحة';
   },
@@ -197,16 +224,24 @@ const Store = {
       default: return false;
     }
   },
-  importEvents(list) {
+  /* دمج سجلات (ملف أو سحب): يُضاف ما ليس موجوداً بمعرّفه ولا يُكرَّر. الحقول المحلية في الوارد تُهمل.
+     opts.server: السجلات واردة من هذا الخادم فتُعلَّم «عليه» — والموجود منها هنا يُعلَّم كذلك */
+  importEvents(list, opts = {}) {
     if (!Array.isArray(list)) throw new Error('الملف ليس قائمة أحداث');
-    const bad = list.filter(e => !this.validEvent(e, list) || !this.roleAllows(e.by, e));
+    const items = list.map(e => (e && typeof e === 'object') ? this.clean(e) : e);
+    const bad = items.filter(e => !this.validEvent(e, items) || !this.roleAllows(e.by, e));
     if (bad.length) throw new Error(`رُفض الملف كاملاً: ${bad.length} سجل غير صالح أو غير مسموح لدوره (مثال: ${JSON.stringify(bad[0]).slice(0, 80)})`);
-    const have = new Set(this.raw.map(e => e.id));
+    const have = new Map(this.raw.map(e => [e.id, e]));
     const before = this.raw.slice();
-    let n = 0; const added = [];
-    for (const e of list) if (!have.has(e.id)) { this.raw.push(e); have.add(e.id); n++; added.push(e); }
+    let n = 0; const added = [], touched = [];
+    for (const e of items) {
+      const ex = have.get(e.id);
+      if (ex) { if (opts.server && !hasIn(ex.sv, opts.server)) { this.markOn(ex, opts.server); touched.push(ex); } continue; }
+      if (opts.server) e.sv = [opts.server];
+      this.raw.push(e); have.set(e.id, e); n++; added.push(e);
+    }
     this.raw.sort((a, b) => a.ts - b.ts);
-    if (!this.saveEvents(added)) { this.raw = before; throw new Error(this.storageError); }
+    if (!this.saveEvents(added.concat(touched))) { this.raw = before; throw new Error(this.storageError); }
     this.refresh();
     return n;
   },

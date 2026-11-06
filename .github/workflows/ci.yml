@@ -26,12 +26,18 @@ jobs:
       - name: فحص الصياغة
         run: for f in src/*.js; do node --check "$f"; done
       - name: البناء
-        run: python3 build.py && test -s dist/index.html
+        run: python3 build.py && test -s dist/index.html && grep -q 'const BUILD = ' dist/index.html
       - name: تثبيت Playwright
         run: pip install playwright && python3 -m playwright install --with-deps chromium
       - name: سياسات الخادم على PostgreSQL حقيقي (33 حالة قبول/رفض)
         env: { PGHOST: localhost, PGUSER: postgres, PGPASSWORD: postgres, PGDATABASE: postgres }
         run: bash tests/sql_policy_test.sh
+      - name: تطابق الصلاحيات بين البرنامج والخادم (كل الأنواع × الأدوار + التراجعات)
+        env: { PGHOST: localhost, PGUSER: postgres, PGPASSWORD: postgres }
+        run: python3 tests/parity_test.py
+      - name: الاستعادة والخادم من طرف إلى طرف (أجهزة حقيقية + PostgreSQL بسياساته)
+        env: { PGHOST: localhost, PGUSER: postgres, PGPASSWORD: postgres }
+        run: python3 tests/restore_e2e.py
       - name: الاختبارات (السيناريو الكامل + التأكيدات)
         run: python3 test_smoke.py
       - name: اختبارات الفشل (IndexedDB حقيقي، حقن أعطال التخزين والشبكة)

@@ -1,6 +1,7 @@
 /* ===== لوحة ولي الأمر، التقارير، الإعدادات ===== */
 Views.dash = function () {
   const wrap = el('div');
+  const due = BackupReminder(); if (due) wrap.append(due);
   wrap.append(el('div', { class: 'grid2' }, CHILD_ORDER.map(c => { const h = healthOf(c); const d = h.st; return el('div', { class: 'card', style: 'margin:0;cursor:pointer', onclick: () => { App.sub.child = c; App.sub.ctab = 'summary'; App.view = 'children'; UI.rerender(); } },
     el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, CHILDREN[c].name), el('span', { class: 'light ' + h.light })),
     el('div', { class: 'kpi', style: 'margin-top:8px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? 'أخضر في الفحص' : 'لم يُفحص')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, 'أقدم صفحة (يوم)'))),
@@ -73,6 +74,7 @@ function pct(list) { if (!list.length) return '—'; return Math.round(100 * lis
 /* ===== الإعدادات ===== */
 Views.settings = function () {
   const wrap = el('div'); const s = Store.settings;
+  const due = BackupReminder(); if (due) wrap.append(due);
   wrap.append(el('div', { class: 'card' }, el('h2', null, 'الحساب'), el('p', null, `الدخول الحالي: ${App.role.title}`), el('button', { class: 'ghost', onclick: () => App.logout() }, 'خروج')));
   if (App.role.id === 'aya' || App.role.id === 'parent') {
     const inv = el('div', { class: 'card' }, el('h2', null, 'الجرد الأولي'), el('p', { class: 'small muted' }, 'يُنفَّذ مرة واحدة بعد تسميع المحفوظ الحالي. يضع الصفحات في البعيد؛ ثم تُعدَّل ألوان صفحات مفردة من خريطة المصحف.'),
@@ -86,19 +88,10 @@ Views.settings = function () {
     for (const r of Object.values(ROLES)) { const i = el('input', { value: s.pins[r.id], inputmode: 'numeric', style: 'width:120px' }); pins.append(el('div', { class: 'row', style: 'margin:6px 0' }, el('span', { style: 'min-width:110px' }, r.name), i, el('button', { onclick: () => { s.pins[r.id] = i.value; Store.saveSettings(); UI.toast('حُفظ'); } }, 'حفظ'))); }
     wrap.append(pins);
   }
-  // الخادم
-  const url = el('input', { value: s.sbUrl || '', placeholder: 'https://xxxx.supabase.co', dir: 'ltr' }); const key = el('input', { value: s.sbKey || '', placeholder: 'anon public key', dir: 'ltr' });
-  wrap.append(el('div', { class: 'card' }, el('h2', null, 'الخادم (الحسابات الثلاثة عبر الإنترنت)'), el('p', { class: 'small muted' }, 'اختياري. بدونه يعمل البرنامج محلياً على هذا الجهاز مع تبادل بالملفات. مع الخادم تتزامن الأجهزة فوراً وتعمل بلا إنترنت ثم ترفع.'),
-    label('رابط المشروع'), url, label('المفتاح العام'), key, Store.settings.localMode && Store.settings.sbUrl ? el('div', { class: 'alert' }, 'الوضع المحلي مفعّل والمزامنة متوقفة. ', el('button', { class: 'ghost small', onclick: () => { Store.settings.localMode = false; Store.saveSettings(); App.logout(); } }, 'العودة للاتصال بالخادم')) : null, el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: () => { s.sbUrl = url.value.trim(); s.sbKey = key.value.trim(); Store.saveSettings(); UI.toast('حُفظ؛ أعيدي الدخول بالبريد'); } }, 'حفظ'), el('button', { class: 'ghost', onclick: () => UI.modal('إعداد الخادم', el('div', null, el('p', { class: 'small' }, 'أنشئ مشروعاً في supabase.com، ثم نفّذ هذا في SQL Editor، ثم أنشئ المستخدمين الثلاثة وضع لكل منهم الدور في جدول profiles.'), el('pre', null, SETUP_SQL))) }, 'تعليمات الإعداد')),
-    Sync.cfg() ? el('p', { class: 'small muted' }, Sync.lastOk ? `آخر تزامن ${hhmm(new Date(Sync.lastOk))}` : 'لم يتزامن بعد', Sync.lastError ? ` · ${Sync.lastError}` : '', ' ', el('button', { class: 'ghost small', onclick: () => Sync.run() }, 'تزامن الآن')) : null));
+  // الخادم والمرفوضات
+  wrap.append(ServerCard());
+  const rejCard = RejectedCard(); if (rejCard) wrap.append(rejCard);
   // التنبيهات والتقويم
-  const rej = Store.settings.syncRejected || [];
-  const rp = App.sub.rejPage || 0; const RP = 20; const rejPages = Math.ceil(rej.length / RP);
-  if (rej.length) wrap.append(el('div', { class: 'card' }, el('h2', null, `المرفوضات من المزامنة (${rej.length})`), el('p', { class: 'small muted' }, 'سجلات وصلت من الخادم ورُفضت محلياً. تبقى هنا كلها حتى تُعالَج: إعادة محاولة (إن أصلحت الشرط) أو تجاهل موثَّق.'),
-    rejPages > 1 ? el('div', { class: 'row between' }, el('button', { class: 'ghost small', disabled: rp <= 0, onclick: () => { App.sub.rejPage = rp - 1; UI.rerender(); } }, 'السابق'), el('span', { class: 'small muted' }, `صفحة ${rp + 1} من ${rejPages}`), el('button', { class: 'ghost small', disabled: rp >= rejPages - 1, onclick: () => { App.sub.rejPage = rp + 1; UI.rerender(); } }, 'التالي')) : null,
-    rej.slice().reverse().slice(rp * RP, rp * RP + RP).map(r => el('div', { class: 'alert red' }, el('div', null, el('b', null, `${r.type} · ${ROLES[r.by] ? ROLES[r.by].name : r.by} · ${r.child && CHILDREN[r.child] ? CHILDREN[r.child].name : ''} · ${fmtDay(r.day)}`)), el('div', { class: 'small' }, r.reason), el('div', { class: 'btns' },
-      el('button', { class: 'ghost', onclick: () => { if (r.direction === 'push') { const e = Store.raw.find(x => x.id === r.id); if (e) { e.synced = false; delete e.pushRejected; Store.saveEvents([e]); } Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Sync.schedule(); UI.toast('سيُعاد رفعه'); UI.rerender(); return; } try { Store.importEvents([r.payload]); Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); UI.toast('أُدرج السجل'); } catch (e) { UI.toast('ما زال مرفوضاً: ' + e.message); } UI.rerender(); } }, 'إعادة المحاولة'),
-      el('button', { class: 'ghost', onclick: () => UI.confirm('تجاهل هذا السجل نهائياً على هذا الجهاز؟ (يبقى على الخادم)', () => { Store.settings.syncRejected = rej.filter(x => x.id !== r.id); Store.saveSettings(); Store.add({ type: 'note', child: r.child || null, text: `تجاهل سجل مرفوض من المزامنة: ${r.id} (${r.reason})` }); UI.rerender(); }) }, 'تجاهل موثَّق'))))));
   if (App.role.id !== 'parent') {
     const chk = el('input', { type: 'checkbox' }); chk.checked = Alarms.on();
     const chk2 = el('input', { type: 'checkbox' }); chk2.checked = Store.settings.endAlarm !== false;
@@ -110,17 +103,16 @@ Views.settings = function () {
       el('p', { class: 'small muted' }, 'التنبيه الداخلي يعمل ما دام البرنامج مفتوحاً على الشاشة. للتنبيه ولو كان مغلقاً: استوردي جدولك مرة واحدة في تقويم هاتفك (يرنّ قبل كل جلسة بخمس دقائق بتوقيتك المحلي).'),
       el('button', { class: 'ghost', onclick: () => downloadIcs(App.role.id) }, 'تنزيل جدولي كتقويم (.ics)')));
   }
-  // تصدير واستيراد
-  const fileIn = el('input', { type: 'file', accept: '.json' });
-  fileIn.addEventListener('change', async () => { const f = fileIn.files[0]; if (!f) return; try { const j = JSON.parse(await f.text()); const list = j.events || j; const n = Store.importEvents(list); UI.savedToast(`أُضيف ${n} سجلاً من ${list.length} وحُفظ`); UI.rerender(); } catch (e) { UI.modal('لم يُستورد الملف', el('p', null, e.message)); } });
-  wrap.append(el('div', { class: 'card' }, el('h2', null, 'تبادل البيانات بالملفات'), el('p', { class: 'small muted' }, 'صدّري ملف الأحداث وأرسليه؛ الاستيراد يضيف ما ليس موجوداً ولا يكرر.'), el('div', { class: 'btns' }, el('button', { onclick: () => { const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), by: App.role.id, events: Store.events }, null, 0)], { type: 'application/json' }); const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-${todayKey()}-${App.role.id}.json` }); document.body.append(a); a.click(); a.remove(); } }, `تصدير (${Store.events.length} سجل)`), fileIn)));
+  // النسخ الاحتياطي والاستعادة
+  wrap.append(BackupCard());
+  if (App.role.id === 'parent') wrap.append(AdminRestoreCard());
   // محاكاة الوقت
   if (App.role.id !== 'asst') {
     const off = el('input', { type: 'datetime-local' });
     if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
   }
   if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.settings.sbCursor = null; Store.settings.syncRejected = []; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
-  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, 'لوحة المعلمة · الإصدار 0.11 · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً'));
+  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, `لوحة المعلمة · الإصدار ${BUILD.version} (${BUILD.commit}) · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً`));
   return wrap;
 };
 

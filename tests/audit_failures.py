@@ -75,15 +75,15 @@ async def main():
         pg, errs = await fresh()
         rows = [{'id': 'early', 'by': 'aya', 'type': 'note', 'child': None, 'inserted_at': '2026-11-05T00:00:00Z', 'payload': {'ts': 1, 'day': '2026-11-05', 'text': 'a'}},
                 {'id': 'late', 'by': 'aya', 'type': 'note', 'child': None, 'inserted_at': '2026-11-05T01:00:00Z', 'payload': {'ts': 2, 'day': '2026-11-05', 'text': 'b'}}]
-        MOCK = "(rows) => { Store.settings.sbUrl = 'https://mock.invalid'; Store.settings.sbKey = 'x'; Store.settings.sbRole = 'aya'; Store.settings.localMode = false; Store.settings.sbSession = { access_token: 't' }; Sync.refresh = async () => true; window.__pulls = 0; window.fetch = async (u, o) => { if (o && o.method === 'POST') return { ok: true, status: 201, json: async () => ({}) }; window.__pulls++; const or = new URL(u).searchParams.get('or'); const tm = or.match(/inserted_at.gt.([^,]+)/)[1], id = (or.match(/id.gt.([^)]*)/) || [])[1] || ''; return { ok: true, json: async () => rows.filter(r => Date.parse(r.inserted_at) > Date.parse(tm) || (Date.parse(r.inserted_at) === Date.parse(tm) && r.id > id)).slice(0, 1000) }; }; }"
+        MOCK = "(rows) => { Sync.switchTo('https://mock.invalid', 'x'); Sync.st().needReconcile = false; Store.settings.sbRole = 'aya'; Store.settings.sbSession = { sid: Sync.sid(), access_token: 't' }; Store.saveSettings(); Sync.refresh = async () => true; window.__pulls = 0; window.fetch = async (u, o) => { if (o && o.method === 'POST') return { ok: true, status: 201, json: async () => ({}) }; const or = new URL(u).searchParams.get('or'); if (!or) return { ok: true, headers: { get: () => null }, json: async () => [] }; window.__pulls++; const tm = or.match(/inserted_at.gt.([^,]+)/)[1], id = (or.match(/id.gt.([^)]*)/) || [])[1] || ''; return { ok: true, json: async () => rows.filter(r => Date.parse(r.inserted_at) > Date.parse(tm) || (Date.parse(r.inserted_at) === Date.parse(tm) && r.id > id)).slice(0, 1000) }; }; }"
         await pg.evaluate(f"({MOCK})({json.dumps(rows)})")
         await pg.evaluate(FAIL_STORAGE)
-        r = await pg.evaluate("(async () => { await Sync.run(); return { n: Store.raw.length, cur: Store.settings.sbCursor || null, err: Sync.lastError }; })()")
+        r = await pg.evaluate("(async () => { await Sync.run(); return { n: Store.raw.length, cur: Sync.st().cursor || null, err: Sync.lastError }; })()")
         ok('03 فشل الحفظ: المؤشر لا يتقدم والخطأ معلن', r['cur'] is None and r['err'] and 'لن يتقدم المؤشر' in r['err'], r)
         await pg.evaluate(RESTORE)
         await reload(pg)
         await pg.evaluate(f"({MOCK})({json.dumps(rows)})")
-        r = await pg.evaluate("(async () => { const before = Store.raw.length; await Sync.run(); return { before, n: Store.raw.map(e => e.id).sort(), cur: Store.settings.sbCursor, err: Sync.lastError }; })()")
+        r = await pg.evaluate("(async () => { const before = Store.raw.length; await Sync.run(); return { before, n: Store.raw.map(e => e.id).sort(), cur: Sync.st().cursor, err: Sync.lastError }; })()")
         ok('03 بعد التعافي يصل الجميع دون ضبط يدوي', r['n'] == ['early', 'late'] and r['cur']['id'] == 'late' and r['err'] is None, r)
 
         # 04: أكثر من 1000 سجل بتوقيت واحد، وأكثر من صفحة داخل 5 ثوانٍ
@@ -91,7 +91,7 @@ async def main():
         rows = [{'id': 'r%04d' % i, 'by': 'aya', 'type': 'note', 'child': None, 'inserted_at': '2026-11-05T00:00:00Z', 'payload': {'ts': i + 1, 'day': '2026-11-05', 'text': 't'}} for i in range(1001)]
         rows += [{'id': 's%04d' % i, 'by': 'aya', 'type': 'note', 'child': None, 'inserted_at': '2026-11-05T00:00:0%d.%03dZ' % (1 + i // 1000, i % 1000), 'payload': {'ts': 5000 + i, 'day': '2026-11-05', 'text': 't'}} for i in range(2500)]
         await pg.evaluate(f"({MOCK})({json.dumps(rows)})")
-        r = await pg.evaluate("(async () => { await Sync.run(); const first = { n: Store.raw.length, pulls: window.__pulls, err: Sync.lastError }; window.__pulls = 0; await Sync.run(); return { first, second: { n: Store.raw.length, pulls: window.__pulls, err: Sync.lastError }, cur: Store.settings.sbCursor }; })()")
+        r = await pg.evaluate("(async () => { await Sync.run(); const first = { n: Store.raw.length, pulls: window.__pulls, err: Sync.lastError }; window.__pulls = 0; await Sync.run(); return { first, second: { n: Store.raw.length, pulls: window.__pulls, err: Sync.lastError }, cur: Sync.st().cursor }; })()")
         ok('04 كل 3501 سجل تصل في جولة واحدة دون خطأ', r['first']['n'] == 3501 and r['first']['err'] is None and r['first']['pulls'] <= 6, r)
         ok('04 الجولة التالية بلا جديد: لا تكرار ولا خطأ (تعيد فقط نافذة الثواني الخمس)', r['second']['n'] == 3501 and r['second']['err'] is None and r['second']['pulls'] <= r['first']['pulls'] and r['cur']['id'] == 's2499', r)
         rows2 = [{'id': 'z%05d' % i, 'by': 'aya', 'type': 'note', 'child': None, 'inserted_at': '2026-11-06T00:00:00Z', 'payload': {'ts': 9000 + i, 'day': '2026-11-06', 'text': 't'}} for i in range(51000)]

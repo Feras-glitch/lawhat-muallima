@@ -3,7 +3,7 @@ const App = {
   role: null, view: 'now', sub: {}, timeOffset: 0,
   realNow() { return new Date(Date.now() + (Store.settings.timeOffset || 0)); },
   now() { return wallClock(this.realNow()); },
-  setRole(r) { this.role = ROLES[r]; sessionStorage.setItem(LS_SESSION, r); this.view = r === 'parent' ? 'dash' : 'now'; Alarms.unlock(); UI.rerender(); },
+  setRole(r) { this.role = ROLES[r]; sessionStorage.setItem(LS_SESSION, r); this.view = r === 'parent' ? 'dash' : 'now'; Alarms.unlock(); UI.rerender(); Persist.auto(); },
   logout() { this.role = null; sessionStorage.removeItem(LS_SESSION); if (Sync.cfg()) Sync.logout(); UI.rerender(); },
   can(perm) { return !!(this.role && this.role[perm]); },
 };
@@ -24,7 +24,7 @@ const UI = {
     this.root = document.getElementById('app');
     const saved = sessionStorage.getItem(LS_SESSION);
     if (saved && ROLES[saved]) { App.role = ROLES[saved]; App.view = saved === 'parent' ? 'dash' : 'now'; }
-    if (Sync.cfg() && Store.settings.sbRole && Store.settings.sbSession) { App.role = ROLES[Store.settings.sbRole]; if (!saved) App.view = App.role.id === 'parent' ? 'dash' : 'now'; }
+    if (Sync.role()) { App.role = ROLES[Sync.role()]; if (!saved) App.view = App.role.id === 'parent' ? 'dash' : 'now'; }
     this.rerender();
     setInterval(() => { const ae = document.activeElement; const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT'); if (App.view === 'now' && App.role && !document.querySelector('.modal-bg') && !typing) this.rerender(true); }, 30000);
     setInterval(() => Alarms.tick(), 15000);
@@ -52,13 +52,15 @@ const UI = {
     if (Store.storageError) return [el('span', { class: 'dot bad' }), Store.storageError + m];
     if (Store.idbOk && Store.dirty.size) return [el('span', { class: 'dot off' }), `جارٍ الحفظ… (${Store.dirty.size})` + m];
     if (!Store.idbOk) { const used = (localStorage.getItem('lm_events_v1') || '').length / 1048576; if (used > 2.5) return [el('span', { class: 'dot bad' }), `تخزين محدود (${used.toFixed(1)} من 5 م.ب) — افتحي البرنامج من الرابط لا من الملف` + m]; }
-    const rejN = (Store.settings.syncRejected || []).length; if (rejN) return [el('span', { class: 'dot bad' }), `${rejN} سجل مرفوض من المزامنة — الإعدادات` + m];
+    const st = Sync.st(); const rejN = st ? st.rejected.length : 0; if (rejN) return [el('span', { class: 'dot bad' }), `${rejN} سجل مرفوض من المزامنة — الإعدادات` + m];
     if (Store.settings.localMode && Store.settings.sbUrl) return [el('span', { class: 'dot off' }), 'وضع محلي — المزامنة متوقفة (الإعدادات ← الخادم ← العودة للاتصال)' + m];
     if (!Sync.cfg()) return [el('span', { class: 'dot' }), 'حُفظ على الجهاز' + m];
     if (!navigator.onLine) return [el('span', { class: 'dot off' }), 'بلا إنترنت، سيُرفع لاحقاً'];
     if (Sync.lastError) return [el('span', { class: 'dot bad' }), Sync.lastError];
-    const pend = Store.raw.filter(e => !e.synced).length;
-    return [el('span', { class: 'dot ok' }), (pend ? `حُفظ على الجهاز · ${pend} بانتظار الرفع` : 'تمت المزامنة') + m];
+    const k = Sync.counts();
+    if (k.ownPending) return [el('span', { class: 'dot ok' }), `حُفظ على الجهاز · ${k.ownPending} بانتظار الرفع` + m];
+    if (k.othersTotal) return [el('span', { class: 'dot off' }), `تمت مزامنة سجلاتك · ${k.othersTotal} لأدوار أخرى ليست على الخادم (الإعدادات ← الخادم)` + m];
+    return [el('span', { class: 'dot ok' }), 'تمت المزامنة' + m];
   },
   /* رسالة نجاح لا تظهر إلا بعد ثبوت الحفظ؛ وإلا رسالة الفشل */
   savedToast(msg) { Store.durable().then(ok => this.toast(ok ? msg : 'لم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ'))); },
@@ -117,7 +119,7 @@ const Alarms = {
 
 /* ===== الدخول ===== */
 Views.login = function () {
-  const online = !!Sync.cfg() && !Store.settings.localMode;
+  const online = !!Sync.cfg();
   const wrap = el('div', { class: 'login' });
   wrap.append(el('h1', { style: 'color:var(--brand);margin-bottom:4px' }, 'لوحة المعلمة'), el('p', { class: 'muted' }, 'برنامج حفظ القرآن وتدبره — دلال وفرح وكريم'));
   if (online) {
