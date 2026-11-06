@@ -24,13 +24,14 @@ const Backup = {
       settings, events, conflicts,
     };
   },
-  download() {
+  /* onSaved: بعد كتابة الملف (في التطبيق: بعد اختيار المكان والكتابة فعلاً؛ في المتصفح: فور بدء التنزيل). «آخر نسخة» لا تُسجَّل قبله */
+  download(onSaved) {
     const b = this.build();
-    const blob = new Blob([JSON.stringify(b)], { type: 'application/json' });
-    const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-backup-${todayKey()}-${b.role || 'x'}.json` });
-    document.body.append(a); a.click(); a.remove();
-    Store.settings.lastBackup = { at: Date.now(), count: b.counts.all };
-    Store.saveSettings();
+    AppShell.saveFile(`lawhat-backup-${todayKey()}-${b.role || 'x'}.json`, 'application/json', JSON.stringify(b), () => {
+      Store.settings.lastBackup = { at: Date.now(), count: b.counts.all };
+      Store.saveSettings();
+      if (onSaved) onSaved(b);
+    });
     return b;
   },
   /* النسخة الكاملة (0.12+) أو ملف قديم (سجلات حيّة فقط بلا تراجعات) */
@@ -91,6 +92,7 @@ const Persist = {
   async auto() { if ((await this.check()) === 'denied' && !Store.settings.persistAsked) await this.request(); },
   standalone() { return !!((window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone); },
   text() {
+    if (AppShell.inApp()) return 'داخل تطبيق أندرويد: البيانات في مساحة التطبيق الخاصة على الجهاز، تبقى ما لم يُلغَ تثبيت التطبيق أو تُمسح بياناته من إعدادات أندرويد. لا يغني ذلك عن تصدير نسخة كاملة.';
     const inst = this.standalone() ? 'البرنامج مثبّت على الشاشة الرئيسية' : 'البرنامج مفتوح في المتصفح (على iPhone ثبّتيه على الشاشة الرئيسية)';
     const st = { granted: 'التخزين الدائم ممنوح', denied: 'التخزين الدائم غير ممنوح — المتصفح قد يمحو البيانات عند ضيق المساحة', unsupported: 'التخزين الدائم غير مدعوم في هذا المتصفح', unknown: 'التخزين الدائم: لم يُفحص' }[this.state];
     return `${st} · ${inst}`;
@@ -165,20 +167,51 @@ begin
   end loop;
 `;
   },
-  download(text, k, total) {
-    const blob = new Blob([text], { type: 'application/sql' });
-    const a = el('a', { href: URL.createObjectURL(blob), download: `lawhat-restore-${todayKey()}-${k}-of-${total}.sql` });
-    document.body.append(a); a.click(); a.remove();
-  },
+  download(text, k, total) { AppShell.saveFile(`lawhat-restore-${todayKey()}-${k}-of-${total}.sql`, 'application/sql', text); },
 };
 
 /* ===== الواجهات ===== */
 function roleName(r) { return ROLES[r] ? ROLES[r].name : (r || 'غير معروف'); }
 
+/* ===== تحديث تطبيق أندرويد: فحص آخر إصدار منشور على GitHub مرة في اليوم (داخل التطبيق فقط)، والتنزيل يفتح المتصفح.
+   تثبيت التحديث فوق التطبيق يحتفظ بالبيانات (التوقيع نفسه)؛ إلغاء التثبيت يمحوها ===== */
+const AppUpdate = {
+  api: 'https://api.github.com/repos/Feras-glitch/lawhat-muallima/releases/latest',
+  apk: 'https://github.com/Feras-glitch/lawhat-muallima/releases/latest/download/lawhat-muallima.apk',
+  newer(a, b) { const p = v => String(v || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0); const x = p(a), y = p(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; },
+  latest() { const u = Store.settings.updateCheck; return u && u.v ? u.v : null; },
+  available() { const v = this.latest(); return AppShell.inApp() && !AppShell.preview() && v && this.newer(v, BUILD.version) ? v : null; },
+  async check(force) {
+    if (!AppShell.inApp() || AppShell.preview()) return null;
+    const u = Store.settings.updateCheck;
+    if (!force && u && Date.now() - u.at < 864e5) return u.v;
+    try {
+      const r = await fetch(this.api, { headers: { Accept: 'application/vnd.github+json' } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json(); const v = String(j.tag_name || '').replace(/^v/, '');
+      Store.settings.updateCheck = { at: Date.now(), v }; Store.saveSettings(); return v;
+    } catch (e) { this.error = e.message; return null; }
+  },
+};
+function AppUpdateBanner() {
+  if (AppShell.preview()) return el('div', { class: 'alert red' }, el('b', null, 'نسخة معاينة للتجربة. '), 'تطبيق منفصل بمفتاح مؤقت: لا تسجّلي فيه بيانات حقيقية. النسخة الدائمة «لوحة المعلمة» تُثبَّت بجانبه، وبياناتها منفصلة عنه.');
+  const v = AppUpdate.available(); if (!v) return null;
+  return el('div', { class: 'alert' }, `يتوفر إصدار أحدث من التطبيق (${v}). `, el('button', { class: 'ghost small', onclick: () => AppShell.openExternal(AppUpdate.apk) }, 'تنزيل التحديث'), el('div', { class: 'small muted' }, 'ثبّتيه فوق التطبيق الحالي فتبقى البيانات. لا تلغي تثبيت القديم أولاً: إلغاء التثبيت يمحو بيانات الجهاز.'));
+}
+function AppCard() {
+  if (!AppShell.inApp()) return null;
+  const line = el('p', { class: 'small' }, AppUpdate.available() ? `يتوفر الإصدار ${AppUpdate.available()}.` : (AppUpdate.latest() ? `آخر إصدار منشور: ${AppUpdate.latest()} — هذا هو الأحدث.` : 'لم يُفحص وجود تحديث بعد.'));
+  return el('div', { class: 'card' }, el('h2', null, 'تطبيق أندرويد'),
+    el('p', { class: 'small muted' }, `الواجهة ${BUILD.version} (${BUILD.commit}) · التطبيق ${AppShell.version() || '—'}`), line,
+    el('div', { class: 'btns' },
+      el('button', { class: 'ghost', onclick: async () => { UI.toast('جارٍ الفحص…'); const v = await AppUpdate.check(true); UI.toast(v ? (AppUpdate.available() ? `يتوفر ${v}` : 'التطبيق محدَّث') : 'تعذّر الفحص: ' + (AppUpdate.error || 'لا اتصال')); UI.rerender(); } }, 'التحقق من وجود تحديث'),
+      AppUpdate.available() ? el('button', { class: 'primary', onclick: () => AppShell.openExternal(AppUpdate.apk) }, 'تنزيل التحديث') : null),
+    el('p', { class: 'small muted' }, 'التحديث يُثبَّت فوق التطبيق فتبقى البيانات. إلغاء تثبيت التطبيق أو مسح بياناته من إعدادات أندرويد يمحو كل ما على الجهاز: صدّري نسخة كاملة قبل أي من ذلك.'));
+}
 function BackupReminder() {
   const d = Backup.overdue(); if (d == null) return null;
   return el('div', { class: 'alert' }, d === Infinity ? 'لم تُصدَّر نسخة احتياطية من هذا الجهاز بعد. ' : `آخر نسخة احتياطية من هذا الجهاز قبل ${d} يوماً. `,
-    el('button', { class: 'ghost small', onclick: () => { Backup.download(); UI.toast('صُدّرت النسخة'); UI.rerender(); } }, 'تصدير نسخة كاملة الآن'));
+    el('button', { class: 'ghost small', onclick: () => Backup.download(() => { UI.toast('صُدّرت النسخة'); UI.rerender(); }) }, 'تصدير نسخة كاملة الآن'));
 }
 
 function BackupCard() {
@@ -197,7 +230,7 @@ function BackupCard() {
     el('p', { class: 'small' + (Store.idbOk ? ' muted' : '') }, Store.idbOk ? 'التخزين: قاعدة الجهاز (IndexedDB).' : '⚠ التخزين البديل (localStorage): تعذّر فتح قاعدة الجهاز، والسعة محدودة (~5 م.ب). صدّري نسخة كاملة، وأغلقي التبويبات الأخرى ثم أعيدي التحميل.'),
     persistLine,
     el('div', { class: 'btns' },
-      el('button', { class: 'primary', onclick: () => { Backup.download(); UI.toast('صُدّرت النسخة'); UI.rerender(); } }, `تصدير نسخة كاملة (${Store.raw.length} سجل)`),
+      el('button', { class: 'primary', onclick: () => Backup.download(() => { UI.toast('صُدّرت النسخة'); UI.rerender(); }) }, `تصدير نسخة كاملة (${Store.raw.length} سجل)`),
       Persist.state !== 'granted' ? el('button', { class: 'ghost', onclick: async () => { await Persist.request(); UI.toast(Persist.text()); UI.rerender(); } }, 'طلب التخزين الدائم') : null),
     label('استيراد ملف (دمج، أو استعادة جهاز فارغ)'), fileIn);
 }
@@ -326,7 +359,7 @@ function ServerSwitchDialog(u, k) {
   const separate = () => {
     bg.remove();
     let b2;
-    const exp = el('button', { onclick: () => { Backup.download(); wipe.disabled = false; UI.toast('صُدّرت النسخة'); } }, 'تصدير نسخة كاملة أولاً');
+    const exp = el('button', { onclick: () => Backup.download(() => { wipe.disabled = false; UI.toast('صُدّرت النسخة'); }) }, 'تصدير نسخة كاملة أولاً');
     const wipe = el('button', { class: 'danger', disabled: true, onclick: () => UI.confirm(`حذف ${Store.raw.length} سجلاً من هذا الجهاز ثم الاتصال بالخادم الجديد؟ لا يمس أي خادم.`, async () => {
       b2.remove(); const ok = await Store.reset(); Store.settings.active = null; Store.saveSettings();
       if (!ok) { UI.toast('تعذّر الحذف الكامل؛ لم يتصل الجهاز'); return; }

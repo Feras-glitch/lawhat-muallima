@@ -1,0 +1,139 @@
+name: تطبيق أندرويد (APK)
+
+# يبني APK من الواجهة نفسها (dist/index.html) عند كل تغيير لها أو للغلاف.
+# التوقيع الدائم: سر المستودع ANDROID_KEY_PASSPHRASE (يضعه صاحب المستودع من الإعدادات، ولا يمر بأي محادثة).
+#   أول بناء به يُنشئ مفتاحاً ويحفظه مشفّراً بالسر في android/keystore.p12.enc، وكل بناء بعده يوقّع به
+#   فيُثبَّت التحديث فوق التطبيق وتبقى البيانات.
+# بلا السر: نسخة «معاينة» فقط — تطبيق منفصل بمفتاح مؤقت يُثبَّت بجانب الدائم ولا يُعتمد عليه.
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', 'dist/index.html', 'VERSION', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      KEY_PASSPHRASE: ${{ secrets.ANDROID_KEY_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+
+      - name: الواجهة داخل التطبيق
+        run: |
+          mkdir -p android/app/src/main/assets
+          cp dist/index.html android/app/src/main/assets/index.html
+          grep -o "const BUILD = {[^}]*}" dist/index.html
+
+      - name: مفتاح التوقيع
+        id: key
+        run: |
+          set -e
+          if [ -n "$KEY_PASSPHRASE" ]; then
+            if [ -f android/keystore.p12.enc ]; then
+              openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in android/keystore.p12.enc -out android/release.p12 -pass env:KEY_PASSPHRASE
+            else
+              keytool -genkeypair -storetype PKCS12 -keystore android/release.p12 -alias lawhat -keyalg RSA -keysize 4096 -validity 36500 \
+                -storepass "$KEY_PASSPHRASE" -keypass "$KEY_PASSPHRASE" -dname "CN=Lawhat Muallima, O=Feras, C=EG"
+              openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -in android/release.p12 -out android/keystore.p12.enc -pass env:KEY_PASSPHRASE
+              echo "new=1" >> "$GITHUB_OUTPUT"
+            fi
+            echo "KS_PASS=$KEY_PASSPHRASE" >> "$GITHUB_ENV"
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+          else
+            P=$(openssl rand -hex 16)
+            keytool -genkeypair -storetype PKCS12 -keystore android/release.p12 -alias lawhat -keyalg RSA -keysize 2048 -validity 3650 \
+              -storepass "$P" -keypass "$P" -dname "CN=Lawhat Muallima Preview, C=EG"
+            echo "::add-mask::$P"
+            echo "KS_PASS=$P" >> "$GITHUB_ENV"
+            echo "mode=preview" >> "$GITHUB_OUTPUT"
+            echo "::warning::لا سر ANDROID_KEY_PASSPHRASE: بُنيت نسخة معاينة فقط (تطبيق منفصل بمفتاح مؤقت)."
+          fi
+
+      - name: البناء
+        run: gradle -p android assembleRelease --no-daemon --stacktrace -Ppreview=${{ steps.key.outputs.mode == 'preview' }}
+
+      - name: إزالة المفتاح المفكوك من القرص
+        if: always()
+        run: rm -f android/release.p12
+
+      - name: التحقق من التوقيع والمحتوى
+        run: |
+          set -e
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          "$BT"/zipalign -c -P 16 4 "$APK" || "$BT"/zipalign -c 4 "$APK"
+          "$BT"/apksigner verify --verbose --print-certs "$APK" | tee verify.txt
+          "$BT"/aapt2 dump badging "$APK" | head -5
+          unzip -p "$APK" assets/index.html | cmp - dist/index.html && echo "الواجهة داخل APK مطابقة لـ dist/index.html"
+
+      - name: حفظ المفتاح المشفّر (أول مرة فقط)
+        if: steps.key.outputs.new == '1'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/keystore.p12.enc
+          git commit -m "أندرويد: مفتاح التوقيع الدائم (مشفّر بسر المستودع) [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: تجهيز الملفات
+        id: out
+        run: |
+          V=$(cat VERSION)
+          mkdir -p out
+          if [ "${{ steps.key.outputs.mode }}" = "release" ]; then N=lawhat-muallima; else N=lawhat-muallima-preview; fi
+          cp android/app/build/outputs/apk/release/app-release.apk "out/$N.apk"
+          cp "out/$N.apk" "out/$N-$V.apk"
+          (cd out && sha256sum *.apk > SHA256SUMS.txt)
+          cp verify.txt out/signature.txt
+          echo "v=$V" >> "$GITHUB_OUTPUT"; echo "n=$N" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.out.outputs.n }}-${{ steps.out.outputs.v }}
+          path: out/
+
+      - name: النشر (إصدار GitHub)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.out.outputs.v }}
+          N: ${{ steps.out.outputs.n }}
+        run: |
+          set -e
+          if [ "${{ steps.key.outputs.mode }}" = "release" ]; then
+            TAG="v$V"
+            gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "لوحة المعلمة $V" --target "$GITHUB_SHA" \
+              --notes "تطبيق أندرويد (هاتف وتابلت). ثبّتي $N.apk؛ التحديث يُثبَّت فوق التطبيق وتبقى البيانات. لا تلغي التثبيت قبل التحديث: إلغاء التثبيت يمحو بيانات الجهاز."
+            gh release upload "$TAG" "out/$N.apk" "out/$N-$V.apk" out/SHA256SUMS.txt --clobber
+            gh release edit "$TAG" --latest
+          else
+            gh release view preview >/dev/null 2>&1 || gh release create preview --prerelease --title "معاينة لوحة المعلمة" --target "$GITHUB_SHA" \
+              --notes "نسخة معاينة للتجربة: تطبيق منفصل «لوحة المعلمة (معاينة)» بمفتاح مؤقت. لا تُسجَّل فيه بيانات حقيقية."
+            gh release upload preview "out/$N.apk" "out/$N-$V.apk" out/SHA256SUMS.txt --clobber
+          fi
+
+      - name: نسخة في فرع apk-builds (للتنزيل عبر git)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          rm -rf /tmp/apkb && mkdir -p /tmp/apkb && cp out/* /tmp/apkb/ && cd /tmp/apkb
+          git init -q -b apk-builds
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add *.apk *.txt
+          git commit -q -m "APK ${{ steps.out.outputs.v }} (${{ steps.key.outputs.mode }}) من $GITHUB_SHA"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:apk-builds

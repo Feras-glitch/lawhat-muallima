@@ -3,9 +3,42 @@ const App = {
   role: null, view: 'now', sub: {}, timeOffset: 0,
   realNow() { return new Date(Date.now() + (Store.settings.timeOffset || 0)); },
   now() { return wallClock(this.realNow()); },
-  setRole(r) { this.role = ROLES[r]; sessionStorage.setItem(LS_SESSION, r); this.view = r === 'parent' ? 'dash' : 'now'; Alarms.unlock(); UI.rerender(); Persist.auto(); },
+  setRole(r) { this.role = ROLES[r]; sessionStorage.setItem(LS_SESSION, r); this.view = r === 'parent' ? 'dash' : 'now'; Alarms.unlock(); UI.rerender(); Persist.auto(); if (AppShell.inApp()) AppUpdate.check().then(v => { if (v && AppUpdate.available()) UI.rerender(); }); },
   logout() { this.role = null; sessionStorage.removeItem(LS_SESSION); if (Sync.cfg()) Sync.logout(); UI.rerender(); },
   can(perm) { return !!(this.role && this.role[perm]); },
+};
+
+/* ===== داخل تطبيق أندرويد (غلاف WebView): جسر LawhatAndroid للحفظ والنسخ وفتح الروابط، وزر الرجوع ===== */
+const AppShell = {
+  inApp() { return !!(window.LawhatAndroid && typeof window.LawhatAndroid.saveFile === 'function'); },
+  version() { try { return this.inApp() && window.LawhatAndroid.appVersion ? String(window.LawhatAndroid.appVersion()) : null; } catch (e) { return null; } },
+  preview() { try { return this.inApp() && !!(window.LawhatAndroid.isPreview && window.LawhatAndroid.isPreview()); } catch (e) { return false; } },
+  pending: {}, seq: 0,
+  /* حفظ ملف: في المتصفح تنزيل مباشر (لا يُعرف إن أُلغي)؛ في التطبيق نافذة «حفظ باسم» من النظام، وonSaved لا يُستدعى إلا بعد كتابة الملف فعلاً */
+  saveFile(name, mime, text, onSaved) {
+    if (this.inApp()) {
+      const id = 'f' + (++this.seq); this.pending[id] = { name, onSaved };
+      try { window.LawhatAndroid.saveFile(id, name, mime, text); } catch (e) { delete this.pending[id]; UI.toast('تعذّر فتح نافذة الحفظ: ' + e.message); }
+      return;
+    }
+    const a = el('a', { href: URL.createObjectURL(new Blob([text], { type: mime })), download: name });
+    document.body.append(a); a.click(); a.remove();
+    if (onSaved) onSaved();
+  },
+  openExternal(url) { if (this.inApp() && window.LawhatAndroid.openExternal) window.LawhatAndroid.openExternal(url); else window.open(url, '_blank', 'noopener'); },
+};
+window.LM_fileSaved = (id, ok, err) => {
+  const p = AppShell.pending[id]; delete AppShell.pending[id]; if (!p) return;
+  if (ok) { UI.toast('حُفظ الملف: ' + p.name); if (p.onSaved) guardHandler(p.onSaved)(); }
+  else UI.toast(err ? 'لم يُحفظ الملف: ' + err : 'أُلغي الحفظ — لم يُكتب الملف');
+};
+/* زر الرجوع في التطبيق: يغلق النافذة المفتوحة، ثم يعود إلى الشاشة الرئيسية للدور؛ وإلا يُترك للتطبيق (رجوع مرتين للخروج) */
+window.LM_back = () => {
+  const ms = document.querySelectorAll('.modal-bg'); if (ms.length) { ms[ms.length - 1].remove(); return true; }
+  if (!App.role) return false;
+  const home = App.role.id === 'parent' ? 'dash' : 'now';
+  if (App.view !== home) { App.view = home; App.sub = {}; UI.rerender(); return true; }
+  return false;
 };
 
 /* كل فعل من أفعال الواجهة: خطأ متزامن أو وعد مرفوض يظهر رسالةً ويُسجَّل في UI.errors، ولا يبقى خطأً غير معالج */
@@ -193,6 +226,9 @@ Views.login = function () {
 function label(t) { return el('label', null, t); }
 /* نسخ نص: «نُسخت» فقط إن نجح النسخ فعلاً؛ وإلا نافذة بالنص محدداً للنسخ اليدوي (المتصفح قد يمنع الحافظة) */
 async function copyText(text) {
-  try { if (!navigator.clipboard) throw new Error('no clipboard'); await navigator.clipboard.writeText(text); UI.toast('نُسخت'); }
+  try {
+    if (AppShell.inApp() && window.LawhatAndroid.copy) { if (!window.LawhatAndroid.copy(text)) throw new Error('copy'); UI.toast('نُسخت'); return; }
+    if (!navigator.clipboard) throw new Error('no clipboard'); await navigator.clipboard.writeText(text); UI.toast('نُسخت');
+  }
   catch (e) { const t = el('textarea', { style: 'min-height:200px' }, text); UI.modal('انسخي النص', el('div', null, el('p', { class: 'small muted' }, 'منع المتصفح النسخ التلقائي: النص محدد، انسخيه يدوياً.'), t)); t.focus(); t.select(); }
 }

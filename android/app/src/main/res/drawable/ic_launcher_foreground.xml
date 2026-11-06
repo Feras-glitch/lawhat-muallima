@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- مصحف مفتوح بسيط على أرضية خضراء (108×108، المنطقة الآمنة 66×66 في الوسط) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M54,40 C47,35 38,34 30,36 L30,72 C38,70 47,71 54,76 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M54,40 C61,35 70,34 78,36 L78,72 C70,70 61,71 54,76 Z" />
+    <path android:fillColor="#1f6f5f" android:pathData="M53,40 L55,40 L55,76 L53,76 Z" />
+    <path android:fillColor="#E0A800" android:pathData="M36,46 L48,47 L48,49 L36,48 Z M36,52 L48,53 L48,55 L36,54 Z M36,58 L48,59 L48,61 L36,60 Z M60,47 L72,46 L72,48 L60,49 Z M60,53 L72,52 L72,54 L60,55 Z M60,59 L72,58 L72,60 L60,61 Z" />
+</vector>

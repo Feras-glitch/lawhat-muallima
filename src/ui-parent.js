@@ -2,6 +2,7 @@
 Views.dash = function () {
   const wrap = el('div');
   const due = BackupReminder(); if (due) wrap.append(due);
+  const upd = AppUpdateBanner(); if (upd) wrap.append(upd);
   wrap.append(el('div', { class: 'grid2' }, CHILD_ORDER.map(c => { const h = healthOf(c); const d = h.st; return el('div', { class: 'card', style: 'margin:0;cursor:pointer', onclick: () => { App.sub.child = c; App.sub.ctab = 'summary'; App.view = 'children'; UI.rerender(); } },
     el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, CHILDREN[c].name), el('span', { class: 'light ' + h.light })),
     el('div', { class: 'kpi', style: 'margin-top:8px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? 'أخضر في الفحص' : 'لم يُفحص')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, 'أقدم صفحة (يوم)'))),
@@ -79,6 +80,7 @@ function pct(list) { const x = outcomeStats(list); return x.pct == null ? '—' 
 Views.settings = function () {
   const wrap = el('div'); const s = Store.settings;
   const due = BackupReminder(); if (due) wrap.append(due);
+  const upd = AppUpdateBanner(); if (upd) wrap.append(upd);
   wrap.append(el('div', { class: 'card' }, el('h2', null, 'الحساب'), el('p', null, `الدخول الحالي: ${App.role.title}`), el('button', { class: 'ghost', onclick: () => App.logout() }, 'خروج')));
   if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الجرد الأولي'), el('p', { class: 'small muted' }, 'تنفذه آية من حسابها بعد تسميع المحفوظ الحالي (وضع الصفحات في البعيد وألوانها من صلاحيتها وحدها). يظهر هنا أثره بعد المزامنة.')));
   if (App.role.id === 'aya') {
@@ -111,6 +113,7 @@ Views.settings = function () {
   }
   // النسخ الاحتياطي والاستعادة
   wrap.append(BackupCard());
+  const appCard = AppCard(); if (appCard) wrap.append(appCard);
   if (App.role.id === 'parent') wrap.append(AdminRestoreCard());
   // محاكاة الوقت
   if (App.role.id !== 'asst') {
@@ -118,7 +121,7 @@ Views.settings = function () {
     if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
   }
   if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
-  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, `لوحة المعلمة · الإصدار ${BUILD.version} (${BUILD.commit}) · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً`));
+  wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, `لوحة المعلمة · الإصدار ${BUILD.version} (${BUILD.commit})${AppShell.inApp() ? ' · تطبيق أندرويد ' + (AppShell.version() || '') : ''} · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً`));
   return wrap;
 };
 
@@ -140,8 +143,7 @@ function downloadIcs(role) {
     lines.push('BEGIN:VEVENT', `UID:lm-${role}-${i++}@lawhat`, `DTSTAMP:${ds}T000000Z`, `DTSTART;TZID=Asia/Shanghai:${ds}T${t(it.start)}`, `DTEND;TZID=Asia/Shanghai:${ds}T${t(it.end)}`, `RRULE:FREQ=WEEKLY;BYDAY=${byday[it.day]}`, `SUMMARY:${it.title}`, 'BEGIN:VALARM', 'TRIGGER:-PT5M', 'ACTION:DISPLAY', `DESCRIPTION:${it.title}`, 'END:VALARM', 'END:VEVENT');
   }
   lines.push('END:VCALENDAR');
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar' });
-  const a = el('a', { href: URL.createObjectURL(blob), download: `jadwal-${role}.ics` }); document.body.append(a); a.click(); a.remove();
+  AppShell.saveFile(`jadwal-${role}.ics`, 'text/calendar', lines.join('\r\n'));
 }
 
 /* ===== الموجز لولي الأمر: أُنجز / تحسّن / يحتاج متابعة / قرار الأسبوع ===== */

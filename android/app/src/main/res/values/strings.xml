@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="press_back_again">اضغطي رجوع مرة أخرى للخروج</string>
+    <string name="choose_file">اختيار ملف</string>
+    <string name="save_failed">تعذّر حفظ الملف</string>
+</resources>

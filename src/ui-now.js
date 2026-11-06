@@ -38,6 +38,7 @@ Views.now = function () {
   const d = App.now(); const { list, current, next } = currentSession(App.role.id, d);
   const wrap = el('div');
   if (!Sync.cfg()) { const due = BackupReminder(); if (due) wrap.append(due); } /* في الوضع المحلي الجهاز هو النسخة الوحيدة */
+  { const upd = AppUpdateBanner(); if (upd) wrap.append(upd); }
   const active = Store.settings.active && Store.settings.active.dayK === todayKey() && Store.settings.active.role === App.role.id ? Store.settings.active : null;
   if (active) { const s = PLAN.find(x => sessionKey(x, active.dayK) === active.key); if (s) return SessionView(s, active); }
   const noInv = CHILD_ORDER.filter(c => !Store.events.some(e => e.type === 'layer' && e.child === c));
@@ -465,6 +466,42 @@ function undoLast() {
   const last = mine[mine.length - 1];
   if (!last) { UI.toast('لا تسجيل للتراجع عنه اليوم'); return; }
   UI.confirm(`التراجع عن: ${eventText(last)}؟ يُلغى أثره في الحسابات ويبقى أثر التصحيح في السجل.`, () => { Store.add({ type: 'undo', target: last.id, child: last.child || undefined, reason: 'تراجع ' + ROLES[App.role.id].name }); UI.savedToast('تم التراجع'); UI.rerender(true); });
+}
+/* ===== التراجع عن سجل بعينه (من «السجلات»): بالصلاحيات نفسها التي يفرضها الخادم (canUndo)، بسبب وتأكيد،
+   والزر معطّل أثناء الحفظ، والعملية تُلغى إن حُذفت بيانات الجهاز أو تغيّر الحساب أثناءها. يبقى السجل الأصلي مشطوباً وأثر التراجع في التاريخ ===== */
+const UNDO_STRUCTURAL = { session_done: 'إنهاء جلسة: تعود الجلسة كأنها لم تُنهَ', session_start: 'بدء جلسة', handoff: 'تسليم: تختفي البطاقة', layer: 'جرد: يعود تصنيف الصفحة السابق', new_page: 'حفظ جديد: تعود الصفحة غير محفوظة' };
+function canUndoRecord(e, live) {
+  if (!App.role || !e || e.type === 'undo') return false;
+  const isLive = live ? live.has(e.id) : Store.events.some(x => x.id === e.id); /* مُتراجَع عنه أو غير صالح = ليس في الأحداث الحيّة */
+  return isLive && Store.canUndo(App.role.id, e);
+}
+function undoRecord(e) {
+  if (!canUndoRecord(e)) { UI.toast('لا يحق لهذا الحساب التراجع عن هذا السجل'); return; }
+  const reasons = ['تسجيل خاطئ', 'الطفل خطأ', 'الصفحة خطأ', 'مكرر', 'أخرى'];
+  const sel = el('select', null, reasons.map(r => el('option', { value: r }, r)));
+  const txt = el('input', { placeholder: 'توضيح (اختياري، ومطلوب مع «أخرى»)' });
+  const who = ROLES[e.by] ? ROLES[e.by].name : e.by;
+  const body = el('div', null,
+    el('p', null, el('b', null, `${e.child && CHILDREN[e.child] ? CHILDREN[e.child].name + ' · ' : ''}${e.page ? 'ص' + e.page + ' · ' : ''}${eventText(e)}`)),
+    el('p', { class: 'small muted' }, `${fmtDay(e.day)} ${chinaHHMM(e.ts)} · سجّلته: ${who}`),
+    UNDO_STRUCTURAL[e.type] ? el('div', { class: 'alert' }, 'تنبيه — ' + UNDO_STRUCTURAL[e.type] + '.') : null,
+    el('p', { class: 'small' }, 'يُلغى أثره في كل الحسابات، ويبقى مشطوباً في السجلات مع سبب التراجع ومن قام به. لا يُحذف شيء.'),
+    el('label', { class: 'small' }, 'السبب'), sel, txt);
+  let busy = false;
+  const go = async ev => {
+    if (busy) return;
+    const reason = sel.value === 'أخرى' ? txt.value.trim() : sel.value + (txt.value.trim() ? ': ' + txt.value.trim() : '');
+    if (!reason) { UI.toast('اكتبي سبب التراجع'); txt.focus(); return; }
+    if (!canUndoRecord(e)) { bg.remove(); UI.toast('لم يعد التراجع ممكناً (تغيّر السجل أو الحساب)'); UI.rerender(); return; }
+    busy = true; const btn = ev && ev.currentTarget; if (btn) btn.disabled = true;
+    const op = UI.opGuard();
+    try { Store.add({ type: 'undo', target: e.id, child: e.child || undefined, reason }); }
+    catch (err) { busy = false; if (btn) btn.disabled = false; UI.toast('لم يُسجَّل التراجع: ' + err.message); return; }
+    const ok = await Store.durable();
+    if (!op.alive()) { bg.remove(); UI.rerender(); return; }
+    bg.remove(); UI.toast(ok ? 'تم التراجع وحُفظ' : 'سُجّل التراجع ولم يُحفظ بعد: ' + (Store.storageError || 'تعذّر الحفظ')); UI.rerender(true);
+  };
+  const bg = UI.modal('التراجع عن سجل', body, [el('button', { class: 'danger', onclick: go }, 'تراجع عن هذا السجل'), el('button', { class: 'ghost', onclick: () => bg.remove() }, 'إلغاء')]);
 }
 function MutashabihBox(c) {
   const ws = weekStartKey(App.now()); const list = mutashabihat(c, ws); const box = el('div', { class: 'small' });

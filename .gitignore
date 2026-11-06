@@ -2,3 +2,11 @@ review/
 shots/
 dist/lawhat-muallima-*.html
 __pycache__/
+# أندرويد: مخرجات البناء والمفتاح (المفتاح في أسرار GitHub فقط)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/release.p12
+android/app/src/main/assets/
+*.apk

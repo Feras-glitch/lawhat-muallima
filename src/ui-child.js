@@ -183,13 +183,14 @@ Views.logs = function () {
   const list = el('div', { class: 'card' }); wrap.append(list);
   function render() {
     list.innerHTML = '';
-    let evs = Store.raw.slice().reverse(); const undone = new Set(Store.raw.filter(e => e.type === 'undo').map(e => e.target));
-    evs = evs.map(e => undone.has(e.id) ? Object.assign({}, e, { _undone: true }) : e);
+    /* المشطوب = ما ألغاه تراجع صالح (كما في الحسابات)، لا أي تراجع محلي مرفوض */
+    let evs = Store.raw.slice().reverse(); const live = new Set(Store.events.map(e => e.id));
+    evs = evs.map(e => e.type !== 'undo' && !live.has(e.id) ? Object.assign({}, e, { _undone: true }) : e);
     if (f.child) evs = evs.filter(e => e.child === f.child);
     if (f.type) evs = evs.filter(e => e.type === f.type);
     if (f.day) evs = evs.filter(e => e.day === f.day);
     if (f.q.trim()) { const ql = f.q.trim(); evs = evs.filter(e => { const s = JSON.stringify(e) + ' ' + (e.page ? pageLabel(e.page) : '') + ' ' + (e.surah ? SURAH_NAMES[e.surah - 1] : ''); return s.includes(ql); }); }
-    list.append(el('div', { class: 'muted small' }, `${evs.length} سجل`), el('table', null, el('tbody', null, evs.slice(0, 200).map(e => el('tr', { style: e._undone ? 'opacity:.5;text-decoration:line-through' : '' }, el('td', { style: 'white-space:nowrap' }, fmtDay(e.day), el('div', { class: 'muted small' }, chinaHHMM(e.ts))), el('td', null, e.child && CHILDREN[e.child] ? el('b', null, CHILDREN[e.child].name + ' · ') : null, e.page ? `ص${e.page} · ` : '', eventText(e)), el('td', { class: 'muted small' }, ROLES[e.by] ? ROLES[e.by].name : e.by))))));
+    list.append(el('div', { class: 'muted small' }, `${evs.length} سجل`), el('table', null, el('tbody', null, evs.slice(0, 200).map(e => el('tr', { style: e._undone ? 'opacity:.5;text-decoration:line-through' : '' }, el('td', { style: 'white-space:nowrap' }, fmtDay(e.day), el('div', { class: 'muted small' }, chinaHHMM(e.ts))), el('td', null, e.child && CHILDREN[e.child] ? el('b', null, CHILDREN[e.child].name + ' · ') : null, e.page ? `ص${e.page} · ` : '', eventText(e)), el('td', { class: 'muted small' }, ROLES[e.by] ? ROLES[e.by].name : e.by), el('td', null, !e._undone && canUndoRecord(e, live) ? el('button', { class: 'ghost small', title: 'التراجع عن هذا السجل', onclick: () => undoRecord(e) }, 'تراجع') : null))))));
   }
   render(); return wrap;
 };
