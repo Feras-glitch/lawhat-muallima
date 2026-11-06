@@ -9,7 +9,7 @@ const PUSH_CHUNK = 500;
 const PAGE = 1000;
 
 const Sync = {
-  timer: null, busy: false, lastError: null, lastOk: null, incomplete: false, lastIds: null,
+  timer: null, busy: false, lastError: null, lastOk: null, incomplete: false, lastIds: null, RECHECK_MS: 60000,
   cfg() {
     const s = Store.settings;
     if (!s.sbUrl || !s.sbKey || s.localMode) return null;
@@ -102,8 +102,15 @@ const Sync = {
       if (full) await this.reconcile(c);
       await this.push(c);
       let n = await this.pull(c);
+      /* ما سُحب (أو عُلّم «على الخادم») قد يكون هدفاً لتراجع منتظر: يُرفع في الجولة نفسها. بلا منتظر = لا طلب */
+      await this.push(c);
       /* فحص رخيص كل جولة: خادم يحمل أقل مما ثبت رفعه إليه = استُعيد من نسخة أقدم أو فُقد منه شيء */
       if (!full && !this.incomplete && await this.countMismatch(c)) { await this.reconcile(c); await this.push(c); n += await this.pull(c); }
+      /* تقرير «لم تكتمل» يُعاد فحصه تلقائياً متى خلا الجهاز مما ينتظر، فيتحول إلى «اكتملت» دون تدخل */
+      if (!this.incomplete && st.report && !st.report.complete && Date.now() - (st.reconciledAt || 0) > this.RECHECK_MS) {
+        const k = this.counts(c.id);
+        if (!k.ownPending && !k.othersTotal && !st.rejected.length) { await this.reconcile(c); n += await this.pull(c); }
+      }
       if (this.lastIds && this.lastIds.sid === c.id) this.writeReport(c);
       this.guard(c);
       const rejN = st.rejected.length;

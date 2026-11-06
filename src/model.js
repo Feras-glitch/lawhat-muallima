@@ -145,6 +145,9 @@ const Store = {
     clearTimeout(this.flushTimer); clearTimeout(this.retryTimer);
     this.gen++;
     this.raw = []; this.dirty = new Set(); this.refresh();
+    /* بلا سجلات محلية لا يصح مؤشر سحب ولا مرفوضات لأي خادم: يُسحب كل شيء من جديد وتُجرى مطابقة كاملة */
+    for (const st of Object.values(this.settings.servers || {})) Object.assign(st, { cursor: null, rejected: [], report: null, needReconcile: true });
+    try { this.saveSettings(); } catch (e) {}
     let lsOk = true; try { localStorage.removeItem(LS_EVENTS); } catch (e) { lsOk = false; }
     const cleared = this.idbOk ? this.clearDb() : Promise.resolve(true);
     return cleared.then(ok => { ok = ok && lsOk; if (ok && this.storageError) this.storageError = null; try { UI.renderStatus(); } catch (x) {} return ok; });

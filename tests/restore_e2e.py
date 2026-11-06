@@ -26,7 +26,7 @@ def ok(name, cond, data=None):
 
 
 HELPERS = """(() => {
-  Sync.schedule = () => {}; Sync.started = true;
+  Sync.schedule = () => {}; Sync.started = true; Sync.RECHECK_MS = 0;
   window.T = {
     digest() { const ids = a => a.map(e => e.id).sort(); const pages = {};
       for (const c of CHILD_ORDER) { const d = deriveChild(c); pages[c] = Object.keys(d.pages).sort((a, b) => a - b).map(p => [p, d.pages[p].layer, d.pages[p].color].join(':')).join(','); }
@@ -154,10 +154,10 @@ async def main():
         await login(asst, 'asst')
         r = await sync(asst)
         ok('C1 المساعدة على «ب»: رفعت O2 وU1 وS2؛ وتقريرها يسمّي تراجع آية الذي لم يصل', r['err'] is None and {'O2', 'U1', 'S2'} <= set(pg.ids('srv_b')) and r['report']['others'] == {'aya': 1}, r['report'])
-        r = await full(aya)
-        ok('C1 آية بعد رفع المساعدة: يُرفع التراجع المنتظر تلقائياً و«اكتملت»', r['err'] is None and r['report']['complete'] is True and 'U4' in pg.ids('srv_b'), r['report'])
-        r = await full(asst)
-        ok('C1 المساعدة بمطابقة كاملة: «اكتملت»', r['err'] is None and r['report']['complete'] is True, r['report'])
+        r = await sync(aya)
+        ok('C1 آية بعد رفع المساعدة (جولة عادية): يُرفع التراجع المنتظر ويتحول التقرير إلى «اكتملت» تلقائياً', r['err'] is None and r['report']['complete'] is True and 'U4' in pg.ids('srv_b'), {**r, 'U4': 'U4' in pg.ids('srv_b'), 'S2': 'S2' in pg.ids('srv_b')})
+        r = await sync(asst)
+        ok('C1 المساعدة (جولة عادية): تسحب التراجع ويتحول تقريرها إلى «اكتملت» تلقائياً', r['err'] is None and r['report']['complete'] is True, r['report'])
         await login(par, 'parent'); r = await sync(par)
         ok('C1 ولي الأمر على «ب»: مكتمل', r['err'] is None and r['report']['complete'] is True, r['report'])
         ok('C1 «ب» بعد الاستعادة = «أ» قبل العطل تماماً', set(pg.ids('srv_b')) == full_ids, sorted(full_ids ^ set(pg.ids('srv_b'))))
@@ -266,6 +266,14 @@ async def main():
         ok('C6 بعد الاستعادة في المكان: W1 فُقد من الخادم', 'W1' not in pg.ids('srv_x'))
         r = await sync(a2)
         ok('C6 الفحص الرخيص يكتشف الفقد فيُعاد الرفع تلقائياً دون تدخل', 'W1' in pg.ids('srv_x') and r['err'] is None and r['report'] and r['report']['complete'] is True, r)
+
+        # ================= C6ب حذف السجلات المحلية =================
+        n_before = len((await dig(a2))['raw'])
+        await a2.evaluate("(async () => { await Store.reset(); Store.settings.active = null; Store.saveSettings(); })()")
+        r = await sync(a2)
+        d = await dig(a2)
+        ok('C6ب بعد «حذف السجلات المحلية»: يُسحب كل شيء من جديد والمطابقة مكتملة (لا مؤشر قديم يخفي السجلات)',
+           len(d['raw']) == n_before and set(d['raw']) == set(pg.ids('srv_x')) and r['report']['complete'] is True, {'n': len(d['raw']), 'before': n_before, 'report': r['report']})
 
         # ================= C7 =================
         shim.log.clear()
