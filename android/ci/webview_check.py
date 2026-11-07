@@ -35,6 +35,10 @@ def connect_url():
             except Exception:
                 pass
         time.sleep(1)
+    # تشخيص قبل الفشل: المقابس، العملية، النشاط في المقدمة، وآخر أخطاء السجل
+    print('DIAG socks:', socks, 'pid:', sh('shell', 'pidof', PKG, check=False).strip(), flush=True)
+    print('DIAG top:', [l.strip() for l in sh('shell', 'dumpsys', 'activity', 'activities', check=False).splitlines() if 'ResumedActivity' in l][:3], flush=True)
+    print('DIAG logcat:', '\n'.join(sh('logcat', '-d', '-t', '400', check=False).splitlines()[-60:]), flush=True)
     raise SystemExit('لم يُعثر على WebView التطبيق')
 
 
