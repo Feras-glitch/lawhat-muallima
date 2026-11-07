@@ -1,0 +1,117 @@
+{
+ "info": {
+  "origin": "https://appassets.androidplatform.net",
+  "inApp": true,
+  "preview": true,
+  "idb": true,
+  "ver": "0.15.0",
+  "app": "0.15.0-preview (1500)",
+  "sw": 412,
+  "sh": 842,
+  "dpr": 2.625,
+  "persist": "داخل تطبيق أندرويد: البيانات في مساحة ال"
+ },
+ "results": {
+  "الواجهة داخل التطبيق: أصل https ثابت، قاعدة الجهاز، الجسر": {
+   "ok": true,
+   "data": {
+    "origin": "https://appassets.androidplatform.net",
+    "inApp": true,
+    "preview": true,
+    "idb": true,
+    "ver": "0.15.0",
+    "app": "0.15.0-preview (1500)",
+    "sw": 412,
+    "sh": 842,
+    "dpr": 2.625,
+    "persist": "داخل تطبيق أندرويد: البيانات في مساحة ال"
+   }
+  },
+  "تسجيل ملاحظة وحفظها": {
+   "ok": true,
+   "data": 1
+  },
+  "بعد إعادة تحميل الصفحة: الملاحظة باقية": {
+   "ok": true,
+   "data": 1
+  },
+  "بعد إيقاف التطبيق وتشغيله: الملاحظة باقية (قاعدة الجهاز دائمة)": {
+   "ok": true,
+   "data": 1
+  },
+  "بعد قتل العملية أثناء الجلسة: الخطأ المسجل باقٍ والجلسة تعود من الخطوة نفسها": {
+   "ok": true,
+   "data": {
+    "killed": true,
+    "before": {
+     "sid": "mw5wofyzo1tt",
+     "key": "2026-11-07|12:50|noon|c1",
+     "errSid": "mw5wofyzo1tt"
+    },
+    "after": {
+     "active": true,
+     "sid": "mw5wofyzo1tt",
+     "steps": [
+      "far",
+      "second"
+     ],
+     "err": 1,
+     "inSession": true
+    }
+   }
+  },
+  "زر الرجوع يغلق النافذة المفتوحة": {
+   "ok": true,
+   "data": {
+    "modal": false,
+    "view": "logs",
+    "focus": false
+   }
+  },
+  "الرجوع التالي يعود إلى الشاشة الرئيسية لا يخرج": {
+   "ok": true,
+   "data": {
+    "modal": false,
+    "view": "now",
+    "focus": false
+   }
+  },
+  "اختيار ملف للاستيراد يفتح نافذة ملفات النظام": {
+   "ok": true,
+   "data": [
+    "topResumedActivity=ActivityRecord{eae737d u0 com.google.android.documentsui/com.android.documentsui.picker.PickActivity t11}",
+    "ResumedActivity: ActivityRecord{eae737d u0 com.google.android.documentsui/com.android.documentsui.picker.PickActivity t11}"
+   ]
+  },
+  "إغلاق نافذة الملفات دون اختيار يعيد التطبيق سليماً": {
+   "ok": true,
+   "data": {
+    "ok": true,
+    "errors": 0
+   }
+  },
+  "الإعدادات تعرض بطاقة «تطبيق أندرويد»": {
+   "ok": true,
+   "data": true
+  },
+  "الدوران لا يعيد تحميل الصفحة (والأبعاد تنقلب)": {
+   "ok": true,
+   "data": {
+    "before": {
+     "m": 0.24362784763159406,
+     "w": 412,
+     "h": 842
+    },
+    "after": {
+     "m": 0.24362784763159406,
+     "w": 866,
+     "h": 364
+    }
+   }
+  },
+  "«السجلات» داخل التطبيق: أزرار التراجع ظاهرة": {
+   "ok": true,
+   "data": 4
+  }
+ }
+}
