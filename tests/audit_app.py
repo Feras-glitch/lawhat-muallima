@@ -55,9 +55,9 @@ async def main():
             return await pg.evaluate("[...document.querySelectorAll('main tr')].filter(tr => [...tr.querySelectorAll('button')].some(b => b.textContent === 'تراجع')).map(tr => tr.innerText.replace(/\\s+/g, ' ').slice(0, 60))")
 
         SEED = """(() => { const mk = (by, o) => { App.role = ROLES[by]; const e = Store.add(o); return e.id; };
-            window.__ids = { asstOut: mk('asst', { type: 'outcome', child: 'dalal', page: 582, step: 'far', result: 'clean' }),
-              ayaNote: mk('aya', { type: 'note', child: 'farah', text: 'ملاحظة آية' }),
-              parNote: mk('parent', { type: 'note', child: 'karim', text: 'ملاحظة ولي الأمر' }) }; })()"""
+            window.__ids = { asstOut: mk('asst', { type: 'outcome', child: 'c1', page: 582, step: 'far', result: 'clean' }),
+              ayaNote: mk('aya', { type: 'note', child: 'c2', text: 'ملاحظة آية' }),
+              parNote: mk('parent', { type: 'note', child: 'c3', text: 'ملاحظة ولي الأمر' }) }; })()"""
 
         # ================= الصلاحيات: زر التراجع يظهر حيث يسمح الخادم فقط =================
         seen = {}
@@ -76,18 +76,18 @@ async def main():
         row = pg.locator('main tr').filter(has_text='ص582')
         await row.get_by_role('button', name='تراجع', exact=True).click()
         body = await pg.evaluate("document.querySelector('.modal').innerText")
-        ok('نافذة التراجع: ملخص السجل وتاريخه ومن سجّله، وأن لا شيء يُحذف', 'دلال' in body and 'ص582' in body and 'المساعدة' in body and 'لا يُحذف شيء' in body, body[:200])
+        ok('نافذة التراجع: ملخص السجل وتاريخه ومن سجّله، وأن لا شيء يُحذف', 'الطفل الأول' in body and 'ص582' in body and 'المساعدة' in body and 'لا يُحذف شيء' in body, body[:200])
         await pg.locator('.modal select').select_option('أخرى')
         await pg.get_by_role('button', name='تراجع عن هذا السجل', exact=True).click()
         r = await pg.evaluate(f"({{ modal: !!document.querySelector('.modal'), undos: Store.raw.filter(e => e.type === 'undo').length, toasts: {TOASTS} }})")
         ok('«أخرى» بلا توضيح: لا تراجع ورسالة، والنافذة باقية', r['modal'] and r['undos'] == 0 and any('سبب' in t for t in r['toasts']), r)
-        await pg.locator('.modal input').fill('سُجّلت لدلال بدل فرح')
+        await pg.locator('.modal input').fill('سُجّلت للأول بدل الثاني')
         await pg.get_by_role('button', name='تراجع عن هذا السجل', exact=True).click()
         await pg.wait_for_function("!document.querySelector('.modal') && Store.saved()")
         r = await pg.evaluate("""(() => { const u = Store.raw.find(e => e.type === 'undo'); const t = Store.raw.find(e => e.id === window.__ids.asstOut);
             return { by: u.by, target: u.target === t.id, reason: u.reason, live: Store.events.some(e => e.id === t.id), struck: [...document.querySelectorAll('main tr')].some(tr => tr.innerText.includes('ص582') && tr.getAttribute('style') && tr.getAttribute('style').includes('line-through')),
               btn: [...document.querySelectorAll('main tr')].some(tr => tr.innerText.includes('ص582') && [...tr.querySelectorAll('button')].some(b => b.textContent === 'تراجع')) }; })()""")
-        ok('التراجع: حدث undo باسم آية وسببه، والسجل مشطوب بلا زر، وخارج الحسابات', r == {'by': 'aya', 'target': True, 'reason': 'سُجّلت لدلال بدل فرح', 'live': False, 'struck': True, 'btn': False}, r)
+        ok('التراجع: حدث undo باسم آية وسببه، والسجل مشطوب بلا زر، وخارج الحسابات', r == {'by': 'aya', 'target': True, 'reason': 'سُجّلت للأول بدل الثاني', 'live': False, 'struck': True, 'btn': False}, r)
         await pg.reload(); await pg.wait_for_function('Store.raw && Store.idbOk'); await pg.evaluate("(() => { Sync.run = async () => {}; App.setRole('aya'); App.view = 'logs'; UI.rerender(); })()")
         r = await pg.evaluate("({ undos: Store.raw.filter(e => e.type === 'undo').length, live: Store.events.some(e => e.id === Store.raw.find(x => x.type === 'outcome').id), undoRowBtn: [...document.querySelectorAll('main tr')].filter(tr => tr.innerText.includes('تراجع') && [...tr.querySelectorAll('button')].length).length })")
         ok('بعد إعادة الفتح: التراجع ثابت، وسطر التراجع نفسه بلا زر', r['undos'] == 1 and r['live'] is False, r)

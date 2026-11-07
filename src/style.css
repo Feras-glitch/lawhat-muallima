@@ -101,3 +101,6 @@ header.top{flex-wrap:wrap}
 .map .jl{font-size:.75em;color:var(--muted);margin:6px 0 2px}
 .map .c{color:#0008;font-size:.55em}
 @media(max-width:480px){.map .juz{grid-template-columns:repeat(10,1fr);min-width:0}.map .c{font-size:.7em}}
+.ayahgrid{margin:6px 0}.ayahgrid .row,.ayahgrid>div{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:2px 0}
+.ayahbtn{min-width:38px;padding:4px 6px}
+@media(max-width:480px){.ayahbtn{min-height:38px}}

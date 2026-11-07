@@ -89,12 +89,12 @@ async def main():
         SETUP = """(async (pos) => { App.setRole('asst'); Store.settings.timeOffset = Date.parse('2026-11-07T06:00:00Z') - Date.now();
             const list = sessionsFor('asst', App.now()); startSession(list[pos]); await Store.durable();
             const p = Store.putMany.bind(Store); let once = true; Store.putMany = async (...args) => { const ok = await p(...args); if (once) { once = false; await new Promise(r => window.releaseSave = r); } return ok; };
-            cancelModal(); return list.length; })"""
+            cancelModal(); document.querySelectorAll('.modal input[type=checkbox]').forEach(c => { if (!c.disabled) { c.checked = true; c.dispatchEvent(new Event('change')); } }); return list.length; })"""
         for pos, label in ((0, 'الجارية أول القائمة'), (2, 'الجارية وسط القائمة')):
             pg = await fresh('asst')
             n_sess = await pg.evaluate(f"({SETUP})({pos})")
-            await click(pg, 'تأكيد الإلغاء'); await pg.wait_for_function('!!window.releaseSave')
-            disabled = await pg.evaluate("[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'تأكيد الإلغاء').disabled")
+            await pg.click('.modal button.danger'); await pg.wait_for_function('!!window.releaseSave')
+            disabled = await pg.evaluate("document.querySelector('.modal button.danger').disabled")
             await pg.locator('.modal').get_by_role('button', name='✕', exact=True).click()
             await pg.evaluate("(() => { App.setRole('parent'); App.view = 'settings'; UI.rerender(); })()")
             await click(pg, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)'); await yes(pg)
@@ -108,20 +108,20 @@ async def main():
         # تبديل الحساب وحده (بلا حذف): العملية القديمة لا تكتب باسم الحساب الجديد
         pg = await fresh('asst')
         await pg.evaluate(f"({SETUP})(0)")
-        await click(pg, 'تأكيد الإلغاء'); await pg.wait_for_function('!!window.releaseSave')
+        await pg.click('.modal button.danger'); await pg.wait_for_function('!!window.releaseSave')
         n0 = await pg.evaluate("Store.raw.length")
         await pg.evaluate("(() => { App.setRole('aya'); window.releaseSave(); })()"); await pg.wait_for_timeout(500)
         r = await pg.evaluate("({ added: Store.raw.length - %d, cancels: Store.raw.filter(e => e.type === 'session_cancel').length })" % n0)
         ok('R5-02 تبديل الحساب أثناء الانتظار: لا إلغاءات بعده باسم أي حساب', r == {'added': 0, 'cancels': 0}, r)
         # فشل الحفظ (بلا حذف): رسالة فشل والزر يعود للعمل
         pg = await fresh('asst')
-        await pg.evaluate("""(async () => { Store.settings.timeOffset = Date.parse('2026-11-07T06:00:00Z') - Date.now(); window.__put = Store.putMany.bind(Store); Store.putMany = async () => false; cancelModal(); })()""")
-        await click(pg, 'تأكيد الإلغاء')
+        await pg.evaluate("""(async () => { Store.settings.timeOffset = Date.parse('2026-11-07T06:00:00Z') - Date.now(); window.__put = Store.putMany.bind(Store); Store.putMany = async () => false; cancelModal(); document.querySelectorAll('.modal input[type=checkbox]').forEach(c => { if (!c.disabled) { c.checked = true; c.dispatchEvent(new Event('change')); } }); })()""")
+        await pg.click('.modal button.danger')
         await pg.wait_for_function("[...document.querySelectorAll('.toast')].some(t => t.textContent.includes('تعذّر'))")
-        r = await pg.evaluate("({ btn: !![...document.querySelectorAll('.modal button')].find(b => b.textContent === 'تأكيد الإلغاء' && !b.disabled) })")
+        r = await pg.evaluate("({ btn: !!(document.querySelector('.modal button.danger') && !document.querySelector('.modal button.danger').disabled) })")
         ok('R5-02 فشل الحفظ: «تعذّر» صريحة والزر متاح لإعادة المحاولة', r['btn'], r)
         await pg.evaluate("(() => { Store.putMany = window.__put; })()")
-        await click(pg, 'تأكيد الإلغاء')
+        await pg.click('.modal button.danger')
         await pg.wait_for_function("[...document.querySelectorAll('.toast')].some(t => /^أُلغيت \\d+ جلسة$/.test(t.textContent))")
         await reopen(pg, 'asst')
         n = await pg.evaluate("Store.raw.filter(e => e.type === 'session_cancel').length")

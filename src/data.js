@@ -1,10 +1,24 @@
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
+/* الأطفال بمعرّفات لا تحمل أسماء: الأسماء ليست في الكود المنشور؛ تُدخل من الإعدادات وتُحفظ سجلاً على الخادم العائلي.
+   c3 يحفظ بالأسطر (مقطع 4 أسطر)؛ c1 وc2 بالصفحة ويسيران معاً في الجلسات المشتركة */
+const CHILD_DEFAULT_NAMES = { c1: 'الطفل الأول', c2: 'الطفل الثاني', c3: 'الطفل الثالث' };
 const CHILDREN = {
-  dalal: { id: 'dalal', name: 'دلال', age: 10, unit: 'page', unitLabel: 'صفحة' },
-  farah: { id: 'farah', name: 'فرح', age: 8, unit: 'page', unitLabel: 'صفحة' },
-  karim: { id: 'karim', name: 'كريم', age: 6, unit: 'lines', unitLabel: '4 أسطر' },
+  c1: { id: 'c1', unit: 'page', unitLabel: 'صفحة' },
+  c2: { id: 'c2', unit: 'page', unitLabel: 'صفحة' },
+  c3: { id: 'c3', unit: 'lines', unitLabel: '4 أسطر' },
 };
-const CHILD_ORDER = ['dalal', 'farah', 'karim'];
+const CHILD_ORDER = ['c1', 'c2', 'c3'];
+const PAIR = ['c1', 'c2']; /* «both» في الجدول */
+/* الطفل الذي يحفظ بالأسطر (مقطع) لا بالصفحة */
+function isLines(c) { return !!(CHILDREN[c] && CHILDREN[c].unit === 'lines'); }
+/* الاسم المعروض: آخر سجل «أسماء» حيّ، وإلا الاسم الافتراضي */
+function familyNames() {
+  if (typeof Store === 'undefined' || !Store.ofType) return null;
+  let last = null; for (const e of Store.ofType('names')) if (!last || e.ts >= last.ts) last = e;
+  return last ? last.names : null;
+}
+function childDisplayName(k) { const n = familyNames(); return (n && typeof n[k] === 'string' && n[k].trim()) ? n[k].trim() : CHILD_DEFAULT_NAMES[k]; }
+for (const k of Object.keys(CHILDREN)) Object.defineProperty(CHILDREN[k], 'name', { get() { return childDisplayName(k); }, enumerable: true });
 
 const ROLES = {
   aya: { id: 'aya', name: 'آية', title: 'المعلمة الرئيسية', canColor: true, canDecide: true },
@@ -84,7 +98,7 @@ const SESSION_KINDS = {
     { id: 'tilawa', text: 'ورد النظر: 2–3 صفحات من الجزء القادم نظراً بالتجويد', min: 8 },
     { id: 'listen', text: 'سماع صفحة اليوم من القارئ مع المتابعة بالإصبع، 3 مرات', min: 8 },
   ]},
-  karim_new: { name: 'بوابة الأمس وتلقين الجديد', teacher: 'aya', steps: [
+  young_new: { name: 'بوابة الأمس وتلقين الجديد', teacher: 'aya', steps: [
     { id: 'gate', text: 'بوابة الأمس: تسميع مقطع الأمس غيباً', min: 3, outcome: 'gate' },
     { id: 'memorize', text: 'يقرأ المقطع الجديد نظراً، ثم تلقين آية آية بالتسلسل حتى يقوله غيباً', min: 14, timer: true },
     { id: 'first', text: 'التسميع الأول + سؤال من بطاقة السورة', min: 3, outcome: 'first' },
@@ -94,14 +108,11 @@ const SESSION_KINDS = {
     { id: 'far', text: 'حصة البعيد من خريطة المصحف بالترتيب الدوري', min: 9, outcome: 'far' },
     { id: 'cards', text: '4 أسئلة من بطاقات الصفحات التي سُمّعت، بالتناوب', min: 3, outcome: 'cards' },
   ]},
-  fluency: { name: 'الطلاقة القرائية', teacher: 'asst', steps: [
-    { id: 'read', text: 'قراءة نظراً مصحَّحة: الصفحة الحالية تُكرر حتى تنزل تحت 3 دقائق', min: 20, outcome: 'fluency' },
-    { id: 'tomorrow', text: 'قراءة مقطع الغد نظراً 3 مرات', min: 5 },
-  ]},
-  karim_asr: { name: 'التسميع الثاني ومراجعة السور', teacher: 'asst', steps: [
+  /* جلسة ظهر واحدة للطفل الثالث (0.15): التسميع الثاني ثم الطلاقة كاملة ثم مراجعة السور؛ لا جلسة عصر بعد نهاية الدراسة */
+  young_noon: { name: 'قرآن الظهر: التسميع الثاني والطلاقة ومراجعة السور', teacher: 'asst', steps: [
     { id: 'second', text: 'تسميع مقطع اليوم مع سورته من أولها', min: 3, outcome: 'second' },
-    { id: 'far', text: 'مراجعة السور المحفوظة: 3–4 صفحات بالترتيب الدوري', min: 15, outcome: 'far' },
-    { id: 'cards', text: 'سؤال من بطاقة كل سورة روجعت + لعبة معنى قصيرة', min: 7, outcome: 'cards' },
+    { id: 'read', text: 'الطلاقة: قراءة نظراً مصحَّحة، الصفحة الحالية تُكرر حتى تنزل تحت 3 دقائق', min: 20, outcome: 'fluency' },
+    { id: 'far', text: 'مراجعة السور المحفوظة: حصة اليوم بالترتيب الدوري', min: 12, outcome: 'far' },
   ]},
   circle: { name: 'مجلس المعنى والتلقين لصفحة الغد', teacher: 'aya', steps: [
     { id: 'context', text: 'سياق صفحة الغد وقصتها وربطها بما قبلها', min: 8 },
@@ -110,11 +121,12 @@ const SESSION_KINDS = {
     { id: 'talqeen', text: 'تلقين: تقرأين الآية ويرددان نظراً، جولتان', min: 7 },
     { id: 'card', text: 'كتابة بطاقة صفحة الغد (الأسئلة الأربعة)', min: 0, card: true },
   ]},
+  /* جلسة واحدة للاثنين (0.15) بدل جلستين من 5 دقائق */
   third: { name: 'التسميع الثالث وآيات الصفراء', teacher: 'aya', steps: [
-    { id: 'third', text: 'صفحة اليوم غيباً مرة', min: 3, outcome: 'third' },
-    { id: 'yellow', text: 'آيات القائمة الصفراء لهذا اليوم', min: 2, outcome: 'yellow' },
+    { id: 'third', text: 'صفحة اليوم غيباً مرة، لكل منهما', min: 6, outcome: 'third' },
+    { id: 'yellow', text: 'آيات القائمة الصفراء لهذا اليوم، لكل منهما', min: 4, outcome: 'yellow' },
   ]},
-  karim_evening: { name: 'قصة الغد وتلقينه ثم التسميع الثالث', teacher: 'aya', steps: [
+  young_evening: { name: 'قصة الغد وتلقينه ثم التسميع الثالث', teacher: 'aya', steps: [
     { id: 'story', text: 'قصة مقطع الغد بجملة، كلمتاه الغريبتان، تلقينه 3 مرات، سماعه من القارئ', min: 10, card: true },
     { id: 'third', text: 'التسميع الثالث لمقطع اليوم', min: 5, outcome: 'third' },
   ]},
@@ -131,7 +143,7 @@ const SESSION_KINDS = {
     { id: 'write', text: 'كتابة آيات القائمة الصفراء والمتشابهات كاملة مرة واحدة مع موضعها المشابه', min: 10 },
     { id: 'clear', text: 'تسميع كل آية منها مع التي قبلها والتي بعدها', min: 15, outcome: 'yellow' },
   ]},
-  thu_karim: { name: 'سرد مقاطع الأسبوع وسورتان بالقرعة', teacher: 'aya', steps: [
+  thu_young: { name: 'سرد مقاطع الأسبوع وسورتان بالقرعة', teacher: 'aya', steps: [
     { id: 'week', text: 'سرد مقاطع الأسبوع متصلة', min: 10, outcome: 'week' },
     { id: 'exam', text: 'سورتان بالقرعة من المحفوظ', min: 10, outcome: 'exam', lottery: true },
   ]},
@@ -155,29 +167,27 @@ function addSess(days, start, end, kind, child, teacher) {
   for (const d of days) PLAN.push({ day: d, start, end, kind, child, teacher: teacher || SESSION_KINDS[kind].teacher });
 }
 /* السبت–الأربعاء */
-addSess(WORKDAYS, '07:00', '07:40', 'gate_new', 'dalal');
-addSess(WORKDAYS, '07:00', '07:40', 'near_review', 'farah');
-addSess(WORKDAYS, '07:50', '08:30', 'gate_new', 'farah');
-addSess(WORKDAYS, '07:50', '08:30', 'near_review', 'dalal');
-addSess(WORKDAYS, '08:30', '08:50', 'karim_new', 'karim');
-addSess(WORKDAYS, '12:10', '12:35', 'fluency', 'karim');
-addSess(WORKDAYS, '12:50', '13:05', 'noon', 'dalal');
-addSess(WORKDAYS, '13:05', '13:20', 'noon', 'farah');
-addSess(WORKDAYS, '15:20', '15:45', 'karim_asr', 'karim');
+addSess(WORKDAYS, '07:00', '07:40', 'gate_new', 'c1');
+addSess(WORKDAYS, '07:00', '07:40', 'near_review', 'c2');
+addSess(WORKDAYS, '07:50', '08:30', 'gate_new', 'c2');
+addSess(WORKDAYS, '07:50', '08:30', 'near_review', 'c1');
+addSess(WORKDAYS, '08:30', '08:50', 'young_new', 'c3');
+addSess(WORKDAYS, '12:10', '12:45', 'young_noon', 'c3');
+addSess(WORKDAYS, '12:50', '13:05', 'noon', 'c1');
+addSess(WORKDAYS, '13:05', '13:20', 'noon', 'c2');
 addSess(WORKDAYS, '18:00', '18:25', 'circle', 'both');
-addSess(WORKDAYS, '18:25', '18:30', 'third', 'dalal');
-addSess(WORKDAYS, '18:30', '18:35', 'third', 'farah');
-addSess(WORKDAYS, '18:35', '18:50', 'karim_evening', 'karim');
+addSess(WORKDAYS, '18:25', '18:35', 'third', 'both');
+addSess(WORKDAYS, '18:35', '18:50', 'young_evening', 'c3');
 addSess(WORKDAYS, '18:50', '19:10', 'prep', 'all');
 /* الخميس */
-addSess([THURSDAY], '07:00', '07:25', 'thu_recite', 'dalal');
-addSess([THURSDAY], '07:00', '07:25', 'thu_yellow', 'farah');
-addSess([THURSDAY], '07:35', '08:00', 'thu_recite', 'farah');
-addSess([THURSDAY], '07:35', '08:00', 'thu_yellow', 'dalal');
-addSess([THURSDAY], '08:10', '08:30', 'thu_karim', 'karim');
+addSess([THURSDAY], '07:00', '07:25', 'thu_recite', 'c1');
+addSess([THURSDAY], '07:00', '07:25', 'thu_yellow', 'c2');
+addSess([THURSDAY], '07:35', '08:00', 'thu_recite', 'c2');
+addSess([THURSDAY], '07:35', '08:00', 'thu_yellow', 'c1');
+addSess([THURSDAY], '08:10', '08:30', 'thu_young', 'c3');
 addSess([THURSDAY], '08:10', '08:30', 'thu_listen', 'both');
 addSess([THURSDAY], '08:40', '09:00', 'thu_mutashabih', 'both');
-addSess([THURSDAY], '08:40', '09:00', 'thu_quiz', 'karim');
+addSess([THURSDAY], '08:40', '09:00', 'thu_quiz', 'c3');
 addSess([THURSDAY], '09:00', '09:20', 'thu_tadabbur', 'both');
 
 const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];

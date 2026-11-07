@@ -23,8 +23,8 @@ async (weeks) => {
   const setT = (dayIdx, h, m) => { Store.settings.timeOffset = (base - 8 * 3600000 + dayIdx * dayMs + h * 3600000 + m * 60000) - Date.now(); };
   // الجرد
   setT(0, 6, 0); App.setRole('aya');
-  for (const c of ['dalal', 'farah']) for (let p = 562; p <= 604; p++) Store.add({ type: 'layer', child: c, page: p, layer: 'far', color: 'green' });
-  for (let p = 595; p <= 604; p++) Store.add({ type: 'layer', child: 'karim', page: p, layer: 'far', color: 'green' });
+  for (const c of ['c1', 'c2']) for (let p = 562; p <= 604; p++) Store.add({ type: 'layer', child: c, page: p, layer: 'far', color: 'green' });
+  for (let p = 595; p <= 604; p++) Store.add({ type: 'layer', child: 'c3', page: p, layer: 'far', color: 'green' });
   let rnd = 7; const R = () => { rnd = (rnd * 1103515245 + 12345) & 0x7fffffff; return rnd / 0x7fffffff; };
   const t0 = performance.now();
   for (let d = 0; d < weeks * 7; d++) {
@@ -40,9 +40,9 @@ async (weeks) => {
     App.setRole('aya');
     for (const c of CHILD_ORDER) {
       const st = deriveChild(c); const g = lastNewFor(c, true);
-      if (g) Store.add({ type: 'outcome', child: c, page: g.page, step: 'gate', result: R() < 0.9 ? 'clean' : 'yellow', prompts: 0, meaning: 'ok', lines: c === 'karim' ? g.lines : undefined });
-      if (st.nextNew) { const lines = st.nextLines; Store.add({ type: 'new_page', child: c, page: st.nextNew, linesFrom: lines[0], linesTo: c === 'karim' ? lines[1] : 15, minutes: 20 });
-        Store.add({ type: 'outcome', child: c, page: st.nextNew, step: 'first', result: 'clean', prompts: 0, meaning: 'ok', lines: c === 'karim' ? lines : undefined }); }
+      if (g) Store.add({ type: 'outcome', child: c, page: g.page, step: 'gate', result: R() < 0.9 ? 'clean' : 'yellow', prompts: 0, meaning: 'ok', lines: c === 'c3' ? g.lines : undefined });
+      if (st.nextNew) { const lines = st.nextLines; Store.add({ type: 'new_page', child: c, page: st.nextNew, linesFrom: lines[0], linesTo: c === 'c3' ? lines[1] : 15, minutes: 20 });
+        Store.add({ type: 'outcome', child: c, page: st.nextNew, step: 'first', result: 'clean', prompts: 0, meaning: 'ok', lines: c === 'c3' ? lines : undefined }); }
     }
     // الظهر: المساعدة — الثاني والبعيد والأخطاء
     setT(d, 12, 55); App.setRole('asst');
@@ -59,8 +59,8 @@ async (weeks) => {
       if (p) { Store.add({ type: 'outcome', child: c, page: p, step: 'third', result: 'clean', prompts: 0, meaning: 'ok' });
         const sg = suggestColor(c, p, todayKey()); Store.add({ type: 'color', child: c, page: p, color: sg.color === 'none' ? 'green' : sg.color }); }
       for (const fp of st.todayFar) { const sg = suggestColor(c, fp, todayKey()); if (sg.color !== 'none') Store.add({ type: 'color', child: c, page: fp, color: sg.color }); }
-      // إجازة جزء عند اكتمال جزء في القريب (كل صفحاته لُوِّنت) أو اعتماد سور كريم
-      if (c !== 'karim') { const juzs = [...new Set(st.near.map(p => juzOfPage(p)))]; for (const j of juzs) { const pages = juzPages(j); if (pages.every(x => st.pages[x].layer === 'near' || st.pages[x].layer === 'far') && pages.filter(x => st.pages[x].layer === 'near').length >= 19) { Store.add({ type: 'juz_passed', child: c, juz: j }); } } }
+      // إجازة جزء عند اكتمال جزء في القريب (كل صفحاته لُوِّنت) أو اعتماد سور الثالث
+      if (c !== 'c3') { const juzs = [...new Set(st.near.map(p => juzOfPage(p)))]; for (const j of juzs) { const pages = juzPages(j); if (pages.every(x => st.pages[x].layer === 'near' || st.pages[x].layer === 'far') && pages.filter(x => st.pages[x].layer === 'near').length >= 19) { Store.add({ type: 'juz_passed', child: c, juz: j }); } } }
       else { const ss = [...new Set(st.near.flatMap(p => surahsOfPage(p)))]; for (const s of ss) { const sp = []; for (let p = 1; p <= 604; p++) if (surahsOfPage(p).includes(s)) sp.push(p); if (sp.every(x => st.pages[x].layer !== 'none' && st.pages[x].layer !== 'new') && !st.passedSurahs.has(s) && sp.every(x => x < 595)) { const nd = Store.events.filter(e => e.type === 'new_page' && e.child === c && sp.includes(e.page)).pop(); if (nd && daysBetween(nd.day, todayKey()) > 3) Store.add({ type: 'surah_passed', child: c, surah: s }); } } }
     }
     out.days++;
@@ -99,10 +99,10 @@ async def main():
           App.view = 'reports'; const [rm] = t(() => UI.rerender()); views.reports = rm;
           out.views = views; return JSON.stringify(out); }""")
         print(stats)
-        dbg = await pg.evaluate(r"""() => { const d = deriveChild('dalal'); const td = todayKey(); const rows = d.far.map(p => { const x = d.pages[p]; const dd = x.lastFar || x.lastReview; return [p, x.lastFar, x.lastReview, dd ? daysBetween(dd, td) : 99]; }).filter(r => r[3] > 12);
-          const farOuts = Store.events.filter(e => e.type === 'outcome' && e.child === 'dalal' && e.step === 'far'); const days = [...new Set(farOuts.map(e => e.day))];
+        dbg = await pg.evaluate(r"""() => { const d = deriveChild('c1'); const td = todayKey(); const rows = d.far.map(p => { const x = d.pages[p]; const dd = x.lastFar || x.lastReview; return [p, x.lastFar, x.lastReview, dd ? daysBetween(dd, td) : 99]; }).filter(r => r[3] > 12);
+          const farOuts = Store.events.filter(e => e.type === 'outcome' && e.child === 'c1' && e.step === 'far'); const days = [...new Set(farOuts.map(e => e.day))];
           const perDay = days.slice(-6).map(dk => [dk, farOuts.filter(e => e.day === dk).map(e => e.page).join(',')]);
-          return JSON.stringify({ today: td, over12: rows, perDay, juzPassed: Store.events.filter(e => e.type === 'juz_passed' && e.child === 'dalal').map(e => [e.juz, e.day]) }); }""")
+          return JSON.stringify({ today: td, over12: rows, perDay, juzPassed: Store.events.filter(e => e.type === 'juz_passed' && e.child === 'c1').map(e => [e.juz, e.day]) }); }""")
         print('DBG', dbg)
         t = time.time(); await pg.reload(); await pg.wait_for_selector('nav.bottom, .login'); print('reload s', round(time.time() - t, 2))
         print('ERRS', errs[:5])

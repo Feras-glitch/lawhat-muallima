@@ -12,7 +12,7 @@ UID = {r: u for u, r in USERS.values()}
 ROLES = ['aya', 'asst', 'parent']
 
 SAMPLES = """(() => {
-  const C = 'dalal', P = 570;
+  const C = 'c1', P = 570;
   const S = {
     layer: { child: C, page: P, layer: 'far', color: 'green' },
     color: { child: C, page: P, color: 'green' },
@@ -38,6 +38,9 @@ SAMPLES = """(() => {
     handoff: { child: C, key: 'k', to: 'aya', items: [{ k: 'a', text: 't' }] },
     handoff_status: { handoff: 'h1', status: 'seen' },
     handoff_update: { handoff: 'h1', items: [{ k: 'a', text: 't' }] },
+    'decision:caps': { type: 'decision', child: C, kind: 'caps', near: 10, far: 8 },
+    names: { names: { c1: 'أ', c2: 'ب', c3: 'ج' } },
+    mut_target: { child: C, ref: 'e1', target: { surah: 59, ayah: 2 } },
   };
   const out = [];
   for (const [name, base] of Object.entries(S)) for (const by of ['aya', 'asst', 'parent']) {

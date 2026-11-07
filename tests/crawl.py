@@ -18,22 +18,22 @@ SEED = r"""(async () => {
   Sync.schedule = () => {}; Store.settings.timeOffset = Date.UTC(2026, 10, 8, 0, 30) - Date.now(); Store.saveSettings();
   const y = dayKey(new Date(App.realNow().getTime() - 86400000)), t = todayKey();
   App.setRole('aya');
-  for (const c of ['dalal', 'farah']) for (let p = 562; p <= 604; p++) Store.add({ type: 'layer', child: c, page: p, layer: 'far', color: p % 7 ? 'green' : 'yellow' });
-  for (let p = 595; p <= 604; p++) Store.add({ type: 'layer', child: 'karim', page: p, layer: 'far', color: 'green' });
-  for (const c of ['dalal', 'farah']) { Store.add({ type: 'new_page', child: c, page: 542, linesFrom: 1, linesTo: 15, day: y }); Store.add({ type: 'outcome', child: c, page: 542, step: 'gate', result: 'yellow', prompts: 1 }); }
-  Store.add({ type: 'new_page', child: 'karim', page: 594, linesFrom: 1, linesTo: 4, day: y });
-  Store.add({ type: 'error', child: 'dalal', page: 542, surah: 58, ayah: 2, etype: 'jump', target: { surah: 79, ayah: 2 } });
-  Store.add({ type: 'error', child: 'karim', page: 594, surah: 91, ayah: 5, etype: 'prompt', lines: [1, 4] });
-  Store.add({ type: 'card', child: 'dalal', page: 542, key: 'p542', kind: 'page', q1: 'س', q2: 'م', q3: 'ض', q4: 'ت' });
-  Store.add({ type: 'card', child: 'karim', page: 604, key: 's113', kind: 'surah', surah: 113, story: 'الفلق' });
-  Store.add({ type: 'outcome', child: 'dalal', page: 570, step: 'exam', result: 'clean' });
-  Store.add({ type: 'note', child: 'farah', text: 'ملاحظة' });
+  for (const c of ['c1', 'c2']) for (let p = 562; p <= 604; p++) Store.add({ type: 'layer', child: c, page: p, layer: 'far', color: p % 7 ? 'green' : 'yellow' });
+  for (let p = 595; p <= 604; p++) Store.add({ type: 'layer', child: 'c3', page: p, layer: 'far', color: 'green' });
+  for (const c of ['c1', 'c2']) { Store.add({ type: 'new_page', child: c, page: 542, linesFrom: 1, linesTo: 15, day: y }); Store.add({ type: 'outcome', child: c, page: 542, step: 'gate', result: 'yellow', prompts: 1 }); }
+  Store.add({ type: 'new_page', child: 'c3', page: 594, linesFrom: 1, linesTo: 4, day: y });
+  Store.add({ type: 'error', child: 'c1', page: 542, surah: 58, ayah: 2, etype: 'jump', target: { surah: 79, ayah: 2 } });
+  Store.add({ type: 'error', child: 'c3', page: 594, surah: 91, ayah: 5, etype: 'prompt', lines: [1, 4] });
+  Store.add({ type: 'card', child: 'c1', page: 542, key: 'p542', kind: 'page', q1: 'س', q2: 'م', q3: 'ض', q4: 'ت' });
+  Store.add({ type: 'card', child: 'c3', page: 604, key: 's113', kind: 'surah', surah: 113, story: 'الفلق' });
+  Store.add({ type: 'outcome', child: 'c1', page: 570, step: 'exam', result: 'clean' });
+  Store.add({ type: 'note', child: 'c2', text: 'ملاحظة' });
   App.setRole('asst');
-  const s = PLAN.find(x => x.kind === 'noon' && x.child === 'dalal'); startSession(s); const a = Store.settings.active; a.steps = ['second'];
-  Store.add({ type: 'outcome', child: 'dalal', page: 562, step: 'far', result: 'red', prompts: 3 });
-  Store.add({ type: 'note', child: 'dalal', text: 'طلب اعتماد: فحص الخميس — سُمّع' });
+  const s = PLAN.find(x => x.kind === 'noon' && x.child === 'c1'); startSession(s); const a = Store.settings.active; a.steps = ['second'];
+  Store.add({ type: 'outcome', child: 'c1', page: 562, step: 'far', result: 'red', prompts: 3 });
+  Store.add({ type: 'note', child: 'c1', text: 'طلب اعتماد: فحص الخميس — سُمّع' });
   await commitEnd(s, a, 'partial', ['far', 'cards'], null, 'ملاحظة الجلسة');
-  App.setRole('parent'); Store.add({ type: 'outcome', child: 'dalal', page: 571, step: 'exam', result: 'yellow', prompts: 1, parent: true });
+  App.setRole('parent'); Store.add({ type: 'outcome', child: 'c1', page: 571, step: 'exam', result: 'yellow', prompts: 1, parent: true });
   await Store.durable(); return Store.raw.length;
 })()"""
 
@@ -100,7 +100,7 @@ async def main():
         for role, views in (('aya', ['now', 'today', 'thursday', 'logs', 'settings']), ('asst', ['now', 'today', 'thursday', 'logs', 'settings']), ('parent', ['dash', 'reports', 'logs', 'settings'])):
             for v in views:
                 screens.append({'name': f'{role}/{v}', 'role': role, 'view': v})
-            for c in ('dalal', 'farah', 'karim'):
+            for c in ('c1', 'c2', 'c3'):
                 for t in tabs:
                     screens.append({'name': f'{role}/children/{c}/{t}', 'role': role, 'view': 'children', 'sub': {'child': c, 'ctab': t}})
         seen = set()

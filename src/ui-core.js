@@ -199,7 +199,7 @@ const Alarms = {
 Views.login = function () {
   const online = !!Sync.cfg();
   const wrap = el('div', { class: 'login' });
-  wrap.append(el('h1', { style: 'color:var(--brand);margin-bottom:4px' }, 'لوحة المعلمة'), el('p', { class: 'muted' }, 'برنامج حفظ القرآن وتدبره — دلال وفرح وكريم'));
+  wrap.append(el('h1', { style: 'color:var(--brand);margin-bottom:4px' }, 'لوحة المعلمة'), el('p', { class: 'muted' }, 'برنامج حفظ القرآن وتدبره'));
   if (online) {
     const email = el('input', { type: 'email', placeholder: 'البريد', autocomplete: 'username' });
     const pass = el('input', { type: 'password', placeholder: 'كلمة السر', autocomplete: 'current-password' });

@@ -21,31 +21,29 @@ async def main():
         await nav(3); await shot('r03_children_empty')
         await nav(5); await shot('r04_settings_aya')
         # inventory
-        await pg.evaluate("for (const c of ['dalal','farah']) for (let p=562;p<=604;p++) Store.add({type:'layer',child:c,page:p,layer:'far',color:'green'}); for (let p=595;p<=604;p++) Store.add({type:'layer',child:'karim',page:p,layer:'far',color:'green'}); UI.rerender();")
+        await pg.evaluate("for (const c of ['c1','c2']) for (let p=562;p<=604;p++) Store.add({type:'layer',child:c,page:p,layer:'far',color:'green'}); for (let p=595;p<=604;p++) Store.add({type:'layer',child:'c3',page:p,layer:'far',color:'green'}); UI.rerender();")
         await nav(1); await shot('r05_aya_now_day1')
-        # start dalal gate_new
+        # start c1 gate_new
         await pg.click('text=ابدئي الجلسة'); await pg.wait_for_selector('text=جلسة جارية'); await shot('r06_session_gate_day1')
         # open memorize, half page
         await pg.locator('.steps li').nth(1).locator('.body .row').first.click(); await shot('r07_memorize_step')
         await pg.click('text=بدء المؤقت'); await pg.check('input[type=checkbox]'); await pg.click('text=تم الحفظ'); await pg.wait_for_timeout(200)
         await pg.locator('.steps li').nth(2).locator('.body .row').first.click(); await pg.locator('.steps li').nth(2).locator('button.btn-y').first.click(); await pg.wait_for_timeout(200); await shot('r08_first_outcome_detail')
         await pg.click('button:has-text("إنهاء الجلسة")'); await pg.wait_for_selector('.modal'); await shot('r09_end_modal'); await pg.click('.modal button.primary'); await pg.wait_for_timeout(300)
-        # farah near_review is asst; aya next: farah gate 7:50
+        # c2 near_review is asst; aya next: c2 gate 7:50
         await t(2026,11,7,7,55); await shot('r10_aya_now_755')
-        # karim 8:30
-        await t(2026,11,7,8,32); await pg.click('text=ابدئي الجلسة'); await pg.wait_for_selector('text=جلسة جارية'); await shot('r11_karim_new')
+        # c3 8:30
+        await t(2026,11,7,8,32); await pg.click('text=ابدئي الجلسة'); await pg.wait_for_selector('text=جلسة جارية'); await shot('r11_young_new')
         await pg.locator('.steps li').nth(1).locator('.body .row').first.click(); await pg.click('text=بدء المؤقت'); await pg.click('text=تم الحفظ'); await pg.wait_for_timeout(200)
-        await pg.locator('.steps li').nth(2).locator('.body .row').first.click(); await shot('r12_karim_first'); await pg.locator('.steps li').nth(2).locator('button.btn-g').first.click(); await pg.wait_for_timeout(200)
+        await pg.locator('.steps li').nth(2).locator('.body .row').first.click(); await shot('r12_young_first'); await pg.locator('.steps li').nth(2).locator('button.btn-g').first.click(); await pg.wait_for_timeout(200)
         await pg.click('button:has-text("إنهاء الجلسة")'); await pg.wait_for_selector('.modal'); await pg.click('.modal button.primary'); await pg.wait_for_timeout(200)
-        # asst day1 noon + fluency
+        # asst day1: young noon (second + fluency + review) then noon
         await login(2,'2222'); await t(2026,11,7,12,12); await shot('r13_asst_now_fluency'); await pg.click('text=ابدئي الجلسة'); await pg.wait_for_selector('text=جلسة جارية'); await shot('r14_fluency_session')
         await pg.click('button:has-text("إنهاء الجلسة")'); await pg.wait_for_selector('.modal'); await pg.click('.modal button.primary'); await pg.wait_for_timeout(200)
-        await t(2026,11,7,12,52); await pg.click('text=ابدئي الجلسة'); await pg.wait_for_selector('text=جلسة جارية'); await shot('r15_noon_dalal')
+        await t(2026,11,7,12,52); await pg.click('text=ابدئي الجلسة'); await pg.wait_for_selector('text=جلسة جارية'); await shot('r15_noon_c1')
         await pg.locator('.steps li').nth(1).locator('.body .row').first.click(); await shot('r16_noon_far_step')
         await pg.click('button:has-text("إنهاء الجلسة")'); await pg.wait_for_selector('.modal'); await pg.click('.modal button.primary'); await pg.wait_for_timeout(200)
-        await t(2026,11,7,15,22); await pg.click('text=ابدئي الجلسة'); await pg.wait_for_selector('text=جلسة جارية'); await shot('r17_karim_asr')
-        await pg.click('button:has-text("إنهاء الجلسة")'); await pg.wait_for_selector('.modal'); await pg.click('.modal button.primary'); await pg.wait_for_timeout(200)
-        # aya evening: circle, third, karim evening, prep
+        # aya evening: circle, third, c3 evening, prep
         await login(1,'1111'); await t(2026,11,7,18,2); await pg.click('text=ابدئي الجلسة'); await pg.wait_for_selector('text=جلسة جارية'); await shot('r18_circle')
         await pg.click('button:has-text("إنهاء الجلسة")'); await pg.wait_for_selector('.modal'); await pg.click('.modal button.primary'); await pg.wait_for_timeout(200)
         await t(2026,11,7,18,52); await pg.click('text=ابدئي الجلسة'); await pg.wait_for_selector('text=جلسة جارية'); await shot('r19_prep_color')
@@ -63,7 +61,7 @@ async def main():
         await login(3,'3333'); await shot('r28_parent_dash'); await nav(2); await shot('r29_parent_children'); await nav(4); await shot('r30_parent_reports'); await nav(5); await shot('r31_parent_settings')
         # friday
         await login(1,'1111'); await t(2026,11,13,9,0); await nav(1); await shot('r32_friday')
-        st = await pg.evaluate("JSON.stringify({dalal:(({nextNew,nextLines,near,far,todayFar,quota})=>({nextNew,nextLines,near,farN:far.length,todayFar,quota}))(deriveChild('dalal')), karim:(({nextNew,nextLines,near,far,todayFar,quota})=>({nextNew,nextLines,near,farN:far.length,todayFar,quota}))(deriveChild('karim'))})")
+        st = await pg.evaluate("JSON.stringify({c1:(({nextNew,nextLines,near,far,todayFar,quota})=>({nextNew,nextLines,near,farN:far.length,todayFar,quota}))(deriveChild('c1')), c3:(({nextNew,nextLines,near,far,todayFar,quota})=>({nextNew,nextLines,near,farN:far.length,todayFar,quota}))(deriveChild('c3'))})")
         print(st); print('ERRS', json.dumps(errs,ensure_ascii=False))
         await b.close()
 asyncio.run(main())

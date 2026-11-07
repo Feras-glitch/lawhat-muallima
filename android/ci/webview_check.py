@@ -1,5 +1,6 @@
 """فحص التطبيق على محاكي أندرويد عبر بروتوكول DevTools لـ WebView (بناء الاختبار وحده يفعّله).
 يتحقق أن الواجهة تعمل داخل التطبيق: الأصل الثابت، قاعدة الجهاز، الجسر، بقاء البيانات بعد إعادة التحميل وبعد إيقاف التطبيق،
+وبعد قتل العملية في الخلفية أثناء جلسة مفتوحة،
 زر الرجوع، واختيار الملفات. يكتب النتائج في JSON ويفشل عند أي خطأ."""
 import json, subprocess, sys, time, urllib.request, asyncio
 import websockets
@@ -76,7 +77,7 @@ async def main():
     async def first(p):
         info = await p.ev("({ origin: location.origin, inApp: AppShell.inApp(), preview: AppShell.preview(), idb: Store.idbOk, ver: BUILD.version, app: AppShell.version(), sw: innerWidth, sh: innerHeight, dpr: devicePixelRatio, persist: Persist.text().slice(0, 40) })")
         ok('الواجهة داخل التطبيق: أصل https ثابت، قاعدة الجهاز، الجسر', info['origin'] == 'https://appassets.androidplatform.net' and info['inApp'] and info['idb'], info)
-        await p.ev("(async () => { App.setRole('aya'); Store.add({ id: 'apk-probe', type: 'note', child: 'dalal', text: 'فحص المحاكي' }); await Store.durable(); App.view = 'logs'; UI.rerender(); return true; })()")
+        await p.ev("(async () => { App.setRole('aya'); Store.add({ id: 'apk-probe', type: 'note', child: 'c1', text: 'فحص المحاكي' }); await Store.durable(); App.view = 'logs'; UI.rerender(); return true; })()")
         n = await p.ev("Store.raw.filter(e => e.id === 'apk-probe').length")
         ok('تسجيل ملاحظة وحفظها', n == 1, n)
         return info
@@ -94,6 +95,35 @@ async def main():
     sh('shell', 'am', 'force-stop', PKG); time.sleep(2); launch(); time.sleep(4)
     n = await session(after_reload)
     ok('بعد إيقاف التطبيق وتشغيله: الملاحظة باقية (قاعدة الجهاز دائمة)', n == 1, n)
+
+    # قتل العملية في الخلفية أثناء جلسة مفتوحة (0.15): المعلمة تنتقل إلى تطبيق المكالمة، والنظام يغلق التطبيق لتوفير الذاكرة
+    async def open_session(p):
+        return await p.ev("""(async () => { App.setRole('asst'); const s = PLAN.find(x => x.kind === 'noon' && x.child === 'c1'); startSession(s);
+            const a = Store.settings.active; a.steps.push('second'); saveActive();
+            Store.add({ id: 'kill-probe', type: 'error', child: 'c1', page: 582, surah: 78, ayah: 1, etype: 'hesitate' }); await Store.durable();
+            return { sid: a.sid, key: a.key, errSid: (Store.raw.find(e => e.id === 'kill-probe') || {}).sid }; })()""")
+    sess = await session(open_session)
+    sh('shell', 'input', 'keyevent', 'KEYCODE_HOME'); time.sleep(2)
+    sh('shell', 'am', 'kill', PKG); time.sleep(2)
+    alive = sh('shell', 'pidof', PKG, check=False).strip()
+    if alive:  # بعض الصور لا تقتل بـ am kill؛ القتل بالإشارة يماثل إغلاق النظام للعملية
+        sh('shell', 'run-as', PKG, 'kill', '-9', alive, check=False); time.sleep(1)
+        if sh('shell', 'pidof', PKG, check=False).strip():
+            sh('shell', 'am', 'force-stop', PKG); time.sleep(1)
+    killed = not sh('shell', 'pidof', PKG, check=False).strip()
+    launch(); time.sleep(4)
+
+    async def after_kill(p):
+        return await p.ev("""(() => { App.setRole('asst'); App.view = 'now'; UI.rerender(); const a = Store.settings.active;
+            return { active: !!a, sid: a && a.sid, steps: a ? a.steps : null, err: Store.raw.filter(e => e.id === 'kill-probe').length,
+              inSession: document.querySelector('main').innerText.includes(SESSION_KINDS.noon.name) }; })()""")
+    r = await session(after_kill)
+    ok('بعد قتل العملية أثناء الجلسة: الخطأ المسجل باقٍ والجلسة تعود من الخطوة نفسها', killed and r['err'] == 1 and r['active'] and r['sid'] == sess['sid'] and 'second' in (r['steps'] or []) and r['inSession'] and sess['errSid'] == sess['sid'], {'killed': killed, 'before': sess, 'after': r})
+    shot('after-kill')
+
+    async def end_session(p):
+        return await p.ev("(() => { Store.settings.active = null; Store.saveSettings(); App.setRole('aya'); UI.rerender(); return true; })()")
+    await session(end_session)
 
     async def back_modal(p):
         await p.ev("(() => { App.setRole('aya'); App.view = 'logs'; UI.rerender(); UI.confirm('اختبار الرجوع', () => {}); return true; })()")
@@ -171,7 +201,7 @@ async def main():
 
     # السجلات بأزرار التراجع (آية ترى زراً على سجلها وسجل المساعدة)
     async def logs(p):
-        await p.ev("""(async () => { App.role = ROLES.asst; Store.add({ type: 'outcome', child: 'dalal', page: 582, step: 'far', result: 'clean' });
+        await p.ev("""(async () => { App.role = ROLES.asst; Store.add({ type: 'outcome', child: 'c1', page: 582, step: 'far', result: 'clean' });
             App.setRole('aya'); App.view = 'logs'; UI.rerender(); await Store.durable(); scrollTo(0, 0); return true; })()""")
         return await p.ev("[...document.querySelectorAll('main tr button')].filter(b => b.textContent === 'تراجع').length")
     n = await session(logs)

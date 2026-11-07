@@ -10,11 +10,11 @@ function openPresent(s) {
       el('div', { class: 'row' }, kids.length > 1 ? kids.map(k => el('button', { class: child === k ? 'primary' : 'ghost', onclick: () => { child = k; render(); } }, CHILDREN[k].name)) : el('span', { class: 'big' }, CHILDREN[child].name)),
       el('div', { class: 'row' }, [['page', 'الصفحة'], ['far', 'حصة البعيد'], ['card', 'البطاقة'], ['mut', 'المتشابهات'], ['yellow', 'الصفراء']].map(([m, n]) => el('button', { class: mode === m ? 'primary' : 'ghost', onclick: () => { mode = m; render(); } }, n)), el('button', { class: 'danger', onclick: () => bg.remove() }, '✕ إغلاق')));
     const body = el('div', { class: 'pbody' }); const add = (...x) => body.append(...x.flat().filter(v => v !== null && v !== false && v !== undefined));
-    if (mode === 'page') add(el('div', { class: 'phuge' }, page ? `صفحة ${page}` : '—'), el('div', { class: 'pbig' }, page ? surahsOfPage(page).map(n => SURAH_NAMES[n - 1]).join(' · ') : ''), child === 'karim' && d.nextLines && page === d.nextNew ? el('div', { class: 'pbig' }, `الأسطر ${d.nextLines[0]}–${d.nextLines[1]}`) : null, el('div', { class: 'muted' }, `${juzLabel(juzOfPage(page || 1))} · مصحف المدينة`));
+    if (mode === 'page') add(el('div', { class: 'phuge' }, page ? `صفحة ${page}` : '—'), el('div', { class: 'pbig' }, page ? surahsOfPage(page).map(n => SURAH_NAMES[n - 1]).join(' · ') : ''), isLines(child) && d.nextLines && page === d.nextNew ? el('div', { class: 'pbig' }, `الأسطر ${d.nextLines[0]}–${d.nextLines[1]}`) : null, el('div', { class: 'muted' }, `${juzLabel(juzOfPage(page || 1))} · مصحف المدينة`));
     if (mode === 'far') add(el('div', { class: 'pbig' }, 'صفحات المراجعة اليوم'), el('div', { class: 'pchips' }, d.todayFar.length ? d.todayFar.map(p => el('span', { class: 'pchip' }, p)) : el('span', { class: 'muted' }, 'لا صفحات')));
     if (mode === 'card') {
-      /* (LM0121-R2-10) لكريم: بطاقة كل سورة في الصفحة */
-      const keys = child === 'karim' ? surahsOfPage(page || 1).map(n => ['s' + n, 'سورة ' + SURAH_NAMES[n - 1]]) : [['p' + page, `بطاقة صفحة ${page}`]];
+      /* (LM0121-R2-10) للطفل الثالث: بطاقة كل سورة في الصفحة */
+      const keys = isLines(child) ? surahsOfPage(page || 1).map(n => ['s' + n, 'سورة ' + SURAH_NAMES[n - 1]]) : [['p' + page, `بطاقة صفحة ${page}`]];
       for (const [key, title] of keys) { const c = cards[key]; add(el('div', { class: 'pbig' }, title), c ? el('div', { class: 'pcard', html: cardHtml(c) }) : el('div', { class: 'muted' }, 'لا بطاقة بعد')); }
     }
     if (mode === 'mut') { const list = mutashabihat(child, weekStartKey(App.now())); add(el('div', { class: 'pbig' }, 'المتشابهات'), list.length ? list.map(e => el('div', { class: 'pline' }, `${SURAH_NAMES[e.surah - 1]} ${e.ayah} (ص${e.page})  ⟷  ${e.target ? SURAH_NAMES[e.target.surah - 1] + ' ' + (e.target.ayah || '') : '؟'}`)) : el('div', { class: 'muted' }, 'لا متشابهات هذا الأسبوع')); }

@@ -74,7 +74,7 @@ async def main():
             return await sync(d)
 
         dig = lambda d: d.evaluate('T.digest()')
-        S = {'C': 'dalal'}
+        S = {'C': 'c1'}
 
         # ================= C0 ترحيل 0.11 =================
         pg.create_server('srv_m')
@@ -110,22 +110,22 @@ async def main():
         for d, r in ((aya, 'aya'), (asst, 'asst'), (par, 'parent')):
             await connect(d, 'srv_a'); await login(d, r)
         for pgn in range(562, 567):
-            await add(aya, {'id': f'L{pgn}', 'type': 'layer', 'child': 'dalal', 'page': pgn, 'layer': 'far', 'color': 'green'})
-        await add(aya, {'id': 'A1', 'type': 'note', 'child': 'dalal', 'text': 'آية 1'})
-        await add(asst, {'id': 'O1', 'type': 'outcome', 'child': 'dalal', 'page': 562, 'step': 'far', 'result': 'yellow'})
-        await add(asst, {'id': 'S1', 'type': 'note', 'child': 'dalal', 'text': 'مساعدة 1'})
+            await add(aya, {'id': f'L{pgn}', 'type': 'layer', 'child': 'c1', 'page': pgn, 'layer': 'far', 'color': 'green'})
+        await add(aya, {'id': 'A1', 'type': 'note', 'child': 'c1', 'text': 'آية 1'})
+        await add(asst, {'id': 'O1', 'type': 'outcome', 'child': 'c1', 'page': 562, 'step': 'far', 'result': 'yellow'})
+        await add(asst, {'id': 'S1', 'type': 'note', 'child': 'c1', 'text': 'مساعدة 1'})
         for d in (aya, asst, aya, par):
             r = await sync(d); assert r['err'] is None, r
         t0 = set(pg.ids('srv_a'))
         pg.snapshot('srv_a', 'snap_t0')  # نسخة الخادم الاحتياطية عند T0
         # بعد النسخة: سجلات وتراجعات على جهازين بدورين مختلفين
-        await add(asst, {'id': 'O2', 'type': 'outcome', 'child': 'dalal', 'page': 563, 'step': 'far', 'result': 'clean'})
-        await add(asst, {'id': 'U1', 'type': 'undo', 'target': 'O1', 'child': 'dalal'})
-        await add(asst, {'id': 'S2', 'type': 'note', 'child': 'dalal', 'text': 'مساعدة 2'})
-        await add(aya, {'id': 'A2', 'type': 'note', 'child': 'dalal', 'text': 'آية 2'})
-        await add(aya, {'id': 'U2', 'type': 'undo', 'target': 'S1', 'child': 'dalal'})  # آية تتراجع عن سجل المساعدة
+        await add(asst, {'id': 'O2', 'type': 'outcome', 'child': 'c1', 'page': 563, 'step': 'far', 'result': 'clean'})
+        await add(asst, {'id': 'U1', 'type': 'undo', 'target': 'O1', 'child': 'c1'})
+        await add(asst, {'id': 'S2', 'type': 'note', 'child': 'c1', 'text': 'مساعدة 2'})
+        await add(aya, {'id': 'A2', 'type': 'note', 'child': 'c1', 'text': 'آية 2'})
+        await add(aya, {'id': 'U2', 'type': 'undo', 'target': 'S1', 'child': 'c1'})  # آية تتراجع عن سجل المساعدة
         await sync(asst); await sync(aya)
-        await add(aya, {'id': 'U4', 'type': 'undo', 'target': 'S2', 'child': 'dalal'})  # تراجع عن سجل للمساعدة لم تحمله النسخة
+        await add(aya, {'id': 'U4', 'type': 'undo', 'target': 'S2', 'child': 'c1'})  # تراجع عن سجل للمساعدة لم تحمله النسخة
         for d in (aya, asst, aya, par):
             r = await sync(d); assert r['err'] is None, r
         full_ids = set(pg.ids('srv_a'))
@@ -170,7 +170,7 @@ async def main():
         for d in (aya, asst, par):
             r = await sync(d); assert r['err'] is None, r
         ok('C1 بعد مزامنة جديدة: لا تكرار ولا تغيير', [await dig(d) for d in (aya, asst, par)] == d3)
-        await add(aya, {'id': 'U3', 'type': 'undo', 'target': 'A2', 'child': 'dalal'})
+        await add(aya, {'id': 'U3', 'type': 'undo', 'target': 'A2', 'child': 'c1'})
         for d in (aya, asst, par):
             await sync(d)
         d5 = [await dig(d) for d in (aya, asst, par)]
@@ -193,7 +193,7 @@ async def main():
         ok('C2 الأعمدة تطابق payload، ولا حقول محلية على الخادم', rows == '0', rows)
         # سجل مزوَّر: المساعدة «تلوّن» صفحة (غير مسموح لدورها) — يُرفض بسبب سياسة الخادم نفسها
         forged = await device('forged')
-        await forged.evaluate("Store.raw.push({ id: 'FORGED', type: 'color', by: 'asst', child: 'dalal', page: 570, color: 'green', ts: 5, day: '2026-11-06' })")
+        await forged.evaluate("Store.raw.push({ id: 'FORGED', type: 'color', by: 'asst', child: 'c1', page: 570, color: 'green', ts: 5, day: '2026-11-06' })")
         sql = await forged.evaluate("ServerRestore.sql(ServerRestore.parts()[0], 1, 1)")
         out = pg.psql('srv_b2', sql)[1]
         ok('C2 المزوَّر يُرفض بسببه ولا يصل الخادم', 'rejected' in out and 'row-level security' in out and 'FORGED' not in pg.ids('srv_b2'), out.strip())
@@ -206,7 +206,7 @@ async def main():
         texts = ['$lm_do$', '$lm_json$', '$lm_do_x$ و $lm_json_x$', '$$ end $$; drop table public.events; --', "' ; select 1; -- \\ E'\\n' ـ", 'end $lm_do$; select pg_sleep(0); do $lm_do$ begin']
         await nasty.evaluate("App.setRole('aya')")
         for i, t in enumerate(texts):
-            await add(nasty, {'id': f'NASTY{i}', 'type': 'note', 'child': 'dalal', 'text': t})
+            await add(nasty, {'id': f'NASTY{i}', 'type': 'note', 'child': 'c1', 'text': t})
         sqls = await nasty.evaluate("ServerRestore.parts().map((ch, i, all) => ServerRestore.sql(ch, i + 1, all.length))")
         rc, out, err = pg.psql('srv_b3', sqls[0], check=False)
         got = pg.psql('srv_b3', "select json_agg(json_build_array(id, payload->>'text') order by id) from public.events where id like 'NASTY%';")[1].strip()
@@ -218,12 +218,12 @@ async def main():
         new, old, old2 = await device('new'), await device('old'), await device('old2')
         for d in (new, old, old2):
             await d.evaluate("App.setRole('aya')")
-        await add(new, {'id': 'X1', 'type': 'note', 'child': 'dalal', 'text': 'x'})
+        await add(new, {'id': 'X1', 'type': 'note', 'child': 'c1', 'text': 'x'})
         x1 = await new.evaluate("Store.clean(Store.raw.find(e => e.id === 'X1'))")
         for d in (old, old2):
             await d.evaluate(f"Store.importEvents([{json.dumps(x1, ensure_ascii=False)}])")
-        await add(new, {'id': 'K1', 'type': 'note', 'child': 'dalal', 'text': 'k'})
-        await add(new, {'id': 'UX1', 'type': 'undo', 'target': 'X1', 'child': 'dalal'})
+        await add(new, {'id': 'K1', 'type': 'note', 'child': 'c1', 'text': 'k'})
+        await add(new, {'id': 'UX1', 'type': 'undo', 'target': 'X1', 'child': 'c1'})
         full_file = await new.evaluate("JSON.stringify(Backup.build())")
         legacy_file = await new.evaluate("JSON.stringify({ exported: new Date().toISOString(), by: 'aya', events: Store.events })")
         r = await old.evaluate(f"(() => {{ const p = Backup.parse({json.dumps(full_file)}); const n = Backup.merge(p); return {{ full: p.full, n, x1Live: Store.events.some(e => e.id === 'X1') }}; }})()")
@@ -250,16 +250,16 @@ async def main():
         a2, s2 = await device('aya2'), await device('asst2')
         for d, role in ((a2, 'aya'), (s2, 'asst')):
             await connect(d, 'srv_x'); await login(d, role)
-        await add(a2, {'id': 'Y1', 'type': 'note', 'child': 'farah', 'text': 'y1'})
-        await add(a2, {'id': 'Y2', 'type': 'note', 'child': 'farah', 'text': 'y2'})
-        await add(s2, {'id': 'Z1', 'type': 'note', 'child': 'farah', 'text': 'z1'})
+        await add(a2, {'id': 'Y1', 'type': 'note', 'child': 'c2', 'text': 'y1'})
+        await add(a2, {'id': 'Y2', 'type': 'note', 'child': 'c2', 'text': 'y2'})
+        await add(s2, {'id': 'Z1', 'type': 'note', 'child': 'c2', 'text': 'z1'})
         for d in (a2, s2, a2):
             await sync(d)
         cur_x = await a2.evaluate('Sync.st().cursor')
         await connect(a2, 'srv_y'); await login(a2, 'aya'); r = await sync(a2)
         ok('C5 «ب»: رفعت آية سجلاتها، والتقرير يسمّي سجل المساعدة الناقص', r['report']['others'] == {'asst': 1} and {'Y1', 'Y2'} <= set(pg.ids('srv_y')), r['report'])
-        await add(a2, {'id': 'EB', 'type': 'note', 'child': 'farah', 'text': 'على ب'})
-        await add(a2, {'id': 'UY1', 'type': 'undo', 'target': 'Y1', 'child': 'farah'})
+        await add(a2, {'id': 'EB', 'type': 'note', 'child': 'c2', 'text': 'على ب'})
+        await add(a2, {'id': 'UY1', 'type': 'undo', 'target': 'Y1', 'child': 'c2'})
         await sync(a2)
         await a2.evaluate(f"(() => {{ if (!Sync.isKnown({json.dumps(shim.url('srv_x'))})) throw new Error('«أ» يجب أن يكون معروفاً'); }})()")
         await connect(a2, 'srv_x')
@@ -273,7 +273,7 @@ async def main():
 
         # ================= C6 =================
         pg.snapshot('srv_x', 'snap_x')
-        await add(a2, {'id': 'W1', 'type': 'note', 'child': 'farah', 'text': 'w1'})
+        await add(a2, {'id': 'W1', 'type': 'note', 'child': 'c2', 'text': 'w1'})
         await sync(a2)
         ok('C6 W1 على «أ»', 'W1' in pg.ids('srv_x'))
         pg.snapshot('snap_x', 'srv_x')  # استعادة في المكان من نسخة أقدم
@@ -284,8 +284,8 @@ async def main():
         # ================= C6ج (LM012-01) فقد سجل مع تساوي العدد =================
         await a2.evaluate("Sync.st().reconciledAt = Date.now(); Store.saveSettings();")
         n_srv = len(pg.ids('srv_x'))
-        ghost = {'id': 'GHOST', 'type': 'note', 'by': 'asst', 'child': 'farah', 'ts': 7, 'day': '2026-11-01', 'text': 'g'}
-        pg.psql('srv_x', f"delete from public.events where id = 'Y2'; insert into public.events (id, ts, day, by, child, type, payload, inserted_at) values ('GHOST', 7, '2026-11-01', 'asst', 'farah', 'note', '{json.dumps(ghost)}'::jsonb, '2000-01-01');")
+        ghost = {'id': 'GHOST', 'type': 'note', 'by': 'asst', 'child': 'c2', 'ts': 7, 'day': '2026-11-01', 'text': 'g'}
+        pg.psql('srv_x', f"delete from public.events where id = 'Y2'; insert into public.events (id, ts, day, by, child, type, payload, inserted_at) values ('GHOST', 7, '2026-11-01', 'asst', 'c2', 'note', '{json.dumps(ghost)}'::jsonb, '2000-01-01');")
         ok('C6ج تجهيز: العدد على الخادم كما هو، وY2 مفقود، وGHOST قبل مؤشر السحب', len(pg.ids('srv_x')) == n_srv and 'Y2' not in pg.ids('srv_x'))
         r = await sync(a2)
         r1 = {'Y2': 'Y2' in pg.ids('srv_x'), 'ghost': await a2.evaluate("Store.raw.some(e => e.id === 'GHOST')")}
@@ -333,8 +333,8 @@ async def main():
         d1, d2, d3 = await device('cf1'), await device('cf2'), await device('cf3')
         for d in (d1, d2, d3):
             await connect(d, 'srv_cf'); await login(d, 'aya')
-        await add(d1, {'id': 'X', 'type': 'note', 'child': 'dalal', 'text': 'نسخة الخادم'})
-        await add(d1, {'id': 'Y', 'type': 'note', 'child': 'dalal', 'text': 'ي على الخادم'})
+        await add(d1, {'id': 'X', 'type': 'note', 'child': 'c1', 'text': 'نسخة الخادم'})
+        await add(d1, {'id': 'Y', 'type': 'note', 'child': 'c1', 'text': 'ي على الخادم'})
         await sync(d1)
         xv = await d1.evaluate("Store.clean(Store.raw.find(e => e.id === 'X'))")
         # الرفع: جهاز يحمل X بمحتوى آخر لم يُرفع بعد
@@ -373,9 +373,9 @@ async def main():
         for d in (rv, demo):
             await connect(d, 'srv_rv'); await login(d, 'asst')
         for i in range(3):
-            await add(rv, {'id': f'RV{i}', 'type': 'note', 'child': 'dalal', 'text': f'م{i}'})
+            await add(rv, {'id': f'RV{i}', 'type': 'note', 'child': 'c1', 'text': f'م{i}'})
         await sync(rv); await sync(demo)
-        await add(rv, {'id': 'RV_PEND', 'type': 'note', 'child': 'dalal', 'text': 'بعد سحب الدور'})
+        await add(rv, {'id': 'RV_PEND', 'type': 'note', 'child': 'c1', 'text': 'بعد سحب الدور'})
         pg.psql('srv_rv', f"delete from public.profiles where user_id = '{asst_uid}';")
         # بلا فحص الدور (سلوك ما قبل الإصلاح): المطابقة ترى خادماً فارغاً فتُعيد الرفع، و403 يُعلَّم مرفوضاً — هذا ما يمنعه الإصلاح
         r = await demo.evaluate("(async () => { Sync.serverRole = async () => Store.settings.sbRole; Sync.st().needReconcile = true; await T.sync(); return Store.raw.filter(e => (e.rj || []).length).length; })()")
@@ -399,7 +399,7 @@ async def main():
         k1, k2 = await device('kp1'), await device('kp2')
         for d in (k1, k2):
             await connect(d, 'srv_kp'); await login(d, 'aya')
-        await add(k1, {'id': 'K', 'type': 'note', 'child': 'dalal', 'text': 'نسخة الخادم'})
+        await add(k1, {'id': 'K', 'type': 'note', 'child': 'c1', 'text': 'نسخة الخادم'})
         await sync(k1)
         kv = await k1.evaluate("Store.clean(Store.raw.find(e => e.id === 'K'))")
         await k2.evaluate(f"Store.importEvents([Object.assign({json.dumps(kv, ensure_ascii=False)}, {{ text: 'نسخة الجهاز' }})], {{ source: 'file' }})")

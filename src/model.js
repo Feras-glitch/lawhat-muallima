@@ -309,8 +309,8 @@ const Store = {
   /* مرآة محلية لسياسة الخادم: ما يجوز لكل دور تسجيله (النيابة لا توسّعها) */
   roleAllows(by, ev) {
     if (by === 'aya') return true;
-    if (by === 'asst') return ['outcome', 'error', 'note', 'session_done', 'fluency_time', 'card', 'yellow_pass', 'handoff', 'handoff_update', 'undo', 'session_start', 'session_cancel', 'fluency_page', 'tilawa'].includes(ev.type) && !(ev.type === 'outcome' && (ev.step === 'exam' || ev.parent));
-    if (by === 'parent') return ['parent_exam', 'note', 'undo'].includes(ev.type) || (ev.type === 'outcome' && ev.parent === true);
+    if (by === 'asst') return ['outcome', 'error', 'note', 'session_done', 'fluency_time', 'card', 'yellow_pass', 'handoff', 'handoff_update', 'undo', 'session_start', 'session_cancel', 'fluency_page', 'tilawa', 'mut_target'].includes(ev.type) && !(ev.type === 'outcome' && (ev.step === 'exam' || ev.parent));
+    if (by === 'parent') return ['parent_exam', 'note', 'undo', 'names'].includes(ev.type) || (ev.type === 'outcome' && ev.parent === true);
     return false;
   },
   /* من يجوز له التراجع عن سجل: صاحبه، وآية عن سجلات المساعدة */
@@ -378,7 +378,7 @@ const Store = {
     const isPage = v => Number.isInteger(v) && v >= 1 && v <= 604;
     const isInt = (v, a, b) => Number.isInteger(v) && v >= a && v <= b;
     const oneOf = (v, arr) => arr.includes(v);
-    const needChild = ['juz_exam', 'tilawa', 'handoff', 'layer', 'color', 'new_page', 'outcome', 'error', 'decision', 'surah_passed', 'juz_passed', 'card', 'fluency_time', 'parent_exam', 'yellow_pass'];
+    const needChild = ['juz_exam', 'tilawa', 'handoff', 'layer', 'color', 'new_page', 'outcome', 'error', 'decision', 'surah_passed', 'juz_passed', 'card', 'fluency_time', 'parent_exam', 'yellow_pass', 'mut_target'];
     if (needChild.includes(e.type) && !CHILDREN[e.child]) return false;
     if (e.page != null && !isPage(e.page)) return false;
     switch (e.type) {
@@ -395,7 +395,13 @@ const Store = {
         return this.canUndo(e.by, t);
       }
       case 'error': return isPage(e.page) && oneOf(e.etype, ERROR_TYPES.map(t => t.id)) && (e.lines == null || (Array.isArray(e.lines) && isInt(e.lines[0], 1, 15) && isInt(e.lines[1], 1, 15) && e.lines[0] <= e.lines[1])) && (e.surah == null || isInt(e.surah, 1, 114)) && (e.ayah == null || isInt(e.ayah, 1, 286)) && (e.target == null || (typeof e.target === 'object' && isInt(e.target.surah, 1, 114) && (e.target.ayah == null || isInt(e.target.ayah, 1, 286))));
-      case 'decision': return oneOf(e.kind, ['repair', 'reduce', 'restore', 'pause', 'resume', 'override', 'juz', 'surah']) && (e.text == null || typeof e.text === 'string');
+      case 'decision': return oneOf(e.kind, ['repair', 'reduce', 'restore', 'pause', 'resume', 'override', 'juz', 'surah', 'caps']) && (e.text == null || typeof e.text === 'string')
+        /* سقف المراجعة اليومي (0.15): صفحات القريب وحصة البعيد، بقرار آية */
+        && (e.kind !== 'caps' || ((e.near != null || e.far != null) && (e.near == null || isInt(e.near, 3, 40)) && (e.far == null || isInt(e.far, 1, 60))));
+      /* أسماء الأطفال (0.15): ليست في الكود؛ سجل يكتبه ولي الأمر أو آية ويُزامَن لأصحاب الأدوار فقط */
+      case 'names': return !!e.names && typeof e.names === 'object' && !Array.isArray(e.names) && Object.keys(e.names).length >= 1 && Object.entries(e.names).every(([k, v]) => CHILDREN[k] && typeof v === 'string' && v.trim().length >= 1 && v.length <= 30);
+      /* إكمال الموضع المشابه لخطأ سُجّل دونه (0.15) */
+      case 'mut_target': return typeof e.ref === 'string' && !!e.target && typeof e.target === 'object' && isInt(e.target.surah, 1, 114) && (e.target.ayah == null || isInt(e.target.ayah, 1, 286));
       case 'surah_passed': return isInt(e.surah, 1, 114);
       case 'juz_passed': return isInt(e.juz, 1, 30) && (e.exam == null || typeof e.exam === 'string');
       case 'juz_exam': return isInt(e.juz, 1, 30) && oneOf(e.result, ['clean', 'yellow', 'red']) && (e.prompts == null || isInt(e.prompts, 0, 99)) && (e.minutes == null || isInt(e.minutes, 0, 600)) && (e.note == null || typeof e.note === 'string')
@@ -493,7 +499,7 @@ function fmtDay(k) { const d = parseDay(k); return `${DAY_NAMES[d.getDay()]} ${d
 /* ترتيب الحفظ الجديد لكل طفل */
 function newOrder(childId) {
   const seq = [];
-  if (childId === 'karim') {
+  if (isLines(childId)) {
     for (let p = 604; p >= 582; p--) seq.push(p); // جزء عمّ صاعداً من الناس
     for (let p = 562; p <= 581; p++) seq.push(p); // ثم تبارك
     for (let p = 542; p <= 561; p++) seq.push(p);
@@ -514,12 +520,17 @@ function deriveChild(childId) {
   const newPages = [];
   const passedSurahs = new Set(); const passedDay = {};
   let paused = false, reduced = false;
+  /* سقف المراجعة اليومي (0.15): القريب 10 صفحات، البعيد 8 للكبيرين و3 للصغير؛ تغيّره آية بقرار «caps» */
+  const caps = { near: 10, far: isLines(childId) ? 3 : 8 };
+  const today = todayKey();
+  let memSeq = 0;
   for (const e of evs) {
     if (e.page != null && !pages[e.page]) continue; // حدث بصفحة غير صالحة لا يُسقط العرض
     if (e.type === 'layer') { const pg = pages[e.page]; pg.layer = e.layer; if (e.color) { pg.color = e.color; pg.colorDay = e.day; } if (e.layer === 'far') { pg.lastReview = e.day; pg.lastFar = e.day; } }
     if (e.type === 'new_page') {
       newPages.push(e);
       const pg = pages[e.page];
+      pg.memSeq = ++memSeq; pg.memDay = e.day;
       pg.linesDone = Math.max(pg.linesDone, e.linesTo || 15);
       pg.lastReview = e.day;
       if (pg.linesDone >= 15) { pg.layer = 'near'; lastNewPage = e.page; }
@@ -529,12 +540,15 @@ function deriveChild(childId) {
     if (e.type === 'color') { const pg = pages[e.page]; if (e.lines) { pg.segs = pg.segs || {}; pg.segs[segKey(e.lines)] = { color: e.color, day: e.day, lines: e.lines }; const order = { red: 3, yellow: 2, green: 1, none: 0 }; const worst = Object.values(pg.segs).reduce((w, x) => order[x.color] > order[w] ? x.color : w, 'none'); pg.color = worst === 'none' ? e.color : worst; pg.colorDay = e.day; } else { pg.color = e.color; pg.colorDay = e.day; } }
     if (e.type === 'outcome' && !e.parent) { /* فحص ولي الأمر منفصل: لا يغيّر تواريخ مراجعة المعلمة ولا ترتيب البعيد */
       pages[e.page].lastReview = e.day;
+      /* آخر تسميع قبل اليوم: يرتّب تناوب القريب ثابتاً طوال اليوم مهما سُجّل فيه */
+      if (e.day < today && (!pages[e.page].lastBefore || pages[e.page].lastBefore < e.day)) pages[e.page].lastBefore = e.day;
       if ((e.step === 'far' || e.step === 'exam') && e.result !== 'partial') pages[e.page].lastFar = e.day;
     }
     if (e.type === 'error') pages[e.page].errors++;
     if (e.type === 'juz_passed') { const jp = juzPages(e.juz); for (const p of jp) if (pages[p].layer === 'near') { pages[p].lastFar = e.day; pages[p].lastReview = e.day; } for (const p of juzPages(e.juz)) if (pages[p].layer === 'near') pages[p].layer = 'far'; }
     if (e.type === 'surah_passed') { passedSurahs.add(e.surah); passedDay[e.surah] = e.day; }
-    if (e.type === 'decision') { if (e.kind === 'pause') paused = true; if (e.kind === 'resume') paused = false; if (e.kind === 'reduce') reduced = true; if (e.kind === 'restore') reduced = false; }
+    if (e.type === 'decision') { if (e.kind === 'pause') paused = true; if (e.kind === 'resume') paused = false; if (e.kind === 'reduce') reduced = true; if (e.kind === 'restore') reduced = false;
+      if (e.kind === 'caps') { if (e.near != null) caps.near = e.near; if (e.far != null) caps.far = e.far; } }
   }
   /* صفحة القريب تنتقل إلى البعيد حين تُعتمد كل سورها التي بدأها الطفل */
   if (passedSurahs.size) for (const p of Object.keys(pages).map(Number)) { const pg = pages[p]; if (pg.layer !== 'near') continue; const ss = surahsOfPage(p); if (ss.every(x => passedSurahs.has(x))) { pg.layer = 'far'; const d = ss.map(x => passedDay[x]).sort().pop(); if (!pg.lastFar || pg.lastFar < d) { pg.lastFar = d; pg.lastReview = d; } } }
@@ -544,13 +558,18 @@ function deriveChild(childId) {
   let nextNew = null, nextLines = null;
   for (const p of order) {
     const pg = pages[p];
-    if (pg.layer === 'none') { nextNew = p; nextLines = [1, childId === 'karim' ? 4 : (reduced ? 8 : 15)]; break; }
-    if (pg.layer === 'new' && pg.linesDone < 15) { nextNew = p; nextLines = [pg.linesDone + 1, childId === 'karim' ? Math.min(15, pg.linesDone + 4) : 15]; break; }
+    if (pg.layer === 'none') { nextNew = p; nextLines = [1, isLines(childId) ? 4 : (reduced ? 8 : 15)]; break; }
+    if (pg.layer === 'new' && pg.linesDone < 15) { nextNew = p; nextLines = [pg.linesDone + 1, isLines(childId) ? Math.min(15, pg.linesDone + 4) : 15]; break; }
   }
   // حصة البعيد
-  /* الحصة: المحفوظ ÷ 8 جلسات بعيد (5 في الأسبوع) ≈ دورة 12 يوماً تقويمياً */
-  const quota = far.length === 0 ? 0 : (childId === 'karim' ? Math.max(3, Math.ceil(far.length / 8)) : Math.max(7, Math.ceil(far.length / 8)));
-  const today = todayKey();
+  /* الحصة: المحفوظ ÷ 8 جلسات بعيد (حد أدنى 7 للكبيرين و3 للصغير)، ولا تتجاوز سقف آية (0.15).
+     مع السقف تطول الدورة بنمو المحفوظ، وتتمدد معها عتبتا الإشارة بالأيام التقويمية */
+  const minFar = isLines(childId) ? 3 : 7;
+  const quota = far.length === 0 ? 0 : Math.min(caps.far, Math.max(minFar, Math.ceil(far.length / 8)));
+  /* طول الدورة: جلسات البعيد 5 في الأسبوع (السبت–الأربعاء)، فأقصى فاصل لصفحة = الجلسات + يومان عن كل عطلة أسبوعية تعبرها */
+  const cycleSessions = quota ? Math.ceil(far.length / Math.min(quota, far.length)) : 0;
+  const cycleDays = cycleSessions ? cycleSessions + 2 * Math.ceil(cycleSessions / 5) : 0;
+  const gapYellow = Math.max(10, cycleDays), gapRed = Math.max(12, cycleDays + 3);
   let lastFarPage = null, lastFarTs = 0;
   for (const e of evs) if (e.type === 'outcome' && e.step === 'far' && e.result !== 'partial' && e.day < today && e.ts >= lastFarTs) { lastFarTs = e.ts; lastFarPage = e.page; }
   let startIdx = 0;
@@ -562,7 +581,22 @@ function deriveChild(childId) {
   for (const p of far) { const d = pages[p].lastFar || pages[p].lastReview; const gap = d ? daysBetween(d, today) : 99; if (gap > maxGap) { maxGap = gap; maxGapPage = p; } }
   const todayNew = newPages.filter(e => e.day === today).map(e => e.page);
   const yesterdayNew = lastNewFor(childId, 1);
-  return { id: childId, pages, far, near, currentJuz, lastNewPage, nextNew, nextLines, quota, todayFar, maxGap, maxGapPage, todayNew, yesterdayNew, paused, reduced, passedSurahs };
+  /* قريب اليوم بسقف (0.15)، بالأولوية: الحمراء كل يوم (من القريب أو البعيد)، ثم آخر 5 صفحات حُفظت،
+     ثم صفحات الجزء المختوم المنتظر فحصه، ثم الباقي بالتناوب (الأقدم تسميعاً أولاً). صفحة اليوم لا تُحسب: لها ثلاثة تسميعات */
+  const todaySet = new Set(todayNew);
+  const seenDay = p => pages[p].lastBefore || pages[p].memDay || '';
+  const byOld = (a, b) => seenDay(a).localeCompare(seenDay(b)) || a - b;
+  const reds = Object.values(pages).filter(pg => pg.color === 'red' && (pg.layer === 'near' || pg.layer === 'far') && !todaySet.has(pg.page)).map(pg => pg.page).sort((a, b) => a - b);
+  const nearPool = near.filter(p => !todaySet.has(p));
+  const waitingJuz = [];
+  if (!isLines(childId)) for (let j = 1; j <= 30; j++) if (juzPages(j).every(p => pages[p].layer === 'near')) waitingJuz.push(j);
+  const recent = nearPool.filter(p => pages[p].memSeq).sort((a, b) => pages[b].memSeq - pages[a].memSeq).slice(0, 5);
+  const waitPages = nearPool.filter(p => waitingJuz.includes(juzOfPage(p))).sort(byOld);
+  const limit = Math.max(caps.near, reds.length);
+  const pick = reds.slice();
+  for (const list of [recent, waitPages, nearPool.slice().sort(byOld)]) for (const p of list) { if (pick.length >= limit) break; if (!pick.includes(p)) pick.push(p); }
+  const nearToday = reds.concat(pick.filter(p => !reds.includes(p)).sort((a, b) => (pages[b].memSeq || 0) - (pages[a].memSeq || 0) || b - a));
+  return { id: childId, pages, far, near, nearToday, reds, waitingJuz, caps, currentJuz, lastNewPage, nextNew, nextLines, quota, cycleSessions, cycleDays, gapYellow, gapRed, todayFar, maxGap, maxGapPage, todayNew, yesterdayNew, paused, reduced, passedSurahs };
 }
 
 /* آخر صفحة جديدة قبل اليوم (للبوابة) */
@@ -582,7 +616,7 @@ function yellowList(childId) {
       const k = `${e.surah}:${e.ayah}`;
       if (!items[k]) items[k] = { key: k, surah: e.surah, ayah: e.ayah, page: e.page, first: e.day, last: e.day, count: 0, types: {}, passes: [], target: null };
       const it = items[k]; it.count++; it.last = e.day; it.types[e.etype] = (it.types[e.etype] || 0) + 1;
-      if (e.etype === 'jump' && e.target) it.target = e.target;
+      if (e.etype === 'jump') { const w = withTarget(e); if (w.target) it.target = w.target; }
     }
     if (e.type === 'yellow_pass' && items[`${e.surah}:${e.ayah}`]) {
       const it = items[`${e.surah}:${e.ayah}`];
@@ -594,8 +628,14 @@ function yellowList(childId) {
   return { active: all.filter(i => i.passes.length < 3), cleared: all.filter(i => i.passes.length >= 3) };
 }
 
+/* الموضع المشابه الفعلي لخطأ: في الخطأ نفسه، أو آخر «mut_target» حيّ يشير إليه (0.15) */
+function withTarget(e) {
+  if (!e || e.type !== 'error' || e.etype !== 'jump' || e.target) return e;
+  let t = null; for (const m of Store.ofType('mut_target')) if (m.ref === e.id && (!t || m.ts >= t.ts)) t = m;
+  return t ? Object.assign({}, e, { target: t.target }) : e;
+}
 function mutashabihat(childId, sinceDay) {
-  return Store.events.filter(e => e.child === childId && e.type === 'error' && e.etype === 'jump' && (!sinceDay || e.day >= sinceDay));
+  return Store.events.filter(e => e.child === childId && e.type === 'error' && e.etype === 'jump' && (!sinceDay || e.day >= sinceDay)).map(withTarget);
 }
 
 /* بطاقات */
@@ -640,8 +680,8 @@ function healthOf(childId) {
   const partialN = (gatesAll.length - gates.length) + (examsAll.filter(e => e.day >= ws).length - exams.filter(e => e.day >= ws).length);
   const evaluated = gates.length > 0 || exams.length > 0;
   let light = evaluated ? 'green' : 'grey';
-  if (gateFails >= 2 || (st.far.length && st.maxGap > 12) || (examGreen != null && examGreen < 70)) light = 'red';
-  else if (gateFails === 1 || (st.far.length && st.maxGap > 10) || (examGreen != null && examGreen < 85)) light = 'yellow';
+  if (gateFails >= 2 || (st.far.length && st.maxGap > st.gapRed) || (examGreen != null && examGreen < 70)) light = 'red';
+  else if (gateFails === 1 || (st.far.length && st.maxGap > st.gapYellow) || (examGreen != null && examGreen < 85)) light = 'yellow';
   return { st, gateFails, gateN: gates.length, partialN, examGreen, examN, examClean, examDay, maxGap: st.maxGap, light, evaluated };
 }
 
@@ -681,7 +721,7 @@ function sessionStatus(s, dayK) {
 function statusName(st) { return { complete: 'اكتملت', partial: 'بقي جزء', stopped: 'توقفت', cancelled: 'أُلغيت' }[st] || 'اكتملت'; }
 /* جلسات اليوم المسجلة بلا تكرار (بالمفتاح لا بعدد السجلات) */
 function doneKeys(filter) { return new Set(Store.events.filter(e => e.type === 'session_done' && (!filter || filter(e))).map(e => e.key)); }
-/* صفحة الطلاقة الحالية لكريم: آخر حدث في السجل، لا إعداد الجهاز */
+/* صفحة الطلاقة الحالية للطفل الثالث: آخر حدث في السجل، لا إعداد الجهاز */
 function fluencyPage(c) { const l = Store.events.filter(e => e.type === 'fluency_page' && e.child === c); return l.length ? l[l.length - 1].page : (Store.settings['fluency_' + c] || 582); }
 
 /* ===== بطاقات التسليم ===== */

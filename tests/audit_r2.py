@@ -75,13 +75,13 @@ async def main():
 
         # R2-04 (محلياً) المعرّف نفسه بمحتوى مختلف: تعارض معلن لا «تكرار سليم»؛ والمحتوى نفسه يُدمج
         pg = await fresh()
-        r = await pg.evaluate("""(async () => { Store.add({ id: 'same', type: 'note', child: 'dalal', text: 'local' }); await Store.durable();
-            const remote = { id: 'same', type: 'decision', child: 'dalal', kind: 'pause', by: 'aya', ts: Date.now(), day: todayKey() };
+        r = await pg.evaluate("""(async () => { Store.add({ id: 'same', type: 'note', child: 'c1', text: 'local' }); await Store.durable();
+            const remote = { id: 'same', type: 'decision', child: 'c1', kind: 'pause', by: 'aya', ts: Date.now(), day: todayKey() };
             const n = Store.importEvents([remote], { server: 'https://family-b' }); await Store.durable();
             const loc = Store.raw.find(e => e.id === 'same');
-            const sameCopy = Object.assign(Store.clean(loc), { child: 'dalal', extraNull: null });
+            const sameCopy = Object.assign(Store.clean(loc), { child: 'c1', extraNull: null });
             const n2 = Store.importEvents([sameCopy], { server: 'https://family-c' }); await Store.durable();
-            return { n, conflicts: Store.openConflicts().map(x => [x.id, x.source, x.other.type]), localType: loc.type, onB: (loc.sv || []).includes('https://family-b'), cf: loc.cf, paused: deriveChild('dalal').paused || false,
+            return { n, conflicts: Store.openConflicts().map(x => [x.id, x.source, x.other.type]), localType: loc.type, onB: (loc.sv || []).includes('https://family-b'), cf: loc.cf, paused: deriveChild('c1').paused || false,
               n2, onC: (loc.sv || []).includes('https://family-c'), status: """ + STATUS + """ }; })()""")
         ok('R2-04 تعارض المحتوى يُعلن ولا يُعلَّم «على الخادم»، والنسخة المحلية لا تُستبدل صامتاً؛ والمحتوى المطابق (مع null) يُدمج ويُعلَّم',
            r['n'] == 0 and r['conflicts'] == [['same', 'server:https://family-b', 'decision']] and r['localType'] == 'note' and not r['onB'] and r['cf'] == ['https://family-b']
@@ -89,14 +89,14 @@ async def main():
         r = await pg.evaluate("""(() => { const x = Store.openConflicts()[0]; App.view = 'settings'; UI.rerender(); const txt = document.querySelector('main').innerText;
             return { card: txt.includes('التعارضات (1)'), both: txt.includes('هذا الجهاز الآن: note') && txt.includes('الخادم: decision') }; })()""")
         ok('R2-04 بطاقة «التعارضات» تعرض النسختين للحسم الصريح', r == {'card': True, 'both': True}, r)
-        r = await pg.evaluate("""(() => { const p = Backup.parse(JSON.stringify({ format: 'lawhat-muallima-backup', events: [{ id: 'same', type: 'note', child: 'dalal', by: 'aya', ts: 1, day: '2026-11-01', text: 'نص آخر' }], settings: {} }));
+        r = await pg.evaluate("""(() => { const p = Backup.parse(JSON.stringify({ format: 'lawhat-muallima-backup', events: [{ id: 'same', type: 'note', child: 'c1', by: 'aya', ts: 1, day: '2026-11-01', text: 'نص آخر' }], settings: {} }));
             ImportDialog(p); const t = document.querySelector('.modal').innerText; document.querySelector('.modal-bg').remove();
             const n = Backup.merge(p); return { warn: t.includes('بمعرّف موجود هنا ومحتوى مختلف'), n, conflicts: Backup.lastConflicts }; })()""")
         ok('R2-04 ملف متعارض: تحذير قبل الدمج، ولا يُغيَّر شيء، ويُسجَّل التعارض', r == {'warn': True, 'n': 0, 'conflicts': 1}, r)
 
         # R2-05 نتيجة جزئية وحدها: لا أخضر ولا سقوط
         pg = await fresh()
-        r = await pg.evaluate("""(() => { Store.add({ type: 'outcome', child: 'dalal', page: 570, step: 'gate', result: 'partial' }); const h = healthOf('dalal');
+        r = await pg.evaluate("""(() => { Store.add({ type: 'outcome', child: 'c1', page: 570, step: 'gate', result: 'partial' }); const h = healthOf('c1');
             App.setRole('parent'); App.view = 'reports'; UI.rerender(); const row = [...document.querySelectorAll('tr')].find(x => x.innerText.includes('البوابة'));
             return { light: h.light, evaluated: h.evaluated, gateFails: h.gateFails, partialN: h.partialN, text: lightText(h), row: row && row.innerText }; })()""")
         ok('R2-05 الجزئي وحده: غير مُقيَّم (لا أخضر)، والتقرير لا يعدّه سقوطاً ويذكره مستقلاً',
@@ -104,28 +104,28 @@ async def main():
 
         # R2-06 فحص ولي الأمر لا يدخل أرقام فحص المعلمة
         pg = await fresh()
-        r = await pg.evaluate("""(() => { Store.add({ type: 'outcome', child: 'dalal', page: 570, step: 'exam', result: 'clean' }); App.setRole('parent');
-            Store.add({ type: 'outcome', child: 'dalal', page: 571, step: 'exam', result: 'red', parent: true }); App.view = 'reports'; UI.rerender();
+        r = await pg.evaluate("""(() => { Store.add({ type: 'outcome', child: 'c1', page: 570, step: 'exam', result: 'clean' }); App.setRole('parent');
+            Store.add({ type: 'outcome', child: 'c1', page: 571, step: 'exam', result: 'red', parent: true }); App.view = 'reports'; UI.rerender();
             const rows = [...document.querySelectorAll('tr')].map(x => x.innerText); const sum = weeklySummaryText();
-            return { examN: healthOf('dalal').examN, teacher: rows.find(x => x.includes('فحص الخميس')), home: rows.find(x => x.includes('فحص المنزل')), sum }; })()""")
+            return { examN: healthOf('c1').examN, teacher: rows.find(x => x.includes('فحص الخميس')), home: rows.find(x => x.includes('فحص المنزل')), sum }; })()""")
         ok('R2-06 فحص الخميس للمعلمة 1/1 بنسبة 100%، وفحص المنزل صف مستقل، والخلاصة تفصلهما',
            r['examN'] == 1 and r['teacher'].split('\t')[-1].startswith('1 ') and '100%' in r['teacher'] and 'سقوط 1' in r['home'] and 'فحص المنزل: 0/1' in r['sum'], r)
 
         # R2-07 الاستكمال الكامل يُسقط تنبيه «بقي جزء» ويعلّم الباقي «استُدرك»
         pg = await fresh('asst')
-        r = await pg.evaluate("""(async () => { const s = PLAN.find(x => x.kind === 'noon' && x.child === 'dalal'); startSession(s); const a = Store.settings.active; a.steps = ['second'];
+        r = await pg.evaluate("""(async () => { const s = PLAN.find(x => x.kind === 'noon' && x.child === 'c1'); startSession(s); const a = Store.settings.active; a.steps = ['second'];
             await commitEnd(s, a, 'partial', ['far', 'cards'], null, ''); const before = alertsList().filter(x => x.text.includes('بقي جزء')).length;
             const prev = sessionStatus(s, todayKey()); startSession(s, prev); const a2 = Store.settings.active; a2.steps = SESSION_KINDS[s.kind].steps.map(x => x.id);
             await commitEnd(s, a2, 'complete', [], null, '');
             const h = handoffs()[0]; const rem = h.items.filter(x => x.k === 'remaining');
-            return { status: sessionStatus(s, todayKey()).status, before, after: alertsList().filter(x => x.text.includes('بقي جزء')).length, rem: rem.map(x => !!x.resolved), last: lastNote('dalal') }; })()""")
+            return { status: sessionStatus(s, todayKey()).status, before, after: alertsList().filter(x => x.text.includes('بقي جزء')).length, rem: rem.map(x => !!x.resolved), last: lastNote('c1') }; })()""")
         ok('R2-07 بعد الاستكمال: لا تنبيه نقص نشط، والباقي القديم «استُدرك» ويبقى في التاريخ',
            r['status'] == 'complete' and r['before'] == 1 and r['after'] == 0 and r['rem'] == [True] and not (r['last'] and 'بقي:' in r['last']['text']), r)
 
         # R2-08 طلب الاعتماد في النيابة يدخل البطاقة مرة واحدة
         pg = await fresh('asst')
-        r = await pg.evaluate("""(async () => { const s = PLAN.find(x => x.kind === 'gate_new' && x.child === 'dalal'); startSession(s, null, { orig: 'aya', reason: 'غياب' });
-            const a = Store.settings.active; Store.add({ type: 'note', child: 'dalal', text: 'طلب اعتماد: حفظ الصفحة — حفظت نصفها' });
+        r = await pg.evaluate("""(async () => { const s = PLAN.find(x => x.kind === 'gate_new' && x.child === 'c1'); startSession(s, null, { orig: 'aya', reason: 'غياب' });
+            const a = Store.settings.active; Store.add({ type: 'note', child: 'c1', text: 'طلب اعتماد: حفظ الصفحة — حفظت نصفها' });
             await commitEnd(s, a, 'partial', ['memorize'], null, '');
             const prev = sessionStatus(s, todayKey()); startSession(s, prev, { orig: 'aya', reason: 'غياب' }); const a2 = Store.settings.active; a2.steps = SESSION_KINDS[s.kind].steps.map(x => x.id);
             await commitEnd(s, a2, 'complete', [], null, '');
@@ -135,21 +135,21 @@ async def main():
 
         # R2-09 زر الخطأ في بوابة الأمس يفتح على صفحة الأمس ومقطعه؛ وفي الحفظ على الجديد
         pg = await fresh()
-        await pg.evaluate("(() => { Store.add({ type: 'new_page', child: 'karim', page: 604, linesFrom: 1, linesTo: 15, day: '2026-11-06' }); startSession(PLAN.find(s => s.kind === 'karim_new')); })()")
-        await pg.get_by_role('button', name='تسجيل خطأ · كريم', exact=True).click()
+        await pg.evaluate("(() => { Store.add({ type: 'new_page', child: 'c3', page: 604, linesFrom: 1, linesTo: 15, day: '2026-11-06' }); startSession(PLAN.find(s => s.kind === 'young_new')); })()")
+        await pg.get_by_role('button', name='تسجيل خطأ · الطفل الثالث', exact=True).click()
         r1 = await pg.evaluate("({ page: document.querySelector('.modal input[type=number]').value, seg: (document.querySelector('.modal').innerText.match(/الأسطر \\d+–\\d+/) || [''])[0] })")
         await pg.evaluate("document.querySelector('.modal-bg').remove(); const a = Store.settings.active; a.cur = 1; saveActive(); UI.rerender(true);")
-        await pg.get_by_role('button', name='تسجيل خطأ · كريم', exact=True).click()
-        r2 = await pg.evaluate("({ page: document.querySelector('.modal input[type=number]').value, next: deriveChild('karim').nextNew })")
+        await pg.get_by_role('button', name='تسجيل خطأ · الطفل الثالث', exact=True).click()
+        r2 = await pg.evaluate("({ page: document.querySelector('.modal input[type=number]').value, next: deriveChild('c3').nextNew })")
         ok('R2-09 البوابة: ص604 ومقطع الأمس؛ خطوة الحفظ: الجديد ص603', r1 == {'page': '604', 'seg': 'الأسطر 1–15'} and r2 == {'page': '603', 'next': 603}, {'gate': r1, 'memorize': r2})
 
-        # R2-10 بطاقات كريم: ثلاث سور في ص604 مستقلة
+        # R2-10 بطاقات الطفل الثالث: ثلاث سور في ص604 مستقلة
         pg = await fresh()
-        r = await pg.evaluate("""(async () => { for (const [n, t] of [[112, 'الإخلاص'], [113, 'الفلق'], [114, 'الناس']]) { cardModal('karim', 604, n); document.querySelector('.modal textarea').value = 'قصة ' + t; [...document.querySelectorAll('.modal button')].find(b => b.textContent === 'حفظ').click(); }
-            cardModal('karim', 604); const picker = [...document.querySelectorAll('.modal .btns button')].map(b => b.textContent).filter(t => ['الإخلاص', 'الفلق', 'الناس'].includes(t));
+        r = await pg.evaluate("""(async () => { for (const [n, t] of [[112, 'الإخلاص'], [113, 'الفلق'], [114, 'الناس']]) { cardModal('c3', 604, n); document.querySelector('.modal textarea').value = 'قصة ' + t; [...document.querySelectorAll('.modal button')].find(b => b.textContent === 'حفظ').click(); }
+            cardModal('c3', 604); const picker = [...document.querySelectorAll('.modal .btns button')].map(b => b.textContent).filter(t => ['الإخلاص', 'الفلق', 'الناس'].includes(t));
             [...document.querySelectorAll('.modal .btns button')].find(b => b.textContent === 'الفلق').click(); const falaq = document.querySelector('.modal textarea').value; document.querySelector('.modal-bg').remove();
-            Store.add({ type: 'layer', child: 'karim', page: 604, layer: 'far', color: 'green' });
-            const cards = cardsFor('karim'); const box = CardsBox('karim').innerText;
+            Store.add({ type: 'layer', child: 'c3', page: 604, layer: 'far', color: 'green' });
+            const cards = cardsFor('c3'); const box = CardsBox('c3').innerText;
             return { keys: Object.keys(cards).sort(), picker, falaq, box: ['الإخلاص', 'الفلق', 'الناس'].map(t => box.includes('سورة ' + t)) }; })()""")
         ok('R2-10 ص604: ثلاث بطاقات مستقلة، واختيار السورة يعرض بطاقتها، وكلها تظهر في المراجعة',
            r['keys'] == ['s112', 's113', 's114'] and r['picker'] == ['الإخلاص', 'الفلق', 'الناس'] and r['falaq'] == 'قصة الفلق' and r['box'] == [True, True, True], r)
@@ -160,7 +160,7 @@ async def main():
         ok('R2-11 ولي الأمر: لا زر جرد، وشرح أن آية تنفذه', r == {'btn': False, 'note': True}, r)
         pg = await fresh('aya')
         await pg.evaluate("App.view = 'settings'; UI.rerender();")
-        await pg.get_by_role('button', name='دلال وفرح: عمّ وتبارك', exact=True).click()
+        await pg.get_by_role('button', name='الطفل الأول والطفل الثاني: عمّ وتبارك', exact=True).click()
         await pg.locator('.modal').get_by_role('button', name='نعم', exact=True).click()
         n = await pg.evaluate("Store.raw.filter(e => e.type === 'layer').length")
         ok('R2-11 آية تنفذ الجرد', n == 86, n)
@@ -185,10 +185,10 @@ async def main():
 
         # R2-14 الطلاقة في آخر صفحة
         pg = await fresh('asst')
-        await pg.evaluate("(() => { Store.add({ type: 'fluency_page', child: 'karim', page: 604 }); startSession(PLAN.find(s => s.kind === 'fluency')); })()")
+        await pg.evaluate("(() => { Store.add({ type: 'fluency_page', child: 'c3', page: 604 }); startSession(PLAN.find(s => s.kind === 'young_noon')); Store.settings.active.cur = 1; UI.rerender(); })()")
         await pg.get_by_placeholder('ثوانٍ', exact=True).fill('120')
         await pg.get_by_role('button', name='تسجيل الزمن', exact=True).click()
-        r = await pg.evaluate("({ page: fluencyPage('karim'), times: Store.events.filter(x => x.type === 'fluency_time').length, done: Store.settings.active.steps.includes('read'), uiErrors: UI.errors.slice() })")
+        r = await pg.evaluate("({ page: fluencyPage('c3'), times: Store.events.filter(x => x.type === 'fluency_time').length, done: Store.settings.active.steps.includes('read'), uiErrors: UI.errors.slice() })")
         ok('R2-14 ص604: يُسجَّل الزمن مرة، ولا 605، والخطوة مكتملة، بلا خطأ', r == {'page': 604, 'times': 1, 'done': True, 'uiErrors': []}, r)
 
         # تسجيل الدخول بحساب بلا دور لا يحفظ جلسة على الجهاز
@@ -199,7 +199,7 @@ async def main():
 
         # مسح ذاتي: أرقام غير صحيحة تُرفض برسالة مفهومة، ولا يُحفظ شيء، ونافذة الإدخال تبقى مفتوحة
         pg = await fresh('asst')
-        await pg.evaluate("(() => { Store.add({ type: 'fluency_page', child: 'karim', page: 600 }); startSession(PLAN.find(s => s.kind === 'fluency')); })()")
+        await pg.evaluate("(() => { Store.add({ type: 'fluency_page', child: 'c3', page: 600 }); startSession(PLAN.find(s => s.kind === 'young_noon')); Store.settings.active.cur = 1; UI.rerender(); })()")
         n0 = await pg.evaluate("Store.raw.length")
         await pg.get_by_placeholder('ثوانٍ', exact=True).fill('-5')
         await pg.get_by_role('button', name='تسجيل الزمن', exact=True).click()

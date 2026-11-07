@@ -96,6 +96,11 @@ jobs:
         run: |
           set -e
           if [ -n "$KEY_PASSPHRASE" ]; then
+            # المفتاح المشفّر يُحفظ في مستودع عام: أمانه كله في طول السر. سر قصير = رفض البناء بدل نشر مفتاح يمكن كسره
+            if [ "${#KEY_PASSPHRASE}" -lt 32 ]; then
+              echo "::error::سر ANDROID_KEY_PASSPHRASE أقصر من 32 حرفاً (${#KEY_PASSPHRASE}). ضع نصاً عشوائياً طويلاً (مثلاً 40 حرفاً من مدير كلمات السر) ثم أعد التشغيل."
+              exit 1
+            fi
             if [ -f android/keystore.p12.enc ]; then
               openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in android/keystore.p12.enc -out android/release.p12 -pass env:KEY_PASSPHRASE
             else

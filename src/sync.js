@@ -358,8 +358,8 @@ create policy "insert_own_role" on public.events for insert to authenticated wit
   and coalesce(payload->>'child','') = coalesce(child,'')
   and (
     public.my_role() = 'aya'
-    or (public.my_role() = 'asst' and type in ('outcome','error','note','session_done','fluency_time','card','yellow_pass','handoff','handoff_update','undo','session_start','session_cancel','fluency_page','tilawa') and coalesce(payload->>'step','') <> 'exam' and coalesce(payload->>'parent','') <> 'true')
-    or (public.my_role() = 'parent' and (type in ('parent_exam','note','undo') or (type = 'outcome' and payload->>'parent' = 'true')))
+    or (public.my_role() = 'asst' and type in ('outcome','error','note','session_done','fluency_time','card','yellow_pass','handoff','handoff_update','undo','session_start','session_cancel','fluency_page','tilawa','mut_target') and coalesce(payload->>'step','') <> 'exam' and coalesce(payload->>'parent','') <> 'true')
+    or (public.my_role() = 'parent' and (type in ('parent_exam','note','undo','names') or (type = 'outcome' and payload->>'parent' = 'true')))
   )
   -- التراجع: عن سجل صاحبه الحساب نفسه فقط، وآية عن سجلات المساعدة أيضاً؛ الهدف يجب أن يكون موجوداً على الخادم
   and (type <> 'undo' or exists (

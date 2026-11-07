@@ -72,8 +72,8 @@ async def main():
         # ================= R3-01 الحذف يمحو كل نسخ بيانات الأحداث =================
         pg = await fresh('parent')
         await pg.evaluate("""(async () => {
-            const a = Store.add({ id: 'family-secret', type: 'note', child: 'dalal', text: 'معلومة العائلة الأصلية' });
-            const b = Store.add({ id: 'kept-secret', type: 'note', child: 'farah', text: 'سر محفوظ أصلي' });
+            const a = Store.add({ id: 'family-secret', type: 'note', child: 'c1', text: 'معلومة العائلة الأصلية' });
+            const b = Store.add({ id: 'kept-secret', type: 'note', child: 'c2', text: 'سر محفوظ أصلي' });
             await Store.durable();
             Store.importEvents([Object.assign(Store.clean(a), { text: 'معلومة العائلة البديلة' })], { source: 'file' });
             Sync.switchTo('https://family-a', 'pub'); const sid = Sync.sid();
@@ -119,7 +119,7 @@ async def main():
         ok('R3-01 والحذف يمحو المُرحَّل', d['cf'] == [] and 'قديم' not in d['text'], {'cf': len(d['cf'])})
 
         # ================= R3-02 اعتماد نسخة أخرى: لا مزيج «نسخة قديمة + حسم مسجل» =================
-        SETUP_ADOPT = """(async () => { const x = Store.add({ id: 'replace-me', type: 'note', child: 'dalal', text: 'النسخة القديمة' }); await Store.durable();
+        SETUP_ADOPT = """(async () => { const x = Store.add({ id: 'replace-me', type: 'note', child: 'c1', text: 'النسخة القديمة' }); await Store.durable();
             Store.importEvents([Object.assign(Store.clean(x), { text: 'النسخة المعتمدة الجديدة' })], { source: 'file' }); await Store.durable(); App.view = 'settings'; UI.rerender(); })()"""
         STATE = """({ text: Store.raw.find(e => e.id === 'replace-me').text, open: Store.openConflicts().length, resolved: (Store.conflicts[0] || {}).resolved || null,
             notes: Store.raw.filter(x => x.type === 'note' && x.id !== 'replace-me').map(x => x.text), saved: Store.saved() })"""
@@ -213,7 +213,7 @@ async def main():
 
         # ================= R3-06 Enter في نافذة الرقم =================
         pg = await fresh('asst')
-        await pg.evaluate("(() => { Store.add({ type: 'fluency_page', child: 'karim', page: 600 }); startSession(PLAN.find(s => s.kind === 'fluency')); })()")
+        await pg.evaluate("(() => { Store.add({ type: 'fluency_page', child: 'c3', page: 600 }); startSession(PLAN.find(s => s.kind === 'young_noon')); Store.settings.active.cur = 1; UI.rerender(); })()")
         n0 = await pg.evaluate("Store.raw.length")
         await click(pg, 'تغيير الصفحة')
         inp = pg.get_by_placeholder('رقم الصفحة', exact=True)
@@ -221,7 +221,7 @@ async def main():
         r = await pg.evaluate("({ modal: !!document.querySelector('.modal'), added: Store.raw.length - %d, value: document.querySelector('.modal input') && document.querySelector('.modal input').value, focus: document.activeElement === document.querySelector('.modal input'), toast: [...document.querySelectorAll('.toast')].map(t => t.textContent) })" % n0)
         ok('R3-06 Enter بقيمة 12.5: النافذة باقية بقيمتها وتركيزها، ورسالة الخطأ، ولا حدث', r['modal'] and r['added'] == 0 and r['value'] == '12.5' and r['focus'] and any('604' in t for t in r['toast']), r)
         await inp.fill('20'); await inp.press('Enter')
-        r = await pg.evaluate("({ modal: !!document.querySelector('.modal'), added: Store.raw.length - %d, page: fluencyPage('karim') })" % n0)
+        r = await pg.evaluate("({ modal: !!document.querySelector('.modal'), added: Store.raw.length - %d, page: fluencyPage('c3') })" % n0)
         ok('R3-06 Enter بقيمة صحيحة: حدث واحد وتُغلق', r == {'modal': False, 'added': 1, 'page': 20}, r)
         await click(pg, 'تغيير الصفحة')
         await pg.locator('.modal').get_by_role('button', name='إلغاء', exact=True).click()

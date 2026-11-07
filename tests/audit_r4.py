@@ -147,7 +147,7 @@ async def main():
 
         # ================= R4-04 حسم معلّق ثم حذف بيانات الجهاز ثم اكتمال متأخر =================
         pg = await fresh('parent')
-        await pg.evaluate("""(async () => { const a = Store.add({ id: 'base', type: 'note', child: 'dalal', text: 'old' }); await Store.durable();
+        await pg.evaluate("""(async () => { const a = Store.add({ id: 'base', type: 'note', child: 'c1', text: 'old' }); await Store.durable();
             Backup.merge({ events: [Object.assign(Store.clean(a), { text: 'new' })] }); await Store.durable(); UI.rerender();
             const p = Store.putMany.bind(Store); let once = true; Store.putMany = async (l, c) => { const ok = await p(l, c); if (once) { once = false; await new Promise(r => window.releaseSave = r); } return ok; }; })()""")
         await click(pg, 'اعتماد نسخة الملف'); await yes(pg); await pg.wait_for_function('!!window.releaseSave')

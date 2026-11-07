@@ -42,12 +42,12 @@ async def main():
         await pg.evaluate(FAIL_STORAGE)
         r = await pg.evaluate("(async () => { Store.add({ id: 'lost', type: 'note', text: 'x' }); const st1 = " + STATUS + "; const d = await Store.durable(); const st2 = " + STATUS + "; return { st1, d, st2, err: Store.storageError }; })()")
         ok('02 حالة الحفظ صادقة', 'حُفظ على الجهاز' not in r['st1'] and 'جارٍ الحفظ' in r['st1'] and r['d'] is False and 'تعذّر' in r['st2'], r)
-        r = await pg.evaluate("""(async () => { Store.settings.timeOffset = Date.UTC(2026,10,9,12-8,55) - Date.now(); App.setRole('asst'); const s = PLAN.find(x => x.kind === 'noon' && x.child === 'dalal'); startSession(s);
+        r = await pg.evaluate("""(async () => { Store.settings.timeOffset = Date.UTC(2026,10,9,12-8,55) - Date.now(); App.setRole('asst'); const s = PLAN.find(x => x.kind === 'noon' && x.child === 'c1'); startSession(s);
             const a = Store.settings.active; a.steps = ['far']; const res = await commitEnd(s, a, 'partial', ['second','cards'], null, '');
             return { res, active: !!Store.settings.active, pending: !!(Store.settings.active && Store.settings.active.pendingEnd) }; })()""")
         ok('02 الجلسة لا تُغلق عند فشل الحفظ', r == {'res': False, 'active': True, 'pending': True}, r)
         await pg.evaluate(RESTORE)
-        r = await pg.evaluate("""(async () => { await Store.flush(); const s = PLAN.find(x => x.kind === 'noon' && x.child === 'dalal'); const a = Store.settings.active;
+        r = await pg.evaluate("""(async () => { await Store.flush(); const s = PLAN.find(x => x.kind === 'noon' && x.child === 'c1'); const a = Store.settings.active;
             const res = await commitEnd(s, a, a.pendingEnd.status, a.pendingEnd.rem, a.pendingEnd.reason, a.pendingEnd.note);
             return { res, active: !!Store.settings.active, saved: Store.saved(), ls: localStorage.getItem('lm_events_v1') === null }; })()""")
         ok('02 إعادة المحاولة بعد التعافي تُغلق الجلسة وتمحو نسخة الطوارئ', r == {'res': True, 'active': False, 'saved': True, 'ls': True}, r)
@@ -104,13 +104,13 @@ async def main():
         r = await pg.evaluate("""(() => ({ p600: surahsOfPage(600), p575: surahsOfPage(575), p599: surahsOfPage(599), p596: surahsOfPage(596), p1: surahsOfPage(1), p604: surahsOfPage(604),
             r600: ayahRangeOnPage(600, 100), a: pageOfAyah(100, 11), b: pageOfAyah(73, 20), c: pageOfAyah(2, 286), d: pageOfAyah(1, 1) }))()""")
         ok('06 حدود السور مطابقة للمصحف', r['p600'] == [100, 101, 102] and r['p575'] == [73, 74] and r['p599'] == [98, 99, 100] and r['p596'] == [92, 93, 94] and r['p1'] == [1] and r['p604'] == [112, 113, 114] and r['r600'] == [10, 11] and r['a'] == 600 and r['b'] == 575 and r['c'] == 49 and r['d'] == 1, r)
-        r = await pg.evaluate("""(() => { for (let p = 595; p <= 604; p++) Store.add({ type: 'layer', child: 'karim', page: p, layer: 'far', color: 'green' });
-            Store.add({ type: 'new_page', child: 'karim', page: 600, linesFrom: 1, linesTo: 15 }); Store.add({ type: 'surah_passed', child: 'karim', surah: 101 }); Store.add({ type: 'surah_passed', child: 'karim', surah: 102 });
-            const l1 = deriveChild('karim').pages[600].layer; Store.add({ type: 'surah_passed', child: 'karim', surah: 100 }); return { l1, l2: deriveChild('karim').pages[600].layer }; })()""")
+        r = await pg.evaluate("""(() => { for (let p = 595; p <= 604; p++) Store.add({ type: 'layer', child: 'c3', page: p, layer: 'far', color: 'green' });
+            Store.add({ type: 'new_page', child: 'c3', page: 600, linesFrom: 1, linesTo: 15 }); Store.add({ type: 'surah_passed', child: 'c3', surah: 101 }); Store.add({ type: 'surah_passed', child: 'c3', surah: 102 });
+            const l1 = deriveChild('c3').pages[600].layer; Store.add({ type: 'surah_passed', child: 'c3', surah: 100 }); return { l1, l2: deriveChild('c3').pages[600].layer }; })()""")
         ok('06 اعتماد بعض سور الصفحة لا ينقلها', r == {'l1': 'near', 'l2': 'far'}, r)
-        r = await pg.evaluate("""(() => { Store.add({ type: 'layer', child: 'dalal', page: 570, layer: 'far', day: '2026-10-01', ts: Date.UTC(2026, 9, 1) });
-            App.setRole('parent'); Store.add({ type: 'outcome', child: 'dalal', page: 570, step: 'exam', parent: true, result: 'clean' }); App.setRole('aya');
-            const pg = deriveChild('dalal').pages[570]; return { lastFar: pg.lastFar, lastReview: pg.lastReview }; })()""")
+        r = await pg.evaluate("""(() => { Store.add({ type: 'layer', child: 'c1', page: 570, layer: 'far', day: '2026-10-01', ts: Date.UTC(2026, 9, 1) });
+            App.setRole('parent'); Store.add({ type: 'outcome', child: 'c1', page: 570, step: 'exam', parent: true, result: 'clean' }); App.setRole('aya');
+            const pg = deriveChild('c1').pages[570]; return { lastFar: pg.lastFar, lastReview: pg.lastReview }; })()""")
         ok('07 فحص ولي الأمر لا يغيّر تاريخ مراجعة البعيد', r == {'lastFar': '2026-10-01', 'lastReview': '2026-10-01'}, r)
         assert not errs, errs
         await b.close()
