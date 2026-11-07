@@ -21,9 +21,12 @@ def launch():
 def connect_url():
     for _ in range(60):
         socks = [l.split('@')[-1].strip() for l in sh('shell', 'cat', '/proc/net/unix').splitlines() if 'webview_devtools_remote' in l]
-        if socks:
+        # بعد قتل العملية قد يبقى أكثر من مقبس؛ يُجرَّب كل واحد (الأحدث أولاً) حتى يجيب WebView التطبيق
+        pid = sh('shell', 'pidof', PKG, check=False).strip()
+        socks = sorted(dict.fromkeys(socks), key=lambda x: (not (pid and x.endswith('_' + pid)), -socks.index(x)))
+        for sock in socks:
             sh('forward', '--remove-all', check=False)
-            sh('forward', 'tcp:9222', 'localabstract:' + socks[-1])
+            sh('forward', 'tcp:9222', 'localabstract:' + sock)
             try:
                 pages = json.load(urllib.request.urlopen('http://127.0.0.1:9222/json', timeout=5))
                 pages = [p for p in pages if 'appassets.androidplatform.net' in p.get('url', '')]
@@ -124,6 +127,8 @@ async def main():
     async def end_session(p):
         return await p.ev("(() => { Store.settings.active = null; Store.saveSettings(); App.setRole('aya'); UI.rerender(); return true; })()")
     await session(end_session)
+    # بداية نظيفة لبقية الفحوص (كما قبل اختبار القتل)
+    sh('shell', 'am', 'force-stop', PKG); time.sleep(2); launch(); time.sleep(4)
 
     async def back_modal(p):
         await p.ev("(() => { App.setRole('aya'); App.view = 'logs'; UI.rerender(); UI.confirm('اختبار الرجوع', () => {}); return true; })()")
