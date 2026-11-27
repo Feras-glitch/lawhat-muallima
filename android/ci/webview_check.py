@@ -2,6 +2,7 @@
 يتحقق أن الواجهة تعمل داخل التطبيق: الأصل الثابت، قاعدة الجهاز، الجسر، بقاء البيانات بعد إعادة التحميل وبعد إيقاف التطبيق،
 وبعد قتل العملية في الخلفية أثناء جلسة مفتوحة،
 زر الرجوع، واختيار الملفات. يكتب النتائج في JSON ويفشل عند أي خطأ."""
+import re
 import json, subprocess, sys, time, urllib.request, asyncio
 import websockets
 
@@ -19,7 +20,12 @@ def launch():
 
 
 def connect_url():
-    for _ in range(60):
+    for attempt in range(60):
+        # التطبيق ليس في المقدمة أو لا عملية له (لوحظ على محاكي CI بعد القتل أو الدوران): يُسجَّل السبب من السجل ويُعاد فتحه
+        if attempt in (8, 24, 40) and not sh('shell', 'pidof', PKG, check=False).strip():
+            why = [l for l in sh('logcat', '-d', '-t', '3000', check=False).splitlines() if re.search(r'FATAL|ANR in|has died|Force stopping|lowmemorykiller|Killing \\d+:app\\.lawhat', l)]
+            print('RELAUNCH: لا عملية للتطبيق؛ من السجل:', why[-6:], flush=True)
+            launch(); time.sleep(3)
         socks = [l.split('@')[-1].strip() for l in sh('shell', 'cat', '/proc/net/unix').splitlines() if 'webview_devtools_remote' in l]
         # بعد قتل العملية قد يبقى أكثر من مقبس؛ يُجرَّب كل واحد (الأحدث أولاً) حتى يجيب WebView التطبيق
         pid = sh('shell', 'pidof', PKG, check=False).strip()
