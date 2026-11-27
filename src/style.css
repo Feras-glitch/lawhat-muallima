@@ -122,6 +122,7 @@ body.insession main{padding-bottom:24px}
 .prow .ocl .btns{margin-top:0;gap:4px;flex-wrap:nowrap;justify-content:flex-end}
 .prow .ocl .btns button{padding:4px 7px!important;font-size:.92em;min-height:40px;white-space:nowrap}
 .prow .ocl .chips{justify-content:flex-end;margin-top:2px}
+.prow .ocl .btns button.btn-g{min-width:44px}
 .prow .btns .chip.more{padding:0 6px!important;min-height:40px;border-radius:10px}
 .prow .plabel{flex:1 1 52px}
 .prow .ocl{flex:0 0 auto}

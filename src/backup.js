@@ -26,9 +26,11 @@ const Backup = {
   },
   /* onSaved: بعد كتابة الملف (في التطبيق: بعد اختيار المكان والكتابة فعلاً؛ في المتصفح: فور بدء التنزيل). «آخر نسخة» لا تُسجَّل قبله */
   download(onSaved) {
+    /* snap: لحظة التقاط البيانات، قبل نافذة الحفظ (0.16.2). ما يصل بعدها خارج الملف ولو اكتمل الحفظ لاحقاً */
+    const snap = Date.now() - 1;
     const b = this.build();
     AppShell.saveFile(`lawhat-backup-${todayKey()}-${b.role || 'x'}.json`, 'application/json', JSON.stringify(b), () => {
-      Store.settings.lastBackup = { at: Date.now(), count: b.counts.all };
+      Store.settings.lastBackup = { at: Date.now(), snap, count: b.counts.all };
       Store.saveSettings();
       if (onSaved) onSaved(b);
     });
@@ -71,7 +73,8 @@ const Backup = {
     const days = Math.floor((Date.now() - lb.at) / DAY_MS);
     if (days < 7) return null;
     /* وقت وصول السجل إلى الجهاز (la)، لا وقت إنشائه: سجل قديم وصل بعد آخر نسخة غير مشمول بها (LM0121-R2-12) */
-    return Store.raw.some(e => (e.la || e.ts || 0) > lb.at) || Store.conflicts.some(x => Math.max(x.at || 0, x.resolved ? x.resolved.at || 0 : 0) > lb.at) ? days : null;
+    const cut = lb.snap || lb.at;
+    return Store.raw.some(e => (e.la || e.ts || 0) > cut) || Store.conflicts.some(x => Math.max(x.at || 0, x.resolved ? x.resolved.at || 0 : 0) > cut) ? days : null;
   },
 };
 

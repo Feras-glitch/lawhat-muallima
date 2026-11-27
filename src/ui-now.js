@@ -14,7 +14,9 @@ function OutcomeCtl(c, page, step, extra, onRecord, compact) {
   const today = todayKey();
   if (!mayRecord('outcome', { step })) return requestBox(c, `تسجيل ${step === 'exam' ? 'الفحص' : 'النتيجة'} ${pageLabel(page)}`);
   const seg = extra && extra.lines ? extra.lines : null;
-  const cur = effectiveOutcomes(e => e.child === c && e.page === page && e.step === step && e.day === today && sameSeg(e.lines, seg)).pop() || null;
+  /* المصدر والوحدة جزء من هوية النتيجة (0.16.2): فحص ولي الأمر لا يظهر تقييماً للمعلمة، وسورتان في صفحة واحدة نتيجتان */
+  const asParent = !!(extra && extra.parent), su = extra && extra.surah ? extra.surah : null;
+  const cur = effectiveOutcomes(e => e.child === c && e.page === page && e.step === step && e.day === today && sameSeg(e.lines, seg) && !!e.parent === asParent && (e.surah || null) === su).pop() || null;
   const base = () => Object.assign({ type: 'outcome', child: c, page, step }, extra || {}, cur ? { result: cur.result, prompts: cur.prompts, tajweed: cur.tajweed, meaning: cur.meaning, selfCorrect: cur.selfCorrect } : {});
   const rec = (patch) => { const ev = Object.assign(base(), patch); for (const k of Object.keys(ev)) if (ev[k] == null) delete ev[k]; Store.add(ev); if (onRecord) onRecord(ev); UI.rerender(true); if (patch.result === 'yellow' && !cur) { /* تفاصيل المساعدة تُطلب فوراً */ } };
   const mk = (r, cls, t) => el('button', { class: cls + (cur && cur.result === r ? ' on' : ''), style: compact ? 'padding:4px 10px' : '', onclick: () => rec({ result: r, prompts: r === 'clean' ? 0 : r === 'yellow' ? Math.max(1, (cur && cur.prompts) || 1) : r === 'red' ? Math.max(3, (cur && cur.prompts) || 3) : (cur ? cur.prompts : undefined) }) }, t);
@@ -366,7 +368,7 @@ function StepControls(s, st, a) {
 function PageListOutcome(c, pages, step, a, st) {
   if (!pages.length) return el('div', { class: 'muted small' }, 'لا صفحات.');
   const today = todayKey();
-  const has = p => Store.events.some(e => e.type === 'outcome' && e.child === c && e.page === p && e.step === step && e.day === today);
+  const has = p => Store.events.some(e => e.type === 'outcome' && e.child === c && e.page === p && e.step === step && e.day === today && !e.parent && !e.surah);
   const wrap = el('div', { class: 'small pagelist' }, el('div', { class: 'row between' }, el('b', null, CHILDREN[c].name), el('span', { class: 'muted' }, `${pages.filter(has).length} من ${pages.length}`)));
   const list = el('div');
   for (const p of pages) {
@@ -387,15 +389,29 @@ function ExamBox(c, a, st, s) {
   if (!a[key]) {
     box.append(el('button', { class: 'primary', onclick: () => {
       let pool = d.far.slice(); const pick = [];
-      if (isLines(c)) { const surahs = [...new Set(pool.flatMap(p => surahsOfPage(p)))]; for (let i = 0; i < 2 && surahs.length; i++) { const sIdx = Math.floor(Math.random() * surahs.length); const sNum = surahs.splice(sIdx, 1)[0]; for (const p of pool) if (surahsOfPage(p).includes(sNum) && !pick.includes(p)) pick.push(p); } }
-      else for (let i = 0; i < 5 && pool.length; i++) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+      /* الصغير يُفحص بالسورة (0.16.2): تُحفظ السورتان المختارتان بهويتهما، لا صفحاتهما */
+      if (isLines(c)) { const surahs = [...new Set(pool.flatMap(p => surahsOfPage(p)))]; for (let i = 0; i < 2 && surahs.length; i++) pick.push(surahs.splice(Math.floor(Math.random() * surahs.length), 1)[0]); a[key] = true; a['drawS_' + c] = pick.sort((x, y) => x - y); saveActive(); UI.rerender(true); return; }
+      for (let i = 0; i < 5 && pool.length; i++) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
       a[key] = pick.sort((x, y) => x - y); saveActive(); UI.rerender(true);
     } }, isLines(c) ? 'قرعة سورتَين' : 'قرعة 5 صفحات'));
     if (!d.far.length) box.append(el('div', { class: 'muted' }, 'لا محفوظ بعيد بعد.'));
     return box;
   }
+  if (a['drawS_' + c]) { box.append(SurahListOutcome(c, a['drawS_' + c], d)); return box; }
   box.append(el('div', { class: 'muted' }, 'ابدئي بعض الصفحات من وسطها.'), PageListOutcome(c, a[key], 'exam', a, st));
   return box;
+}
+
+/* فحص الصغير بالسورة: سطر لكل سورة مختارة، ونتيجتها تحمل رقم السورة */
+function SurahListOutcome(c, surahs, d) {
+  const today = todayKey();
+  const done = su => effectiveOutcomes(e => e.child === c && e.step === 'exam' && e.day === today && !e.parent && e.surah === su).length > 0;
+  const wrap = el('div', { class: 'small pagelist' }, el('div', { class: 'row between' }, el('b', null, CHILDREN[c].name), el('span', { class: 'muted' }, `${surahs.filter(done).length} من ${surahs.length}`)));
+  const list = el('div');
+  for (const su of surahs) { const p = d.far.find(x => surahsOfPage(x).includes(su)); if (p == null) continue;
+    list.append(el('div', { class: 'ayahrow prow' }, el('span', { class: 'plabel' }, el('b', null, 'سورة ' + SURAH_NAMES[su - 1]), el('span', { class: 'muted' }, 'ص' + p)), OutcomeCtl(c, p, 'exam', { surah: su }, null, true))); }
+  wrap.append(list);
+  return wrap;
 }
 
 function YellowBox(c, a, st) {
@@ -660,7 +676,7 @@ function alertsList() {
     /* تنبيه هادئ لآية وولي الأمر: دورة البعيد طالت فوق 21 يوماً، وحان القرار التربوي (تخفيف الجديد أو زيادة حصة البعيد) */
     if (h.st.cycleDays > 21 && App.role && App.role.id !== 'asst') out.push({ level: 'info', child: c, text: `دورة البعيد صارت نحو ${h.st.cycleDays} يوماً (${h.st.far.length} صفحة بحصة ${h.st.quota} يومياً). حدّ القرار 21 يوماً: تخفيف الجديد أو زيادة حصة البعيد.` });
     if (h.examGreen != null && h.examGreen < 85) out.push({ level: h.examGreen < 70 ? 'red' : 'yellow', child: c, text: `آخر فحص خميس: ${h.examClean}/${h.examN} أخضر.` });
-    if (h.examN && h.examN < (isLines(c) ? 2 : 5)) out.push({ level: 'yellow', child: c, text: `فحص ${fmtDay(h.examDay)} غير مكتمل (${h.examN} من ${isLines(c) ? 2 : 5}).` });
+    if (h.examIncomplete) out.push({ level: 'yellow', child: c, text: `فحص ${fmtDay(h.examDay)} غير مكتمل (${h.examN} من ${h.examNeed}).` });
     const d = h.st;
     if (d.far.length && d.nextNew) {
       const cards = cardsFor(c);
