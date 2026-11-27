@@ -98,7 +98,7 @@ function DayList(list, compact) {
       return el('tr', { style: isNow ? 'background:var(--soft)' : '' },
         el('td', { style: 'white-space:nowrap' }, fmtTime12(s.start), sameTz() ? null : el('div', { class: 'muted small' }, localOf(dayK, s.start))),
         el('td', null, el('b', null, childName(s.child)), ' · ', SESSION_KINDS[s.kind].name, App.role.id === 'parent' ? el('span', { class: 'muted small' }, ` (${ROLES[s.teacher].name})`) : null),
-        el('td', { style: 'white-space:nowrap' }, done ? el('span', null, el('span', { class: 'pill ' + (sd.status === 'complete' ? 'g' : sd.status === 'partial' ? 'y' : sd.status === 'cancelled' ? 'n' : 'r'), title: sd.reason || '' }, statusName(sd.status)), sd.conflicts.length ? el('span', { class: 'pill r', style: 'margin-right:4px', title: sd.conflicts.join('؛ ') }, '⚠ تعارض') : null, sd.status === 'cancelled' ? el('div', { class: 'muted small' }, sd.reason) : null, ['partial', 'stopped'].includes(sd.status) && s.teacher === App.role.id ? el('button', { class: 'ghost small', style: 'margin-right:4px', onclick: () => startSession(s, sd) }, 'استكمال') : null) : (App.role.id !== 'parent' ? el('button', { class: 'ghost small', onclick: () => startSession(s) }, s.teacher === App.role.id ? 'افتحي' : 'نيابة') : el('span', { class: 'pill n' }, 'لم تُسجَّل'))));
+        el('td', { style: 'white-space:nowrap' }, done ? el('span', null, el('span', { class: 'pill ' + (sd.status === 'complete' ? 'g' : sd.status === 'partial' ? 'y' : sd.status === 'cancelled' ? 'n' : 'r'), title: sd.reason || '' }, statusName(sd.status)), sd.conflicts.length ? el('span', { class: 'pill r', style: 'margin-right:4px', title: sd.conflicts.join('؛ ') }, '⚠ تعارض') : null, sd.status === 'cancelled' ? el('div', { class: 'muted small' }, sd.reason) : null, ['partial', 'stopped'].includes(sd.status) && s.teacher === App.role.id ? el('button', { class: 'ghost small', style: 'margin-right:4px', onclick: () => startSession(s, sd) }, 'استكمال') : null) : (App.role.id !== 'parent' ? el('button', { class: 'ghost small' + (isNow ? ' opennow' : ' openlater'), onclick: () => startSession(s) }, s.teacher === App.role.id ? 'افتحي' : 'نيابة') : el('span', { class: 'pill n' }, 'لم تُسجَّل'))));
     }))));
 }
 
@@ -229,7 +229,7 @@ function stepNA(s, st) {
 }
 function SessionView(s, a) {
   const kind = SESSION_KINDS[s.kind]; const kids = childrenOf(s);
-  const wrap = el('div');
+  const wrap = el('div', { class: 'sessionwrap' });
   a.na = a.na || [];
   for (const st of kind.steps) if (!a.steps.includes(st.id) && !a.na.includes(st.id) && stepNA(s, st)) { a.na.push(st.id); a.steps.push(st.id); }
   if (a.na.length) saveActive();
@@ -270,7 +270,7 @@ function SessionView(s, a) {
   wrap.append(el('div', { class: 'card' }, el('div', { class: 'btns' }, kids.map(c => el('button', { class: 'btn-r', onclick: () => { const x = errorContext(s, c, a); errorModal(c, x.page, isLines(c) ? x.lines : undefined, x.choices); } }, `تسجيل خطأ · ${CHILDREN[c].name}`))), note,
     el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: () => endSession(s, note.value) }, 'إنهاء الجلسة'), el('button', { class: 'ghost', onclick: undoLast }, '↶ تراجع عن آخر تسجيل')),
     /* «إغلاق مؤقت» بعيد عن زر الإنهاء وباسم لا يوحي بضياع ما سُجّل (0.16) */
-    el('div', { class: 'small muted', style: 'margin-top:14px;text-align:center' }, el('a', { href: '#', class: 'tempclose', onclick: e => { e.preventDefault(); UI.confirm('إغلاق الجلسة مؤقتاً دون إنهائها؟ كل ما سُجّل من نتائج وأخطاء محفوظ، وتعودين إليها من «الآن» أو «اليوم».', () => { Store.settings.active = null; Store.saveSettings(); UI.rerender(); }); } }, 'إغلاق مؤقت دون إنهاء'))));
+    el('div', { class: 'small muted', style: 'margin-top:14px;text-align:center' }, el('a', { href: '#', class: 'tempclose', onclick: e => { e.preventDefault(); UI.confirm('إغلاق الجلسة مؤقتاً دون إنهائها؟ كل ما سُجّل من نتائج وأخطاء محفوظ، وتعودين إليها من «الآن» أو «اليوم».', () => { Store.settings.active = null; Store.saveSettings(); UI.rerender(); }); } }, 'إغلاق مؤقت دون إنهاء'), ' · ', el('a', { href: '#', class: 'devnote', onclick: e => { e.preventDefault(); devNoteModal(); } }, 'ملاحظة للمطوّر'))));
   return wrap;
 }
 function nextAction(st, done, i, kind) {
@@ -610,6 +610,22 @@ function noteModal(c) {
   if (c) sel.value = c;
   const t = el('textarea', { placeholder: 'الملاحظة' });
   const bg = UI.modal('ملاحظة', el('div', null, label('الطفل'), sel, label('النص'), t), [el('button', { class: 'primary', onclick: () => { if (!t.value.trim()) return; Store.add({ type: 'note', child: sel.value || null, text: t.value.trim() }); bg.remove(); UI.savedToast('حُفظت'); } }, 'حفظ')]);
+}
+
+/* ملاحظة للمطوّر (0.16.1): ما أزعج المعلمة في لحظته، مع الشاشة والإصدار؛ سجل «note» عادي يُزامَن، ويجمعه ولي الأمر من الإعدادات */
+const DEV_NOTE = 'للمطوّر: ';
+function devNoteModal() {
+  const a = Store.settings.active; const where = inSession() && a ? 'جلسة ' + (a.key || '').split('|').slice(1, 3).join(' ') : 'شاشة ' + App.view;
+  const t = el('textarea', { placeholder: 'ما الذي أزعجكِ أو لم يكن واضحاً أو أخذ وقتاً؟ اكتبيه كما هو.', style: 'min-height:110px' });
+  const bg = UI.modal('ملاحظة للمطوّر', el('div', null, el('p', { class: 'small muted' }, 'تُحفظ مع اسم الشاشة والإصدار، وتصل إلى ولي الأمر ليرسلها. لا تمس سجلات الأطفال.'), t), [el('button', { class: 'primary', onclick: () => { const v = t.value.trim(); if (!v) return; Store.add({ type: 'note', text: `${DEV_NOTE}${v} [${where} · ${BUILD.version} · ${App.role.name}]` }); bg.remove(); UI.savedToast('حُفظت الملاحظة'); UI.rerender(true); } }, 'حفظ')]);
+}
+function devNotes() { return Store.events.filter(e => e.type === 'note' && typeof e.text === 'string' && e.text.startsWith(DEV_NOTE)); }
+function DevNotesCard() {
+  const list = devNotes();
+  return el('div', { class: 'card devnotes' }, el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, `ملاحظات للمطوّر${list.length ? ' (' + list.length + ')' : ''}`), el('button', { class: 'ghost small', onclick: devNoteModal }, '+ ملاحظة')),
+    el('p', { class: 'small muted' }, 'كل ما يزعج أو يُبطئ أثناء العمل يُكتب هنا في لحظته.'),
+    list.slice(-5).reverse().map(e => el('div', { class: 'small', style: 'padding:4px 0;border-top:1px dashed var(--line)' }, el('span', { class: 'muted' }, fmtDay(e.day) + ' · '), e.text.slice(DEV_NOTE.length))),
+    list.length ? el('button', { class: 'ghost small', style: 'margin-top:8px', onclick: () => copyText(list.map(e => `${e.day} · ${e.text.slice(DEV_NOTE.length)}`).join('\n')) }, `نسخ الكل (${list.length})`) : null);
 }
 
 /* ===== بطاقات ===== */

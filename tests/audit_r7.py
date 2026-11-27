@@ -12,6 +12,7 @@ class Q(http.server.SimpleHTTPRequestHandler):
 
 socketserver.TCPServer.allow_reuse_address = True
 results = []
+BUILD_V = (ROOT / 'VERSION').read_text().strip()
 
 
 def ok(name, cond, data=None):
@@ -143,6 +144,21 @@ async def main():
         ok('لوحة ولي الأمر: رقم أقدم مراجعة مع حدّه', 'الحد 14' in r, r)
         pg = await fresh('aya')
         ok('حساب المعلمة يبقى بخطاب المؤنث', 'ابدئي الجلسة' in await pg.evaluate("document.querySelector('main').innerText"))
+
+        # ===== 0.16.1: ملاحظة للمطوّر، والشاشة العريضة =====
+        pg = await fresh('asst')
+        await pg.evaluate("(() => { startSession(PLAN.find(s => s.kind === 'near_review' && s.child === 'c1')); })()")
+        await pg.click('a.devnote'); await pg.fill('.modal textarea', 'زر المساعدة صغير'); await pg.click('.modal button.primary'); await pg.evaluate('Store.durable()')
+        r = await pg.evaluate("(() => { const e = Store.raw.filter(x => x.type === 'note').pop(); return { text: e.text, by: e.by, child: e.child || null, n: devNotes().length }; })()")
+        ok('«ملاحظة للمطوّر» من داخل الجلسة: سجل ملاحظة عام يحمل الشاشة والإصدار والحساب', r['n'] == 1 and r['by'] == 'asst' and r['child'] is None and r['text'].startswith('للمطوّر: زر المساعدة صغير [جلسة') and BUILD_V in r['text'] and 'المساعدة' in r['text'], r)
+        await pg.evaluate("(() => { Store.settings.active = null; Store.saveSettings(); App.setRole('parent'); App.view = 'settings'; UI.rerender(); })()")
+        ok('ولي الأمر يرى ملاحظات المطوّر في الإعدادات مع زر نسخ الكل', await pg.evaluate("(() => { const c = document.querySelector('.card.devnotes'); return !!c && c.innerText.includes('زر المساعدة صغير') && c.innerText.includes('نسخ الكل (1)'); })()"))
+        ctx = await b.new_context(viewport={'width': 1280, 'height': 800}, locale='ar'); wide = await ctx.new_page(); wide.on('pageerror', lambda e: errors.append(str(e)))
+        await wide.goto(f'http://127.0.0.1:{port}/index.html'); await wide.wait_for_function('Store.raw && Store.idbOk')
+        await wide.evaluate("(() => { Sync.schedule = () => {}; Sync.run = async () => {}; App.setRole('asst'); })()"); await wide.evaluate(f"({SEED})()")
+        await wide.evaluate("(() => { startSession(PLAN.find(s => s.kind === 'near_review' && s.child === 'c1')); Store.settings.active.cur = 1; UI.rerender(); })()")
+        r = await wide.evaluate("(() => { const rows = [...document.querySelectorAll('.prow')].map(x => x.getBoundingClientRect()); const cards = [...document.querySelectorAll('.sessionwrap > .card')].map(x => x.getBoundingClientRect()); return { sameLine: Math.abs(rows[0].top - rows[1].top) < 2, side: Math.abs(cards[1].top - cards[2].top) < 4 && cards[2].width < 340 }; })()")
+        ok('شاشة عريضة: صفحات المراجعة في عمودين، وبطاقة التسجيل والإنهاء بجانب الخطوات', r == {'sameLine': True, 'side': True}, r)
 
         await b.close()
     httpd.shutdown()

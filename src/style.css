@@ -135,3 +135,14 @@ details.adv[open]>summary{margin-bottom:10px}
 .backupdue{align-items:center;gap:8px;padding:6px 10px}
 .setup .setupdone{opacity:.55}
 .helpbtn{min-height:36px}
+/* 0.16.1: أزرار الجلسات غير الحالية أخفت، وشاشة عريضة (تابلت وحاسوب): الصفحات في عمودين، والتسجيل والإنهاء في عمود ثابت بجانب الخطوات */
+button.openlater{border-color:transparent;background:transparent;color:var(--muted)}
+button.opennow{border-color:var(--brand)}
+@media(min-width:700px){
+  .pagelist>div:nth-child(2){display:grid;grid-template-columns:1fr 1fr;column-gap:28px}
+}
+@media(min-width:900px){
+  body.insession .sessionwrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;column-gap:14px;align-items:start}
+  body.insession .sessionwrap>.card:first-child{grid-column:1/-1}
+  body.insession .sessionwrap>.card:last-child{position:sticky;top:76px}
+}
