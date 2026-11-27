@@ -162,7 +162,7 @@ button.opennow{border-color:var(--brand)}
 <body>
 <div id="app"></div>
 <script>
-const BUILD = {"version": "0.16.3", "commit": "4263d93", "src": "6fa821e84f", "built": "2026-11-27"};
+const BUILD = {"version": "0.16.4", "commit": "4263d93+تعديلات", "src": "3ec4d87d5e", "built": "2026-11-27"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 /* الأطفال بمعرّفات لا تحمل أسماء: الأسماء ليست في الكود المنشور؛ تُدخل من الإعدادات وتُحفظ سجلاً على الخادم العائلي.
    c3 يحفظ بالأسطر (مقطع 4 أسطر)؛ c1 وc2 بالصفحة ويسيران معاً في الجلسات المشتركة */
@@ -331,12 +331,12 @@ const PLAN = [];
 function addSess(days, start, end, kind, child, teacher) {
   for (const d of days) PLAN.push({ day: d, start, end, kind, child, teacher: teacher || SESSION_KINDS[kind].teacher });
 }
-/* السبت–الأربعاء */
+/* السبت–الأربعاء. فاصل الصباح بين الجلستين 15 دقيقة (0.16.4، قرار ولي الأمر) */
 addSess(WORKDAYS, '07:00', '07:40', 'gate_new', 'c1');
 addSess(WORKDAYS, '07:00', '07:40', 'near_review', 'c2');
-addSess(WORKDAYS, '07:50', '08:30', 'gate_new', 'c2');
-addSess(WORKDAYS, '07:50', '08:30', 'near_review', 'c1');
-addSess(WORKDAYS, '08:30', '08:50', 'young_new', 'c3');
+addSess(WORKDAYS, '07:55', '08:35', 'gate_new', 'c2');
+addSess(WORKDAYS, '07:55', '08:35', 'near_review', 'c1');
+addSess(WORKDAYS, '08:35', '08:55', 'young_new', 'c3');
 addSess(WORKDAYS, '12:10', '12:45', 'young_noon', 'c3');
 addSess(WORKDAYS, '12:50', '13:05', 'noon', 'c1');
 addSess(WORKDAYS, '13:05', '13:20', 'noon', 'c2');

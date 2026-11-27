@@ -259,7 +259,7 @@ async def asserts():
         # الكتم أثناء الجلسة المفتوحة
         beeps = await page.evaluate("""(()=>{ let n=0; const o=Alarms.beep; Alarms.beep=()=>n++; Alarms.fired.clear(); Alarms.lastMin=null;
             Store.settings.timeOffset = Date.UTC(2026,10,10,7-8,49) - Date.now(); Store.saveSettings(); const s=PLAN.find(x=>x.kind==='gate_new'&&x.child==='c1'); startSession(s);
-            Alarms.tick(); Store.settings.timeOffset = Date.UTC(2026,10,10,7-8,50) - Date.now(); Alarms.tick();   // 7:50 بداية جلسة الثاني: مكتوم
+            Alarms.tick(); Store.settings.timeOffset = Date.UTC(2026,10,10,7-8,55) - Date.now(); Alarms.tick();   // 7:55 بداية جلسة الثاني: مكتوم
             Alarms.beep=o; Store.settings.active=null; Store.saveSettings(); return n; })()""")
         assert beeps == 0, beeps
         # --- 0.7.1 ---
