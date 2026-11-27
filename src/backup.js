@@ -210,8 +210,8 @@ function AppCard() {
 }
 function BackupReminder() {
   const d = Backup.overdue(); if (d == null) return null;
-  return el('div', { class: 'alert' }, d === Infinity ? 'لم تُصدَّر نسخة احتياطية من هذا الجهاز بعد. ' : `آخر نسخة احتياطية من هذا الجهاز قبل ${d} يوماً. `,
-    el('button', { class: 'ghost small', onclick: () => Backup.download(() => { UI.toast('صُدّرت النسخة'); UI.rerender(); }) }, 'تصدير نسخة كاملة الآن'));
+  return el('div', { class: 'alert backupdue row between' }, el('span', { class: 'small' }, d === Infinity ? 'لا نسخة احتياطية من هذا الجهاز بعد.' : `آخر نسخة احتياطية قبل ${d} يوماً.`),
+    el('button', { class: 'ghost small', onclick: () => Backup.download(() => { UI.toast('صُدّرت النسخة'); UI.rerender(); }) }, 'تصدير نسخة'));
 }
 
 function BackupCard() {

@@ -76,7 +76,7 @@ async def main():
         await page.wait_for_selector('text=جلسة جارية')
         await page.screenshot(path=SHOTS / '06_noon.png', full_page=True)
         await page.locator('.steps li').nth(1).locator('.body .row').first.click()
-        await page.click('text=الباقي مستقل')
+        await page.click('button.restclean'); await page.click('.modal button.primary')
         await page.wait_for_timeout(200)
         await page.click('text=تسجيل خطأ · الطفل الأول')
         await page.fill('.modal input[placeholder="الصفحة"]', '542')
@@ -116,7 +116,7 @@ async def main():
         await page.click('text=قرعة 5 صفحات')
         await page.wait_for_timeout(200)
         await page.screenshot(path=SHOTS / '07_thu_exam.png', full_page=True)
-        await page.locator('text=الباقي مستقل').first.click()
+        await page.locator('button.restclean').first.click(); await page.click('.modal button.primary')
         await page.click('button:has-text("إنهاء الجلسة")')
         await page.wait_for_selector('.modal')
         await page.click('.modal button.primary')
@@ -390,7 +390,7 @@ async def asserts():
         await page.evaluate("Store.reset(); App.view='now'; UI.rerender();")
         assert 'الجرد الأولي' in await page.evaluate("document.querySelector('main').innerText")
         await page.evaluate("for (const c of CHILD_ORDER) Store.add({type:'layer',child:c,page:604,layer:'far',color:'green'}); UI.rerender();")
-        assert 'قبل أول جلسة' not in await page.evaluate("document.querySelector('main').innerText")
+        assert await page.evaluate("[...document.querySelectorAll('.setup .ayahrow')].find(r => r.innerText.includes('الجرد الأولي')).classList.contains('setupdone')")
         await page.evaluate("App.setRole('aya'); Store.reset(); for (let p=562;p<=604;p++) Store.add({type:'layer',child:'c1',page:p,layer:'far',color:'green'});")
         # --- 0.9 ---
         # الطلاقة في السجل

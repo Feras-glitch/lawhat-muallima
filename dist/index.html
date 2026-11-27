@@ -66,7 +66,7 @@ nav.bottom .ico{font-size:1.25em}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center;z-index:20}
 .modal{background:#fff;width:100%;max-width:640px;border-radius:18px 18px 0 0;padding:16px;max-height:92vh;overflow:auto}
 @media(min-width:700px){.modal-bg{align-items:center}.modal{border-radius:18px}}
-.toast{position:fixed;bottom:90px;right:50%;transform:translateX(50%);background:#1f2a24;color:#fff;padding:10px 16px;border-radius:12px;z-index:30;font-size:.9em;box-shadow:var(--shadow)}
+.toast{position:fixed;top:calc(12px + env(safe-area-inset-top));right:50%;transform:translateX(50%);background:#1f2a24;color:#fff;padding:10px 16px;border-radius:12px;z-index:30;font-size:.9em;box-shadow:var(--shadow)}
 table{width:100%;border-collapse:collapse;font-size:.9em}
 th,td{text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--muted);font-weight:600}
@@ -111,15 +111,46 @@ header.top{flex-wrap:wrap}
 .map .c{color:#0008;font-size:.55em}
 @media(max-width:480px){.map .juz{grid-template-columns:repeat(10,1fr);min-width:0}.map .c{font-size:.7em}}
 .ayahgrid{margin:6px 0}.ayahgrid .row,.ayahgrid>div{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:2px 0}
-.ayahbtn{min-width:38px;padding:4px 6px}
-@media(max-width:480px){.ayahbtn{min-height:38px}}
+.ayahbtn{min-width:44px;min-height:44px;padding:4px 6px}
+
+
+/* 0.16: رأس مختصر أثناء الجلسة، شريط سفلي مطوي، صفحة القريب في سطر، علامات الخريطة، إدارة متقدمة */
+header.top.slim{padding:6px 12px;flex-wrap:wrap;gap:6px}
+header.top.slim .sub{font-size:.9em;color:var(--ink);font-weight:600}
+header.top.slim .status{flex-basis:100%;font-size:.75em;line-height:1.3}
+header.top.slim .navtoggle{min-height:36px;padding:2px 12px}
+nav.bottom.collapsed{display:none}
+body.insession main{padding-bottom:24px}
+.steps .body{min-width:0}
+.pagelist{margin-inline-start:-40px}
+.prow{flex-wrap:nowrap;align-items:center;gap:6px;padding:4px 0}
+.prow .plabel{display:flex;flex-direction:column;min-width:52px;max-width:74px;line-height:1.2}
+.prow .plabel b{font-size:1.15em}
+.prow .plabel .muted{font-size:.78em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .ocl{width:auto;flex:1;min-width:0}
+.prow .ocl .btns{margin-top:0;gap:4px;flex-wrap:nowrap;justify-content:flex-end}
+.prow .ocl .btns button{padding:4px 7px!important;font-size:.92em;min-height:40px;white-space:nowrap}
+.prow .ocl .chips{justify-content:flex-end;margin-top:2px}
+.prow .btns .chip.more{padding:0 6px!important;min-height:40px;border-radius:10px}
+.prow .plabel{flex:1 1 52px}
+.prow .ocl{flex:0 0 auto}
+.pinfield{margin-top:6px}
+.chip.more{color:var(--muted)}
+.map .c.mk-red::after{content:'!';font-weight:700;margin-inline-start:1px}
+.map .c.mk-yellow::after{content:'•';margin-inline-start:1px}
+details.adv{margin:14px 0}
+details.adv>summary{cursor:pointer;padding:12px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;color:var(--muted)}
+details.adv[open]>summary{margin-bottom:10px}
+.backupdue{align-items:center;gap:8px;padding:6px 10px}
+.setup .setupdone{opacity:.55}
+.helpbtn{min-height:36px}
 
 </style>
 </head>
 <body>
 <div id="app"></div>
 <script>
-const BUILD = {"version": "0.15.0", "commit": "8bab80f", "src": "d238c3d057", "built": "2026-11-07"};
+const BUILD = {"version": "0.16.0", "commit": "8bab80f+تعديلات", "src": "5e081f4edb", "built": "2026-11-27"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 /* الأطفال بمعرّفات لا تحمل أسماء: الأسماء ليست في الكود المنشور؛ تُدخل من الإعدادات وتُحفظ سجلاً على الخادم العائلي.
    c3 يحفظ بالأسطر (مقطع 4 أسطر)؛ c1 وc2 بالصفحة ويسيران معاً في الجلسات المشتركة */
@@ -1528,9 +1559,13 @@ const el = (tag, attrs, ...children) => {
   if (attrs) for (const [k, v] of Object.entries(attrs)) {
     if (k === 'class') n.className = v; else if (k === 'html') n.innerHTML = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), guardHandler(v)); else if (v !== null && v !== undefined) n.setAttribute(k, v);
   }
-  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
+  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) n.append(c.nodeType ? c : document.createTextNode(neutral(String(c))));
   return n;
 };
+/* خطاب ولي الأمر (0.16): نصوص البرنامج تخاطب المعلمة بالمؤنث؛ في حساب ولي الأمر تُحوَّل أفعال الأمر إلى صيغة المذكر */
+const NEUTRAL = { 'أعيدي': 'أعد', 'اختاري': 'اختر', 'صدّري': 'صدّر', 'اكتبي': 'اكتب', 'ادخلي': 'ادخل', 'أدخلي': 'أدخل', 'ابدئي': 'ابدأ', 'اضغطي': 'اضغط', 'انظري': 'انظر', 'افتحي': 'افتح', 'سجّلي': 'سجّل', 'شغّلي': 'شغّل', 'أبلغي': 'أبلغ', 'غيّري': 'غيّر', 'تسجّلي': 'تسجّل', 'أغلقي': 'أغلق', 'نفّذي': 'نفّذ', 'أنشئي': 'أنشئ', 'راجعي': 'راجع', 'استعملي': 'استعمل', 'احذفي': 'احذف', 'تعتمدي': 'تعتمد', 'تغلقي': 'تغلق', 'استوردي': 'استورد', 'انسخي': 'انسخ', 'أرسلي': 'أرسل', 'اعتمدي': 'اعتمد', 'علّمي': 'علّم', 'احفظي': 'احفظ', 'حسابكِ': 'حسابك', 'بنفسكِ': 'بنفسك' };
+const NEUTRAL_RE = new RegExp('(^|[^\\u0621-\\u064A\\u0651])([وف]?)(' + Object.keys(NEUTRAL).join('|') + ')(?![\\u0621-\\u0652])', 'g');
+function neutral(t) { return (typeof App !== 'undefined' && App.role && App.role.id === 'parent' && t.length > 3) ? t.replace(NEUTRAL_RE, (m, a, w, v) => a + w + NEUTRAL[v]) : t; }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 const UI = {
@@ -1579,18 +1614,26 @@ const UI = {
     let main; try { main = el('main', null, (Views[App.view] || Views.now)()); }
     catch (err) { console.error(err); main = el('main', null, el('div', { class: 'card' }, el('h2', null, 'تعذّر عرض هذه الشاشة'), el('p', { class: 'small' }, 'سجل تالف وصل بالمزامنة أو خطأ في البرنامج: ', String(err && err.message || err)), el('div', { class: 'btns' }, el('button', { onclick: () => { App.view = 'settings'; UI.rerender(); } }, 'الإعدادات (تصدير البيانات)'), el('button', { class: 'ghost', onclick: () => { App.view = 'now'; UI.rerender(); } }, 'الآن')))); }
     this.root.append(this.header(), main, this.nav());
+    document.body.classList.toggle('insession', inSession());
+    Wake.sync();
     this.restoreDrafts(drafts);
     if (soft) window.scrollTo(0, scroll);
   },
   header() {
     const d = App.now();
+    const times = `${fmtTime12(hhmm(d))} بكين${sameTz() ? '' : ' · ' + App.realNow().toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' }) + ' ' + tzShort()}`;
+    const sim = Store.settings.timeOffset ? el('div', { class: 'alert red', style: 'width:100%;margin:6px 0 0;padding:4px 8px' }, '⚠ الوقت محاكى! ', el('button', { class: 'ghost small', onclick: () => { Store.settings.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'العودة للوقت الحقيقي')) : null;
+    /* أثناء الجلسة (0.16): رأس من سطر واحد، والشريط السفلي مطوي يُفتح بزر ☰؛ الشاشة للتسجيل */
+    if (inSession()) return el('header', { class: 'top slim' },
+      el('div', { class: 'sub' }, times),
+      el('button', { class: 'ghost small navtoggle', title: 'القائمة', onclick: () => { App.navOpen = !App.navOpen; UI.rerender(true); } }, App.navOpen ? '✕' : '☰'),
+      el('div', { class: 'status', id: 'status' }, this.statusInner()), sim);
     return el('header', { class: 'top' },
-      el('div', null, el('div', { class: 'title' }, 'لوحة المعلمة · برنامج القرآن'), el('div', { class: 'sub' }, `${App.role.title} · ${DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1} · ${fmtTime12(hhmm(d))} بكين${sameTz() ? '' : ' · ' + App.realNow().toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' }) + ' ' + tzShort()}`)),
-      el('div', { class: 'status', id: 'status' }, this.statusInner()),
-      Store.settings.timeOffset ? el('div', { class: 'alert red', style: 'width:100%;margin:6px 0 0;padding:4px 8px' }, '⚠ الوقت محاكى! ', el('button', { class: 'ghost small', onclick: () => { Store.settings.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'العودة للوقت الحقيقي')) : null);
+      el('div', null, el('div', { class: 'title' }, `لوحة المعلمة · ${App.role.name}`), el('div', { class: 'sub' }, `${DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1} · ${times}`)),
+      el('div', { class: 'status', id: 'status' }, this.statusInner()), sim);
   },
   statusInner() {
-    const m = Alarms.muted() && Alarms.on() ? ' · 🔇 الأصوات مكتومة أثناء الجلسة' : '';
+    const m = !inSession() && Alarms.muted() && Alarms.on() ? ' · 🔇 الأصوات مكتومة أثناء الجلسة' : '';
     if (Store.storageError) return [el('span', { class: 'dot bad' }), Store.storageError + m];
     if (Store.idbOk && Store.pendingCount()) return [el('span', { class: 'dot off' }), `جارٍ الحفظ… (${Store.pendingCount()})` + m];
     if (!Store.idbOk) { const used = (localStorage.getItem('lm_events_v1') || '').length / 1048576; if (used > 2.5) return [el('span', { class: 'dot bad' }), `تخزين محدود (${used.toFixed(1)} من 5 م.ب) — افتحي البرنامج من الرابط لا من الملف` + m]; }
@@ -1616,7 +1659,8 @@ const UI = {
     const items = App.role.id === 'parent'
       ? [['dash', '🏠', 'اللوحة'], ['children', '👧', 'الأطفال'], ['logs', '📒', 'السجلات'], ['reports', '📊', 'التقارير'], ['settings', '⚙️', 'الإعدادات']]
       : [['now', '⏱', 'الآن'], ['today', '📅', 'اليوم'], ['children', '👧', 'الأطفال'], ['logs', '📒', 'السجلات'], ['settings', '⚙️', 'الإعدادات']];
-    return el('nav', { class: 'bottom' }, items.map(([v, ico, name]) => el('button', { class: App.view === v || (v === 'today' && App.view === 'thursday') ? 'active' : '', onclick: () => { App.view = v; UI.rerender(); } }, el('span', { class: 'ico' }, ico), name)));
+    /* تغيير التبويب يبدأ من أعلى الشاشة الجديدة (0.16) */
+    return el('nav', { class: 'bottom' + (inSession() && !App.navOpen ? ' collapsed' : '') }, items.map(([v, ico, name]) => el('button', { class: App.view === v || (v === 'today' && App.view === 'thursday') ? 'active' : '', onclick: () => { const same = App.view === v; App.view = v; App.navOpen = false; UI.rerender(); if (!same) window.scrollTo(0, 0); } }, el('span', { class: 'ico' }, ico), name)));
   },
   modal(title, bodyEl, actions) {
     const bg = el('div', { class: 'modal-bg', onclick: e => { if (e.target === bg) bg.remove(); } });
@@ -1691,14 +1735,57 @@ Views.login = function () {
   let sel = null; const pin = el('input', { type: 'password', inputmode: 'numeric', placeholder: 'الرمز', style: 'text-align:center;font-size:1.3em;letter-spacing:6px' });
   const roles = el('div', { class: 'roles' });
   const msg = el('div', { class: 'muted small' });
-  for (const r of Object.values(ROLES)) roles.append(el('button', { onclick: e => { sel = r.id; [...roles.children].forEach(b => b.classList.remove('sel')); e.currentTarget.classList.add('sel'); pin.focus(); } }, el('div', { class: 'big' }, r.name), el('div', { class: 'muted small' }, r.title)));
+  for (const r of Object.values(ROLES)) roles.append(el('button', { onclick: e => { sel = r.id; [...roles.children].forEach(b => b.classList.remove('sel')); e.currentTarget.classList.add('sel'); pin.focus(); } }, el('div', { class: 'big' }, r.name), r.title !== r.name ? el('div', { class: 'muted small' }, r.title) : null));
   const go = () => { if (!sel) { msg.textContent = 'اختاري الحساب أولاً'; return; } if (pin.value !== Store.settings.pins[sel]) { msg.textContent = 'الرمز غير صحيح'; return; } App.setRole(sel); };
   pin.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
   wrap.append(roles, pin, el('button', { class: 'primary', style: 'width:100%;margin-top:12px', onclick: go }, 'دخول'), msg,
-    el('p', { class: 'small muted', style: 'margin-top:20px' }, 'الرموز الأولية: آية 1111 · المساعدة 2222 · ولي الأمر 3333، وتُغيَّر من الإعدادات. لربط الحسابات الثلاثة عبر الإنترنت: الإعدادات ← الخادم.'));
+    /* الرموز الأولية تُذكر فقط للحسابات التي لم تغيّر رمزها بعد (0.16) */
+    (() => { const left = Object.values(ROLES).filter(r => Store.settings.pins[r.id] === PIN_DEFAULTS[r.id]); return el('p', { class: 'small muted', style: 'margin-top:20px' }, left.length ? `الرموز الأولية: ${left.map(r => r.name + ' ' + PIN_DEFAULTS[r.id]).join(' · ')}، وتُغيَّر بعد أول دخول. ` : '', 'لربط الحسابات الثلاثة عبر الإنترنت: الإعدادات ← الخادم.'); })());
   return wrap;
 };
 function label(t) { return el('label', null, t); }
+const PIN_DEFAULTS = { aya: '1111', asst: '2222', parent: '3333' };
+/* هل الحساب الحالي داخل جلسة مفتوحة اليوم وعلى شاشة «الآن»؟ */
+function inSession() { const a = Store.settings && Store.settings.active; return !!(App.role && a && App.view === 'now' && a.role === App.role.id && a.dayK === todayKey()); }
+/* إبقاء الشاشة مضاءة ما دامت جلسة مفتوحة (0.16): المعلمة تستمع ولا تلمس الهاتف دقائق؛ بلا هذا تُقفل الشاشة وسط التسميع */
+const Wake = {
+  lock: null, want: false,
+  sync() {
+    const a = Store.settings && Store.settings.active;
+    const want = !!(App.role && a && a.role === App.role.id && a.dayK === todayKey());
+    if (want === this.want && (this.lock || !want)) return; this.want = want;
+    try { if (window.LawhatAndroid && window.LawhatAndroid.keepScreenOn) { window.LawhatAndroid.keepScreenOn(want); return; } } catch (e) {}
+    if (!want) { if (this.lock) { try { this.lock.release(); } catch (e) {} this.lock = null; } return; }
+    if (navigator.wakeLock && document.visibilityState === 'visible') navigator.wakeLock.request('screen').then(l => { this.lock = l; l.addEventListener('release', () => { if (this.lock === l) this.lock = null; }); if (!this.want) { l.release(); } }).catch(() => {});
+  },
+};
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Wake.want && !Wake.lock) { Wake.want = false; Wake.sync(); } });
+/* بطاقة «غيّري الرمز الأولي»: تبقى أعلى الشاشة الرئيسية حتى يُغيَّر رمز الحساب (في الدخول المحلي) */
+function pinField() {
+  const id = App.role.id;
+  const i = el('input', { type: 'password', inputmode: 'numeric', placeholder: 'رمز جديد (4 أرقام أو أكثر)', style: 'max-width:220px' });
+  return el('div', { class: 'row pinfield' }, i, el('button', { class: 'primary', onclick: () => { const v = i.value.trim(); if (!/^\d{4,}$/.test(v)) { UI.toast('الرمز 4 أرقام أو أكثر'); return; } if (Object.values(PIN_DEFAULTS).includes(v)) { UI.toast('اختاري رمزاً غير الرموز الأولية'); return; } Store.settings.pins[id] = v; Store.saveSettings(); UI.toast('حُفظ الرمز الجديد'); UI.rerender(); } }, 'حفظ الرمز'));
+}
+function pinIsDefault() { const id = App.role.id; return (!Sync.cfg() || Store.settings.localMode) && Store.settings.pins[id] === PIN_DEFAULTS[id]; }
+function PinNudge() {
+  if (!pinIsDefault()) return null;
+  return el('div', { class: 'card pinnudge', style: 'border:2px solid var(--yellow)' }, el('h2', null, 'غيّري رمز الدخول الأولي'), el('p', { class: 'small' }, `رمز هذا الحساب ما زال الرمز الأولي (${PIN_DEFAULTS[App.role.id]}) المكتوب على شاشة الدخول، فيعرفه كل من يفتح البرنامج.`), pinField());
+}
+/* معاني المصطلحات (0.16) */
+const GLOSSARY = [
+  ['الجديد', 'صفحة اليوم (أو مقطع اليوم للصغير). تُسمَّع ثلاث مرات في يومها ثم صباح الغد.'],
+  ['بوابة الأمس', 'تسميع صفحة آخر يوم حفظ غيباً أول الجلسة. إن لم تكن سالمة فلا جديد اليوم. صباح السبت بوابته صفحة الأربعاء.'],
+  ['القريب', 'صفحات الجزء الجاري. تُراجع كل يوم بسقف: الحمراء، ثم آخر 5 صفحات، ثم الجزء المنتظر فحصه، ثم الباقي بالتناوب.'],
+  ['البعيد', 'الأجزاء المختومة المجازة. لها حصة يومية تدور عليها كلها بالترتيب.'],
+  ['القائمة الصفراء', 'كل آية وقع فيها خطأ. تُشطب بعد ثلاثة تسميعات سالمة في ثلاثة أيام مختلفة.'],
+  ['المتشابهات', 'مواضع انتقل فيها الطفل إلى آية تشبهها. تُعالج في مجلس الخميس.'],
+  ['مستقل / بمساعدة / توقف', 'مستقل: بلا تلقين. بمساعدة: تلقين أو اثنان. توقف: ثلاثة فأكثر أو عجز عن الإكمال. اللون يحسبه البرنامج وتعتمده آية.'],
+  ['صباح إصلاح', 'قرار آية حين تسقط البوابة: الصباح لإصلاح صفحة الأمس بلا جديد.'],
+  ['بطاقة التسليم', 'ملخص جلسة المساعدة (النتائج والأخطاء والباقي) يصل إلى آية تلقائياً.'],
+  ['سقف المراجعة', 'أقصى عدد صفحات يومياً في القريب والبعيد. تضبطه آية لكل طفل.'],
+];
+function glossaryModal() { UI.modal('معاني المصطلحات', el('div', null, GLOSSARY.map(([k, v]) => el('p', { class: 'small', style: 'margin:8px 0' }, el('b', null, k + ': '), v)))); }
+function helpButton() { return el('button', { class: 'ghost small helpbtn', title: 'معاني المصطلحات', onclick: glossaryModal }, '؟ المصطلحات'); }
 /* نسخ نص: «نُسخت» فقط إن نجح النسخ فعلاً؛ وإلا نافذة بالنص محدداً للنسخ اليدوي (المتصفح قد يمنع الحافظة) */
 async function copyText(text) {
   try {
@@ -1730,7 +1817,12 @@ function OutcomeCtl(c, page, step, extra, onRecord, compact) {
   const mk = (r, cls, t) => el('button', { class: cls + (cur && cur.result === r ? ' on' : ''), style: compact ? 'padding:4px 10px' : '', onclick: () => rec({ result: r, prompts: r === 'clean' ? 0 : r === 'yellow' ? Math.max(1, (cur && cur.prompts) || 1) : r === 'red' ? Math.max(3, (cur && cur.prompts) || 3) : (cur ? cur.prompts : undefined) }) }, t);
   const box = el('div', { class: 'ocl' });
   box.append(el('div', { class: 'btns' }, mk('clean', 'btn-g', compact ? '✓' : 'مستقل'), mk('yellow', 'btn-y', compact ? 'مساعدة' : 'بمساعدة'), mk('red', 'btn-r', compact ? 'توقف' : 'توقف / 3+'), mk('partial', 'ghost', compact ? 'ناقص' : 'لم يُقيَّم كاملاً')));
-  if (cur && cur.result !== 'partial') {
+  /* التفاصيل متدرجة (0.16): في المراجعة (قريب، بعيد، فحص) تبقى مع «مستقل» مطوية خلف زر صغير؛ في تسميعات الجديد تظهر لأن سؤال المعنى جزء منها */
+  const okey = [c, page, step, seg ? seg.join('-') : ''].join('|');
+  if (cur && cur.result === 'clean' && !['gate', 'first', 'second', 'third'].includes(step) && !OC_OPEN.has(okey) && !cur.selfCorrect && cur.tajweed !== 'issue' && !(cur.meaning && cur.meaning !== 'untested')) {
+    const more = el('button', { class: 'chip more', title: 'تفاصيل: زلة، تجويد', onclick: () => { OC_OPEN.add(okey); UI.rerender(true); } }, compact ? '⋯' : 'تفاصيل (زلة، تجويد، معنى) ▾');
+    if (compact) box.querySelector('.btns').append(more); else box.append(el('div', { class: 'chips' }, more));
+  } else if (cur && cur.result !== 'partial') {
     const chip = (on, t, f) => el('button', { class: 'chip' + (on ? ' on' : ''), onclick: f }, t);
     const det = el('div', { class: 'chips' });
     if (cur.result !== 'clean') det.append(el('span', { class: 'muted small' }, 'تلقين: '), ...[1, 2, 3].map(n => chip(cur.prompts === n || (n === 3 && cur.prompts >= 3), n === 3 ? '3+' : String(n), () => rec({ prompts: n, result: n >= 3 ? 'red' : 'yellow' }))));
@@ -1742,17 +1834,32 @@ function OutcomeCtl(c, page, step, extra, onRecord, compact) {
   }
   return box;
 }
+const OC_OPEN = new Set();
 function pagesText(st, page, lines) { return st && isLines(st.id) && lines ? `${pageLabel(page)} · الأسطر ${lines[0]}–${lines[1]}` : pageLabel(page); }
+
+/* مرشد الإعداد الأول (0.16): الخطوات بالترتيب في بطاقة واحدة، تختفي حين تكتمل الثلاث الأولى */
+function SetupCard() {
+  if (App.role.id === 'asst') return null;
+  const noInv = CHILD_ORDER.filter(c => !Store.events.some(e => e.type === 'layer' && e.child === c));
+  const steps = [
+    { done: !!familyNames(), t: 'أسماء الأطفال', d: 'تُكتب مرة واحدة وتظهر في كل الشاشات.', go: 'أسماء الأطفال' },
+    { done: !noInv.length, t: 'الجرد الأولي', d: App.role.id === 'aya' ? 'تسجيل المحفوظ الحالي لكل طفل. بدونه يقترح البرنامج صفحات خاطئة ولا تعمل حصة البعيد.' : 'تنفذه آية من حسابها بعد تسميع المحفوظ.', go: 'الجرد الأولي' },
+    { done: !pinIsDefault(), t: 'تغيير رمز الدخول الأولي', d: `الرمز الأولي (${PIN_DEFAULTS[App.role.id]}) مكتوب على شاشة الدخول، فيعرفه كل من يفتح البرنامج.`, extra: pinField },
+    { done: !!Sync.cfg(), opt: true, t: 'ربط خادم العائلة (للعمل الحقيقي)', d: 'يجمع أجهزة المعلمتين وولي الأمر. يمكن التجربة بدونه.', go: 'الخادم (الحسابات الثلاثة عبر الإنترنت)' },
+  ];
+  if (steps.slice(0, 3).every(x => x.done)) return null;
+  const open = h => { App.view = 'settings'; UI.rerender(); const t = [...document.querySelectorAll('main .card h2')].find(x => x.textContent === h); if (t) t.scrollIntoView({ block: 'start' }); window.scrollBy(0, -140); };
+  return el('div', { class: 'card setup', style: 'border:2px solid var(--yellow)' }, el('h2', null, 'الإعداد الأول'), el('p', { class: 'small muted' }, 'أربع خطوات بالترتيب قبل أول جلسة. تختفي هذه البطاقة حين تكتمل الثلاث الأولى.'),
+    steps.map((x, i) => el('div', { class: 'ayahrow' + (x.done ? ' setupdone' : '') }, el('span', null, el('b', null, x.done ? `✓ ${x.t}` : `${i + 1}. ${x.t}`), x.opt ? el('span', { class: 'muted small' }, ' (اختياري الآن)') : null, x.done ? null : el('div', { class: 'small muted' }, x.d), !x.done && x.extra ? x.extra() : null), !x.done && x.go ? el('button', { class: 'ghost small', onclick: () => open(x.go) }, 'فتح') : null)));
+}
 
 Views.now = function () {
   const d = App.now(); const { list, current, next } = currentSession(App.role.id, d);
   const wrap = el('div');
-  if (!Sync.cfg()) { const due = BackupReminder(); if (due) wrap.append(due); } /* في الوضع المحلي الجهاز هو النسخة الوحيدة */
   { const upd = AppUpdateBanner(); if (upd) wrap.append(upd); }
   const active = Store.settings.active && Store.settings.active.dayK === todayKey() && Store.settings.active.role === App.role.id ? Store.settings.active : null;
   if (active) { const s = PLAN.find(x => sessionKey(x, active.dayK) === active.key); if (s) return SessionView(s, active); }
-  const noInv = CHILD_ORDER.filter(c => !Store.events.some(e => e.type === 'layer' && e.child === c));
-  if (noInv.length && App.role.id !== 'asst') wrap.append(el('div', { class: 'card', style: 'border:2px solid var(--yellow)' }, el('h2', null, 'قبل أول جلسة: الجرد الأولي'), el('p', { class: 'small' }, `لم يُسجَّل المحفوظ الحالي لـ${noInv.map(c => CHILDREN[c].name).join(' و')}. بدونه يقترح البرنامج صفحات خاطئة ولا تعمل حصة البعيد.`), el('button', { class: 'primary', onclick: () => { App.view = 'settings'; UI.rerender(); } }, 'تسجيل الجرد من الإعدادات')));
+  const setup = SetupCard() || PinNudge();
   if (d.getDay() === 5) wrap.append(el('div', { class: 'card' }, el('h2', null, 'الجمعة إجازة'), el('p', { class: 'muted' }, 'لا تسميع ولا سؤال اليوم. يستأنف البرنامج السبت 7:00.')));
   if (current) {
     const sd = sessionStatus(current, todayKey());
@@ -1763,11 +1870,14 @@ Views.now = function () {
   } else if (list.length) {
     wrap.append(el('div', { class: 'card' }, el('h2', null, next ? 'لا جلسة الآن' : 'انتهت جلسات اليوم'), next ? el('p', null, `التالية: ${childName(next.child)} · ${SESSION_KINDS[next.kind].name} في ${timePair(next.start)}`) : el('p', { class: 'muted' }, 'سجّلي أي خطأ أو ملاحظة متأخرة من زر التسجيل الحر.')));
   }
+  if (setup) wrap.append(setup);
+  /* التنبيهات وبطاقات التسليم تحت الجلسة الحالية مباشرة (0.16)، لا في آخر الشاشة */
+  wrap.append(HandoffsCard());
+  wrap.append(AlertsCard());
   wrap.append(DayList(list, true));
   if (App.role.id !== 'parent' && d.getDay() !== 5) wrap.append(el('div', { class: 'card' }, el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, 'يوم غير عادي؟'), el('button', { class: 'ghost small', onclick: () => cancelModal() }, 'إلغاء جلسات اليوم بسبب'))));
   wrap.append(el('div', { class: 'card' }, el('h2', null, 'تسجيل حر'), el('p', { class: 'muted small' }, 'خطأ أو ملاحظة خارج الجلسات.'), el('div', { class: 'btns' }, CHILD_ORDER.map(c => el('button', { onclick: () => errorModal(c) }, `خطأ · ${CHILDREN[c].name}`)), el('button', { class: 'ghost', onclick: () => noteModal() }, 'ملاحظة'), el('button', { class: 'ghost', onclick: undoLast }, '↶ تراجع'))));
-  wrap.append(HandoffsCard());
-  wrap.append(AlertsCard());
+  if (!Sync.cfg()) { const due = BackupReminder(); if (due) wrap.append(due); } /* في الوضع المحلي الجهاز هو النسخة الوحيدة */
   return wrap;
 };
 
@@ -1939,7 +2049,7 @@ function SessionView(s, a) {
     if (dec.length) head.append(el('div', { class: 'alert small' }, el('b', null, `قرار آية الجاري · ${CHILDREN[c].name}: `), dec.join(' · ')));
     const ln = lastNote(c); if (ln) { const full = el('div', { class: 'small', style: 'display:none;white-space:pre-wrap' }, ln.details || ln.text); head.append(el('div', { class: 'small muted' }, el('b', null, `آخر ملاحظة مهمة · ${CHILDREN[c].name}: `), ln.text.length > 70 ? ln.text.slice(0, 70) + '…' : ln.text, ln.details || ln.text.length > 70 ? el('button', { class: 'ghost small', style: 'margin-right:6px', onclick: () => { full.style.display = full.style.display === 'none' ? '' : 'none'; } }, 'التفاصيل') : null), full); }
   }
-  head.append(el('div', { class: 'row between', style: 'margin-top:8px' }, el('span', { class: 'small' }, el('b', null, 'الخطوة الحالية: '), cur.text), el('button', { class: 'ghost small', onclick: () => openPresent(s) }, '🖥 عرض')));
+  head.append(el('div', { class: 'row between', style: 'margin-top:8px' }, el('span', { class: 'small' }, el('b', null, 'الخطوة الحالية: '), cur.text), el('span', { style: 'white-space:nowrap' }, helpButton(), ' ', el('button', { class: 'ghost small', onclick: () => openPresent(s) }, '🖥 عرض'))));
   wrap.append(head);
   /* الخطوات: الحالية مفتوحة، والباقي سطر واحد قابل للفتح */
   const steps = el('ul', { class: 'steps' });
@@ -1955,7 +2065,9 @@ function SessionView(s, a) {
   wrap.append(el('div', { class: 'card' }, el('div', { class: 'row between' }, el('span', { class: 'muted small' }, 'الخطوات'), el('button', { class: 'ghost small', onclick: () => { a.all = !a.all; saveActive(); UI.rerender(true); } }, a.all ? 'الخطوة الحالية فقط' : 'فتح جميع الخطوات')), steps));
   const note = el('textarea', { placeholder: 'ملاحظة على الجلسة (اختياري)', oninput: e => { a.note = e.target.value; saveActive(); } }); note.value = a.note || '';
   wrap.append(el('div', { class: 'card' }, el('div', { class: 'btns' }, kids.map(c => el('button', { class: 'btn-r', onclick: () => { const x = errorContext(s, c, a); errorModal(c, x.page, isLines(c) ? x.lines : undefined, x.choices); } }, `تسجيل خطأ · ${CHILDREN[c].name}`))), note,
-    el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: () => endSession(s, note.value) }, 'إنهاء الجلسة'), el('button', { class: 'ghost', onclick: undoLast }, '↶ تراجع عن آخر تسجيل'), el('button', { class: 'ghost', onclick: () => UI.confirm('إلغاء الجلسة دون تسجيل؟ تبقى الأخطاء والنتائج التي سُجّلت.', () => { Store.settings.active = null; Store.saveSettings(); UI.rerender(); }) }, 'إغلاق بلا تسجيل'))));
+    el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: () => endSession(s, note.value) }, 'إنهاء الجلسة'), el('button', { class: 'ghost', onclick: undoLast }, '↶ تراجع عن آخر تسجيل')),
+    /* «إغلاق مؤقت» بعيد عن زر الإنهاء وباسم لا يوحي بضياع ما سُجّل (0.16) */
+    el('div', { class: 'small muted', style: 'margin-top:14px;text-align:center' }, el('a', { href: '#', class: 'tempclose', onclick: e => { e.preventDefault(); UI.confirm('إغلاق الجلسة مؤقتاً دون إنهائها؟ كل ما سُجّل من نتائج وأخطاء محفوظ، وتعودين إليها من «الآن» أو «اليوم».', () => { Store.settings.active = null; Store.saveSettings(); UI.rerender(); }); } }, 'إغلاق مؤقت دون إنهاء'))));
   return wrap;
 }
 function nextAction(st, done, i, kind) {
@@ -2051,12 +2163,18 @@ function StepControls(s, st, a) {
 function PageListOutcome(c, pages, step, a, st) {
   if (!pages.length) return el('div', { class: 'muted small' }, 'لا صفحات.');
   const today = todayKey();
-  const wrap = el('div', { class: 'small' }, el('div', { class: 'row between' }, el('b', null, CHILDREN[c].name), el('button', { class: 'btn-g', onclick: () => { for (const p of pages) { const has = Store.events.some(e => e.type === 'outcome' && e.child === c && e.page === p && e.step === step && e.day === today); if (!has) Store.add({ type: 'outcome', child: c, page: p, step, result: 'clean' }); } if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.rerender(true); } }, 'الباقي مستقل')));
+  const has = p => Store.events.some(e => e.type === 'outcome' && e.child === c && e.page === p && e.step === step && e.day === today);
+  const wrap = el('div', { class: 'small pagelist' }, el('div', { class: 'row between' }, el('b', null, CHILDREN[c].name), el('span', { class: 'muted' }, `${pages.filter(has).length} من ${pages.length}`)));
   const list = el('div');
   for (const p of pages) {
-    list.append(el('div', { class: 'ayahrow', style: 'flex-wrap:wrap' }, el('span', null, pageLabel(p)), OutcomeCtl(c, p, step, null, ev => { if (ev.result === 'red' || (ev.result === 'yellow' && ev.prompts === 1 && !Store.events.some(x => x.type === 'error' && x.child === c && x.page === p && x.day === today))) errorModal(c, p, isLines(c) ? null : undefined); }, true)));
+    /* صفحة في سطر (0.16): الرقم واسم السورة في جهة، والأزرار الأربعة في جهة */
+    list.append(el('div', { class: 'ayahrow prow' }, el('span', { class: 'plabel' }, el('b', null, String(p)), el('span', { class: 'muted' }, surahsOfPage(p).map(x => SURAH_NAMES[x - 1]).join(' / '))), OutcomeCtl(c, p, step, null, ev => { if (ev.result === 'red' || (ev.result === 'yellow' && ev.prompts === 1 && !Store.events.some(x => x.type === 'error' && x.child === c && x.page === p && x.day === today))) errorModal(c, p, isLines(c) ? null : undefined); }, true)));
   }
-  wrap.append(list); return wrap;
+  wrap.append(list);
+  /* «الباقي مستقل» في آخر القائمة وبتأكيد يذكر العدد (0.16): ضغطة خاطئة كانت تسجّل كل الصفحات سالمة */
+  const rest = pages.filter(p => !has(p));
+  if (rest.length) wrap.append(el('div', { class: 'btns' }, el('button', { class: 'btn-g restclean', onclick: () => UI.confirm(`تسجيل ${rest.length} ${rest.length === 1 ? 'صفحة' : 'صفحات'} «مستقل» دفعة واحدة لـ${CHILDREN[c].name}؟ (${rest.join('، ')})`, () => { for (const p of rest) if (!has(p)) Store.add({ type: 'outcome', child: c, page: p, step, result: 'clean' }); if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.rerender(true); }) }, `الباقي مستقل (${rest.length})`)));
+  return wrap;
 }
 
 function ExamBox(c, a, st, s) {
@@ -2178,7 +2296,12 @@ function undoLast() {
   const mine = Store.events.filter(e => Store.canUndo(App.role.id, e) && e.by === App.role.id && e.day === todayKey() && !['undo', 'session_done', 'handoff', 'handoff_update', 'handoff_status', 'layer'].includes(e.type));
   const last = mine[mine.length - 1];
   if (!last) { UI.toast('لا تسجيل للتراجع عنه اليوم'); return; }
-  UI.confirm(`التراجع عن: ${eventText(last)}؟ يُلغى أثره في الحسابات ويبقى أثر التصحيح في السجل.`, () => { Store.add({ type: 'undo', target: last.id, child: last.child || undefined, reason: 'تراجع ' + ROLES[App.role.id].name }); UI.savedToast('تم التراجع'); UI.rerender(true); });
+  /* دفعة «الباقي مستقل»: سجلات متتالية من النوع نفسه كُتبت في اللحظة نفسها تُعرض للتراجع معاً (0.16) */
+  const batch = [last];
+  if (last.type === 'outcome' && last.result === 'clean') for (let i = mine.length - 2; i >= 0; i--) { const e = mine[i], nx = batch[batch.length - 1]; if (e.type === 'outcome' && e.result === 'clean' && e.child === last.child && e.step === last.step && nx.ts - e.ts < 400) batch.push(e); else break; }
+  const undo = list => { for (const e of list) Store.add({ type: 'undo', target: e.id, child: e.child || undefined, reason: 'تراجع ' + ROLES[App.role.id].name }); UI.savedToast('تم التراجع'); UI.rerender(true); };
+  if (batch.length > 1) { const bg = UI.modal('تراجع', el('p', null, `آخر تسجيل دفعة من ${batch.length} صفحات «مستقل» (${batch.map(e => e.page).reverse().join('، ')}). يُلغى أثرها في الحسابات ويبقى أثر التصحيح في السجل.`), [el('button', { class: 'primary undobatch', onclick: () => { bg.remove(); undo(batch); } }, `التراجع عن الدفعة كلها (${batch.length})`), el('button', { class: 'ghost', onclick: () => { bg.remove(); undo([last]); } }, `عن الأخيرة فقط (${last.page})`)]); return; }
+  UI.confirm(`التراجع عن: ${eventText(last)}؟ يُلغى أثره في الحسابات ويبقى أثر التصحيح في السجل.`, () => undo([last]));
 }
 /* ===== التراجع عن سجل بعينه (من «السجلات»): بالصلاحيات نفسها التي يفرضها الخادم (canUndo)، بسبب وتأكيد،
    والزر معطّل أثناء الحفظ، والعملية تُلغى إن حُذفت بيانات الجهاز أو تغيّر الحساب أثناءها. يبقى السجل الأصلي مشطوباً وأثر التراجع في التاريخ ===== */
@@ -2245,7 +2368,7 @@ function errorModal(c, page, lines, choices) {
   const d = deriveChild(c); const unknown = page === null; if (!unknown) page = page || d.nextNew || 1;
   if (isLines(c) && lines === undefined && !unknown) lines = youngLines(c, page) || null;
   const pageIn = el('input', { type: 'number', min: 1, max: 604, value: unknown ? '' : page, placeholder: 'الصفحة', style: 'width:100px' });
-  const surahSel = el('select'); const ayahIn = el('input', { type: 'number', min: 1, placeholder: 'رقم الآية', style: 'width:120px' });
+  const surahSel = el('select', { style: 'min-width:130px' }); const ayahIn = el('input', { type: 'number', min: 1, placeholder: 'رقم الآية', style: 'width:120px' });
   const validPage = () => { const v = Number(pageIn.value); return v >= 1 && v <= 604 ? v : null; };
   /* أزرار آيات الصفحة (0.15): ضغطة واحدة تختار السورة والآية معاً أثناء التلاوة */
   const ayahGrid = el('div', { class: 'ayahgrid' });
@@ -2505,7 +2628,8 @@ function MushafMap(c) {
     const pg = d.pages[p]; let cls = 'c ' + (pg.layer === 'none' ? '' : pg.layer);
     if (pg.layer === 'far' && pg.color) cls = 'c ' + pg.color;
     const gap = pg.layer === 'far' ? ((pg.lastFar || pg.lastReview) ? daysBetween(pg.lastFar || pg.lastReview, today) : 99) : 0;
-    if (pg.layer === 'far' && gap > 12) cls += ' stale';
+    if (pg.layer === 'far' && gap > d.gapRed) cls += ' stale';
+    if (pg.color === 'red') cls += ' mk-red'; else if (pg.color === 'yellow') cls += ' mk-yellow'; /* علامة لا لون فقط (0.16) */
     if (d.todayNew.includes(p) || d.todayFar.includes(p)) cls += ' today';
     return el('div', { class: cls, title: `ص${p}`, onclick: () => pageModal(c, p) }, p);
   };
@@ -2521,7 +2645,7 @@ function MushafMap(c) {
   grid.append(el('button', { class: 'ghost small', style: 'margin-top:8px', onclick: () => { App.sub.mapAll = !showAll; UI.rerender(); } }, showAll ? 'إخفاء الأجزاء غير المحفوظة' : 'إظهار كل الأجزاء الثلاثين'));
   return el('div', { class: 'card' }, el('h2', null, `خريطة المصحف · ${CHILDREN[c].name}`),
     el('div', { class: 'legend', style: 'margin-bottom:8px' }, lg('#2e9e5b', 'بعيد أخضر'), lg('#e0a800', 'أصفر'), lg('#d14b3f', 'أحمر'), lg('#cfe9d7', 'بعيد بلا لون'), lg('#cfe0f5', 'قريب'), lg('#f3e3b8', 'جديد'), lg('#ececec', 'لم يُحفظ')),
-    el('p', { class: 'small muted' }, 'الإطار الأحمر: تجاوزت 12 يوماً بلا تسميع. الإطار الأزرق: صفحات اليوم. اضغطي أي صفحة لتاريخها.'), grid);
+    el('p', { class: 'small muted' }, `الإطار الأحمر: بعيد تجاوز ${d.gapRed} يوماً بلا تسميع. الإطار الأزرق: صفحات اليوم. العلامة ! صفحة حمراء، و• صفراء. اضغطي أي صفحة لتاريخها.`), grid);
 }
 function lg(color, t) { return el('span', null, el('i', { style: 'background:' + color }), t); }
 
@@ -2866,8 +2990,8 @@ function AppCard() {
 }
 function BackupReminder() {
   const d = Backup.overdue(); if (d == null) return null;
-  return el('div', { class: 'alert' }, d === Infinity ? 'لم تُصدَّر نسخة احتياطية من هذا الجهاز بعد. ' : `آخر نسخة احتياطية من هذا الجهاز قبل ${d} يوماً. `,
-    el('button', { class: 'ghost small', onclick: () => Backup.download(() => { UI.toast('صُدّرت النسخة'); UI.rerender(); }) }, 'تصدير نسخة كاملة الآن'));
+  return el('div', { class: 'alert backupdue row between' }, el('span', { class: 'small' }, d === Infinity ? 'لا نسخة احتياطية من هذا الجهاز بعد.' : `آخر نسخة احتياطية قبل ${d} يوماً.`),
+    el('button', { class: 'ghost small', onclick: () => Backup.download(() => { UI.toast('صُدّرت النسخة'); UI.rerender(); }) }, 'تصدير نسخة'));
 }
 
 function BackupCard() {
@@ -3097,11 +3221,12 @@ function RejectedCard() {
 /* ===== لوحة ولي الأمر، التقارير، الإعدادات ===== */
 Views.dash = function () {
   const wrap = el('div');
-  const due = BackupReminder(); if (due) wrap.append(due);
   const upd = AppUpdateBanner(); if (upd) wrap.append(upd);
+  { const su = SetupCard() || PinNudge(); if (su) wrap.append(su); }
+  const due = BackupReminder(); if (due) wrap.append(due);
   wrap.append(el('div', { class: 'grid2' }, CHILD_ORDER.map(c => { const h = healthOf(c); const d = h.st; return el('div', { class: 'card', style: 'margin:0;cursor:pointer', onclick: () => { App.sub.child = c; App.sub.ctab = 'summary'; App.view = 'children'; UI.rerender(); } },
     el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, CHILDREN[c].name), el('span', { class: 'light ' + h.light })),
-    el('div', { class: 'kpi', style: 'margin-top:8px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? 'أخضر في الفحص' : 'لم يُفحص')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, 'أقدم صفحة (يوم)'))),
+    el('div', { class: 'kpi', style: 'margin-top:8px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? 'أخضر في الفحص' : 'لم يُفحص')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, d.far.length ? `يوماً منذ أقدم مراجعة · الحد ${d.gapRed}` : 'لا بعيد بعد'))),
     el('div', { class: 'small muted', style: 'margin-top:8px' }, `البعيد ${d.far.length} · القريب ${d.near.length} · التالي: ${d.nextNew ? pageLabel(d.nextNew) : '—'}`)); })));
   wrap.append(el('div', { style: 'height:14px' }), BriefCard(), GroupedAlerts());
   const today = todayKey(); const todays = Store.events.filter(e => e.day === today && ['outcome', 'error', 'new_page', 'session_done', 'decision'].includes(e.type));
@@ -3175,6 +3300,9 @@ function pct(list) { const x = outcomeStats(list); return x.pct == null ? '—' 
 /* ===== الإعدادات ===== */
 Views.settings = function () {
   const wrap = el('div'); const s = Store.settings;
+  /* إدارة متقدمة (0.16): النادر والخطِر (استعادة الخادم، الوقت، مسح البيانات) مطوي في آخر الصفحة */
+  const adv = el('details', { class: 'adv', ontoggle: e => { App.sub.advOpen = e.currentTarget.open; } }, el('summary', null, 'إدارة متقدمة: استعادة الخادم، ساعة التجربة، مسح البيانات'));
+  if (App.sub.advOpen || s.timeOffset) adv.setAttribute('open', '');
   const due = BackupReminder(); if (due) wrap.append(due);
   const upd = AppUpdateBanner(); if (upd) wrap.append(upd);
   wrap.append(el('div', { class: 'card' }, el('h2', null, 'الحساب'), el('p', null, `الدخول الحالي: ${App.role.title}`), el('button', { class: 'ghost', onclick: () => App.logout() }, 'خروج')));
@@ -3219,13 +3347,15 @@ Views.settings = function () {
   // النسخ الاحتياطي والاستعادة
   wrap.append(BackupCard());
   const appCard = AppCard(); if (appCard) wrap.append(appCard);
-  if (App.role.id === 'parent') wrap.append(AdminRestoreCard());
+  if (App.role.id === 'parent') adv.append(AdminRestoreCard());
   // محاكاة الوقت
   if (App.role.id !== 'asst') {
     const off = el('input', { type: 'datetime-local' });
-    if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
+    if (App.role.id === 'parent') adv.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
   }
-  if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
+  if (App.role.id === 'parent') adv.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
+  if (adv.children.length > 1) wrap.append(adv);
+  wrap.append(el('div', { class: 'card' }, el('div', { class: 'row between' }, el('span', null, 'معاني المصطلحات المستعملة في البرنامج'), helpButton())));
   wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, `لوحة المعلمة · الإصدار ${BUILD.version} (${BUILD.commit})${AppShell.inApp() ? ' · تطبيق أندرويد ' + (AppShell.version() || '') : ''} · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً`));
   return wrap;
 };

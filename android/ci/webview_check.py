@@ -110,6 +110,10 @@ async def main():
             Store.add({ id: 'kill-probe', type: 'error', child: 'c1', page: 582, surah: 78, ayah: 1, etype: 'hesitate' }); await Store.durable();
             return { sid: a.sid, key: a.key, errSid: (Store.raw.find(e => e.id === 'kill-probe') || {}).sid }; })()""")
     sess = await session(open_session)
+    # الشاشة تبقى مضاءة ما دامت الجلسة مفتوحة (0.16): علم KEEP_SCREEN_ON على نافذة التطبيق
+    time.sleep(1)
+    win = sh('shell', 'dumpsys', 'window', 'windows', check=False)
+    ok('أثناء الجلسة: نافذة التطبيق تطلب إبقاء الشاشة مضاءة', 'KEEP_SCREEN_ON' in win, [l.strip()[:120] for l in win.splitlines() if 'KEEP_SCREEN_ON' in l][:2])
     sh('shell', 'input', 'keyevent', 'KEYCODE_HOME'); time.sleep(2)
     sh('shell', 'am', 'kill', PKG); time.sleep(2)
     alive = sh('shell', 'pidof', PKG, check=False).strip()

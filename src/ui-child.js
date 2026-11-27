@@ -105,7 +105,8 @@ function MushafMap(c) {
     const pg = d.pages[p]; let cls = 'c ' + (pg.layer === 'none' ? '' : pg.layer);
     if (pg.layer === 'far' && pg.color) cls = 'c ' + pg.color;
     const gap = pg.layer === 'far' ? ((pg.lastFar || pg.lastReview) ? daysBetween(pg.lastFar || pg.lastReview, today) : 99) : 0;
-    if (pg.layer === 'far' && gap > 12) cls += ' stale';
+    if (pg.layer === 'far' && gap > d.gapRed) cls += ' stale';
+    if (pg.color === 'red') cls += ' mk-red'; else if (pg.color === 'yellow') cls += ' mk-yellow'; /* علامة لا لون فقط (0.16) */
     if (d.todayNew.includes(p) || d.todayFar.includes(p)) cls += ' today';
     return el('div', { class: cls, title: `ص${p}`, onclick: () => pageModal(c, p) }, p);
   };
@@ -121,7 +122,7 @@ function MushafMap(c) {
   grid.append(el('button', { class: 'ghost small', style: 'margin-top:8px', onclick: () => { App.sub.mapAll = !showAll; UI.rerender(); } }, showAll ? 'إخفاء الأجزاء غير المحفوظة' : 'إظهار كل الأجزاء الثلاثين'));
   return el('div', { class: 'card' }, el('h2', null, `خريطة المصحف · ${CHILDREN[c].name}`),
     el('div', { class: 'legend', style: 'margin-bottom:8px' }, lg('#2e9e5b', 'بعيد أخضر'), lg('#e0a800', 'أصفر'), lg('#d14b3f', 'أحمر'), lg('#cfe9d7', 'بعيد بلا لون'), lg('#cfe0f5', 'قريب'), lg('#f3e3b8', 'جديد'), lg('#ececec', 'لم يُحفظ')),
-    el('p', { class: 'small muted' }, 'الإطار الأحمر: تجاوزت 12 يوماً بلا تسميع. الإطار الأزرق: صفحات اليوم. اضغطي أي صفحة لتاريخها.'), grid);
+    el('p', { class: 'small muted' }, `الإطار الأحمر: بعيد تجاوز ${d.gapRed} يوماً بلا تسميع. الإطار الأزرق: صفحات اليوم. العلامة ! صفحة حمراء، و• صفراء. اضغطي أي صفحة لتاريخها.`), grid);
 }
 function lg(color, t) { return el('span', null, el('i', { style: 'background:' + color }), t); }
 

@@ -20,7 +20,12 @@ function OutcomeCtl(c, page, step, extra, onRecord, compact) {
   const mk = (r, cls, t) => el('button', { class: cls + (cur && cur.result === r ? ' on' : ''), style: compact ? 'padding:4px 10px' : '', onclick: () => rec({ result: r, prompts: r === 'clean' ? 0 : r === 'yellow' ? Math.max(1, (cur && cur.prompts) || 1) : r === 'red' ? Math.max(3, (cur && cur.prompts) || 3) : (cur ? cur.prompts : undefined) }) }, t);
   const box = el('div', { class: 'ocl' });
   box.append(el('div', { class: 'btns' }, mk('clean', 'btn-g', compact ? '✓' : 'مستقل'), mk('yellow', 'btn-y', compact ? 'مساعدة' : 'بمساعدة'), mk('red', 'btn-r', compact ? 'توقف' : 'توقف / 3+'), mk('partial', 'ghost', compact ? 'ناقص' : 'لم يُقيَّم كاملاً')));
-  if (cur && cur.result !== 'partial') {
+  /* التفاصيل متدرجة (0.16): في المراجعة (قريب، بعيد، فحص) تبقى مع «مستقل» مطوية خلف زر صغير؛ في تسميعات الجديد تظهر لأن سؤال المعنى جزء منها */
+  const okey = [c, page, step, seg ? seg.join('-') : ''].join('|');
+  if (cur && cur.result === 'clean' && !['gate', 'first', 'second', 'third'].includes(step) && !OC_OPEN.has(okey) && !cur.selfCorrect && cur.tajweed !== 'issue' && !(cur.meaning && cur.meaning !== 'untested')) {
+    const more = el('button', { class: 'chip more', title: 'تفاصيل: زلة، تجويد', onclick: () => { OC_OPEN.add(okey); UI.rerender(true); } }, compact ? '⋯' : 'تفاصيل (زلة، تجويد، معنى) ▾');
+    if (compact) box.querySelector('.btns').append(more); else box.append(el('div', { class: 'chips' }, more));
+  } else if (cur && cur.result !== 'partial') {
     const chip = (on, t, f) => el('button', { class: 'chip' + (on ? ' on' : ''), onclick: f }, t);
     const det = el('div', { class: 'chips' });
     if (cur.result !== 'clean') det.append(el('span', { class: 'muted small' }, 'تلقين: '), ...[1, 2, 3].map(n => chip(cur.prompts === n || (n === 3 && cur.prompts >= 3), n === 3 ? '3+' : String(n), () => rec({ prompts: n, result: n >= 3 ? 'red' : 'yellow' }))));
@@ -32,17 +37,32 @@ function OutcomeCtl(c, page, step, extra, onRecord, compact) {
   }
   return box;
 }
+const OC_OPEN = new Set();
 function pagesText(st, page, lines) { return st && isLines(st.id) && lines ? `${pageLabel(page)} · الأسطر ${lines[0]}–${lines[1]}` : pageLabel(page); }
+
+/* مرشد الإعداد الأول (0.16): الخطوات بالترتيب في بطاقة واحدة، تختفي حين تكتمل الثلاث الأولى */
+function SetupCard() {
+  if (App.role.id === 'asst') return null;
+  const noInv = CHILD_ORDER.filter(c => !Store.events.some(e => e.type === 'layer' && e.child === c));
+  const steps = [
+    { done: !!familyNames(), t: 'أسماء الأطفال', d: 'تُكتب مرة واحدة وتظهر في كل الشاشات.', go: 'أسماء الأطفال' },
+    { done: !noInv.length, t: 'الجرد الأولي', d: App.role.id === 'aya' ? 'تسجيل المحفوظ الحالي لكل طفل. بدونه يقترح البرنامج صفحات خاطئة ولا تعمل حصة البعيد.' : 'تنفذه آية من حسابها بعد تسميع المحفوظ.', go: 'الجرد الأولي' },
+    { done: !pinIsDefault(), t: 'تغيير رمز الدخول الأولي', d: `الرمز الأولي (${PIN_DEFAULTS[App.role.id]}) مكتوب على شاشة الدخول، فيعرفه كل من يفتح البرنامج.`, extra: pinField },
+    { done: !!Sync.cfg(), opt: true, t: 'ربط خادم العائلة (للعمل الحقيقي)', d: 'يجمع أجهزة المعلمتين وولي الأمر. يمكن التجربة بدونه.', go: 'الخادم (الحسابات الثلاثة عبر الإنترنت)' },
+  ];
+  if (steps.slice(0, 3).every(x => x.done)) return null;
+  const open = h => { App.view = 'settings'; UI.rerender(); const t = [...document.querySelectorAll('main .card h2')].find(x => x.textContent === h); if (t) t.scrollIntoView({ block: 'start' }); window.scrollBy(0, -140); };
+  return el('div', { class: 'card setup', style: 'border:2px solid var(--yellow)' }, el('h2', null, 'الإعداد الأول'), el('p', { class: 'small muted' }, 'أربع خطوات بالترتيب قبل أول جلسة. تختفي هذه البطاقة حين تكتمل الثلاث الأولى.'),
+    steps.map((x, i) => el('div', { class: 'ayahrow' + (x.done ? ' setupdone' : '') }, el('span', null, el('b', null, x.done ? `✓ ${x.t}` : `${i + 1}. ${x.t}`), x.opt ? el('span', { class: 'muted small' }, ' (اختياري الآن)') : null, x.done ? null : el('div', { class: 'small muted' }, x.d), !x.done && x.extra ? x.extra() : null), !x.done && x.go ? el('button', { class: 'ghost small', onclick: () => open(x.go) }, 'فتح') : null)));
+}
 
 Views.now = function () {
   const d = App.now(); const { list, current, next } = currentSession(App.role.id, d);
   const wrap = el('div');
-  if (!Sync.cfg()) { const due = BackupReminder(); if (due) wrap.append(due); } /* في الوضع المحلي الجهاز هو النسخة الوحيدة */
   { const upd = AppUpdateBanner(); if (upd) wrap.append(upd); }
   const active = Store.settings.active && Store.settings.active.dayK === todayKey() && Store.settings.active.role === App.role.id ? Store.settings.active : null;
   if (active) { const s = PLAN.find(x => sessionKey(x, active.dayK) === active.key); if (s) return SessionView(s, active); }
-  const noInv = CHILD_ORDER.filter(c => !Store.events.some(e => e.type === 'layer' && e.child === c));
-  if (noInv.length && App.role.id !== 'asst') wrap.append(el('div', { class: 'card', style: 'border:2px solid var(--yellow)' }, el('h2', null, 'قبل أول جلسة: الجرد الأولي'), el('p', { class: 'small' }, `لم يُسجَّل المحفوظ الحالي لـ${noInv.map(c => CHILDREN[c].name).join(' و')}. بدونه يقترح البرنامج صفحات خاطئة ولا تعمل حصة البعيد.`), el('button', { class: 'primary', onclick: () => { App.view = 'settings'; UI.rerender(); } }, 'تسجيل الجرد من الإعدادات')));
+  const setup = SetupCard() || PinNudge();
   if (d.getDay() === 5) wrap.append(el('div', { class: 'card' }, el('h2', null, 'الجمعة إجازة'), el('p', { class: 'muted' }, 'لا تسميع ولا سؤال اليوم. يستأنف البرنامج السبت 7:00.')));
   if (current) {
     const sd = sessionStatus(current, todayKey());
@@ -53,11 +73,14 @@ Views.now = function () {
   } else if (list.length) {
     wrap.append(el('div', { class: 'card' }, el('h2', null, next ? 'لا جلسة الآن' : 'انتهت جلسات اليوم'), next ? el('p', null, `التالية: ${childName(next.child)} · ${SESSION_KINDS[next.kind].name} في ${timePair(next.start)}`) : el('p', { class: 'muted' }, 'سجّلي أي خطأ أو ملاحظة متأخرة من زر التسجيل الحر.')));
   }
+  if (setup) wrap.append(setup);
+  /* التنبيهات وبطاقات التسليم تحت الجلسة الحالية مباشرة (0.16)، لا في آخر الشاشة */
+  wrap.append(HandoffsCard());
+  wrap.append(AlertsCard());
   wrap.append(DayList(list, true));
   if (App.role.id !== 'parent' && d.getDay() !== 5) wrap.append(el('div', { class: 'card' }, el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, 'يوم غير عادي؟'), el('button', { class: 'ghost small', onclick: () => cancelModal() }, 'إلغاء جلسات اليوم بسبب'))));
   wrap.append(el('div', { class: 'card' }, el('h2', null, 'تسجيل حر'), el('p', { class: 'muted small' }, 'خطأ أو ملاحظة خارج الجلسات.'), el('div', { class: 'btns' }, CHILD_ORDER.map(c => el('button', { onclick: () => errorModal(c) }, `خطأ · ${CHILDREN[c].name}`)), el('button', { class: 'ghost', onclick: () => noteModal() }, 'ملاحظة'), el('button', { class: 'ghost', onclick: undoLast }, '↶ تراجع'))));
-  wrap.append(HandoffsCard());
-  wrap.append(AlertsCard());
+  if (!Sync.cfg()) { const due = BackupReminder(); if (due) wrap.append(due); } /* في الوضع المحلي الجهاز هو النسخة الوحيدة */
   return wrap;
 };
 
@@ -229,7 +252,7 @@ function SessionView(s, a) {
     if (dec.length) head.append(el('div', { class: 'alert small' }, el('b', null, `قرار آية الجاري · ${CHILDREN[c].name}: `), dec.join(' · ')));
     const ln = lastNote(c); if (ln) { const full = el('div', { class: 'small', style: 'display:none;white-space:pre-wrap' }, ln.details || ln.text); head.append(el('div', { class: 'small muted' }, el('b', null, `آخر ملاحظة مهمة · ${CHILDREN[c].name}: `), ln.text.length > 70 ? ln.text.slice(0, 70) + '…' : ln.text, ln.details || ln.text.length > 70 ? el('button', { class: 'ghost small', style: 'margin-right:6px', onclick: () => { full.style.display = full.style.display === 'none' ? '' : 'none'; } }, 'التفاصيل') : null), full); }
   }
-  head.append(el('div', { class: 'row between', style: 'margin-top:8px' }, el('span', { class: 'small' }, el('b', null, 'الخطوة الحالية: '), cur.text), el('button', { class: 'ghost small', onclick: () => openPresent(s) }, '🖥 عرض')));
+  head.append(el('div', { class: 'row between', style: 'margin-top:8px' }, el('span', { class: 'small' }, el('b', null, 'الخطوة الحالية: '), cur.text), el('span', { style: 'white-space:nowrap' }, helpButton(), ' ', el('button', { class: 'ghost small', onclick: () => openPresent(s) }, '🖥 عرض'))));
   wrap.append(head);
   /* الخطوات: الحالية مفتوحة، والباقي سطر واحد قابل للفتح */
   const steps = el('ul', { class: 'steps' });
@@ -245,7 +268,9 @@ function SessionView(s, a) {
   wrap.append(el('div', { class: 'card' }, el('div', { class: 'row between' }, el('span', { class: 'muted small' }, 'الخطوات'), el('button', { class: 'ghost small', onclick: () => { a.all = !a.all; saveActive(); UI.rerender(true); } }, a.all ? 'الخطوة الحالية فقط' : 'فتح جميع الخطوات')), steps));
   const note = el('textarea', { placeholder: 'ملاحظة على الجلسة (اختياري)', oninput: e => { a.note = e.target.value; saveActive(); } }); note.value = a.note || '';
   wrap.append(el('div', { class: 'card' }, el('div', { class: 'btns' }, kids.map(c => el('button', { class: 'btn-r', onclick: () => { const x = errorContext(s, c, a); errorModal(c, x.page, isLines(c) ? x.lines : undefined, x.choices); } }, `تسجيل خطأ · ${CHILDREN[c].name}`))), note,
-    el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: () => endSession(s, note.value) }, 'إنهاء الجلسة'), el('button', { class: 'ghost', onclick: undoLast }, '↶ تراجع عن آخر تسجيل'), el('button', { class: 'ghost', onclick: () => UI.confirm('إلغاء الجلسة دون تسجيل؟ تبقى الأخطاء والنتائج التي سُجّلت.', () => { Store.settings.active = null; Store.saveSettings(); UI.rerender(); }) }, 'إغلاق بلا تسجيل'))));
+    el('div', { class: 'btns' }, el('button', { class: 'primary', onclick: () => endSession(s, note.value) }, 'إنهاء الجلسة'), el('button', { class: 'ghost', onclick: undoLast }, '↶ تراجع عن آخر تسجيل')),
+    /* «إغلاق مؤقت» بعيد عن زر الإنهاء وباسم لا يوحي بضياع ما سُجّل (0.16) */
+    el('div', { class: 'small muted', style: 'margin-top:14px;text-align:center' }, el('a', { href: '#', class: 'tempclose', onclick: e => { e.preventDefault(); UI.confirm('إغلاق الجلسة مؤقتاً دون إنهائها؟ كل ما سُجّل من نتائج وأخطاء محفوظ، وتعودين إليها من «الآن» أو «اليوم».', () => { Store.settings.active = null; Store.saveSettings(); UI.rerender(); }); } }, 'إغلاق مؤقت دون إنهاء'))));
   return wrap;
 }
 function nextAction(st, done, i, kind) {
@@ -341,12 +366,18 @@ function StepControls(s, st, a) {
 function PageListOutcome(c, pages, step, a, st) {
   if (!pages.length) return el('div', { class: 'muted small' }, 'لا صفحات.');
   const today = todayKey();
-  const wrap = el('div', { class: 'small' }, el('div', { class: 'row between' }, el('b', null, CHILDREN[c].name), el('button', { class: 'btn-g', onclick: () => { for (const p of pages) { const has = Store.events.some(e => e.type === 'outcome' && e.child === c && e.page === p && e.step === step && e.day === today); if (!has) Store.add({ type: 'outcome', child: c, page: p, step, result: 'clean' }); } if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.rerender(true); } }, 'الباقي مستقل')));
+  const has = p => Store.events.some(e => e.type === 'outcome' && e.child === c && e.page === p && e.step === step && e.day === today);
+  const wrap = el('div', { class: 'small pagelist' }, el('div', { class: 'row between' }, el('b', null, CHILDREN[c].name), el('span', { class: 'muted' }, `${pages.filter(has).length} من ${pages.length}`)));
   const list = el('div');
   for (const p of pages) {
-    list.append(el('div', { class: 'ayahrow', style: 'flex-wrap:wrap' }, el('span', null, pageLabel(p)), OutcomeCtl(c, p, step, null, ev => { if (ev.result === 'red' || (ev.result === 'yellow' && ev.prompts === 1 && !Store.events.some(x => x.type === 'error' && x.child === c && x.page === p && x.day === today))) errorModal(c, p, isLines(c) ? null : undefined); }, true)));
+    /* صفحة في سطر (0.16): الرقم واسم السورة في جهة، والأزرار الأربعة في جهة */
+    list.append(el('div', { class: 'ayahrow prow' }, el('span', { class: 'plabel' }, el('b', null, String(p)), el('span', { class: 'muted' }, surahsOfPage(p).map(x => SURAH_NAMES[x - 1]).join(' / '))), OutcomeCtl(c, p, step, null, ev => { if (ev.result === 'red' || (ev.result === 'yellow' && ev.prompts === 1 && !Store.events.some(x => x.type === 'error' && x.child === c && x.page === p && x.day === today))) errorModal(c, p, isLines(c) ? null : undefined); }, true)));
   }
-  wrap.append(list); return wrap;
+  wrap.append(list);
+  /* «الباقي مستقل» في آخر القائمة وبتأكيد يذكر العدد (0.16): ضغطة خاطئة كانت تسجّل كل الصفحات سالمة */
+  const rest = pages.filter(p => !has(p));
+  if (rest.length) wrap.append(el('div', { class: 'btns' }, el('button', { class: 'btn-g restclean', onclick: () => UI.confirm(`تسجيل ${rest.length} ${rest.length === 1 ? 'صفحة' : 'صفحات'} «مستقل» دفعة واحدة لـ${CHILDREN[c].name}؟ (${rest.join('، ')})`, () => { for (const p of rest) if (!has(p)) Store.add({ type: 'outcome', child: c, page: p, step, result: 'clean' }); if (!a.steps.includes(st.id)) { a.steps.push(st.id); saveActive(); } UI.rerender(true); }) }, `الباقي مستقل (${rest.length})`)));
+  return wrap;
 }
 
 function ExamBox(c, a, st, s) {
@@ -468,7 +499,12 @@ function undoLast() {
   const mine = Store.events.filter(e => Store.canUndo(App.role.id, e) && e.by === App.role.id && e.day === todayKey() && !['undo', 'session_done', 'handoff', 'handoff_update', 'handoff_status', 'layer'].includes(e.type));
   const last = mine[mine.length - 1];
   if (!last) { UI.toast('لا تسجيل للتراجع عنه اليوم'); return; }
-  UI.confirm(`التراجع عن: ${eventText(last)}؟ يُلغى أثره في الحسابات ويبقى أثر التصحيح في السجل.`, () => { Store.add({ type: 'undo', target: last.id, child: last.child || undefined, reason: 'تراجع ' + ROLES[App.role.id].name }); UI.savedToast('تم التراجع'); UI.rerender(true); });
+  /* دفعة «الباقي مستقل»: سجلات متتالية من النوع نفسه كُتبت في اللحظة نفسها تُعرض للتراجع معاً (0.16) */
+  const batch = [last];
+  if (last.type === 'outcome' && last.result === 'clean') for (let i = mine.length - 2; i >= 0; i--) { const e = mine[i], nx = batch[batch.length - 1]; if (e.type === 'outcome' && e.result === 'clean' && e.child === last.child && e.step === last.step && nx.ts - e.ts < 400) batch.push(e); else break; }
+  const undo = list => { for (const e of list) Store.add({ type: 'undo', target: e.id, child: e.child || undefined, reason: 'تراجع ' + ROLES[App.role.id].name }); UI.savedToast('تم التراجع'); UI.rerender(true); };
+  if (batch.length > 1) { const bg = UI.modal('تراجع', el('p', null, `آخر تسجيل دفعة من ${batch.length} صفحات «مستقل» (${batch.map(e => e.page).reverse().join('، ')}). يُلغى أثرها في الحسابات ويبقى أثر التصحيح في السجل.`), [el('button', { class: 'primary undobatch', onclick: () => { bg.remove(); undo(batch); } }, `التراجع عن الدفعة كلها (${batch.length})`), el('button', { class: 'ghost', onclick: () => { bg.remove(); undo([last]); } }, `عن الأخيرة فقط (${last.page})`)]); return; }
+  UI.confirm(`التراجع عن: ${eventText(last)}؟ يُلغى أثره في الحسابات ويبقى أثر التصحيح في السجل.`, () => undo([last]));
 }
 /* ===== التراجع عن سجل بعينه (من «السجلات»): بالصلاحيات نفسها التي يفرضها الخادم (canUndo)، بسبب وتأكيد،
    والزر معطّل أثناء الحفظ، والعملية تُلغى إن حُذفت بيانات الجهاز أو تغيّر الحساب أثناءها. يبقى السجل الأصلي مشطوباً وأثر التراجع في التاريخ ===== */
@@ -535,7 +571,7 @@ function errorModal(c, page, lines, choices) {
   const d = deriveChild(c); const unknown = page === null; if (!unknown) page = page || d.nextNew || 1;
   if (isLines(c) && lines === undefined && !unknown) lines = youngLines(c, page) || null;
   const pageIn = el('input', { type: 'number', min: 1, max: 604, value: unknown ? '' : page, placeholder: 'الصفحة', style: 'width:100px' });
-  const surahSel = el('select'); const ayahIn = el('input', { type: 'number', min: 1, placeholder: 'رقم الآية', style: 'width:120px' });
+  const surahSel = el('select', { style: 'min-width:130px' }); const ayahIn = el('input', { type: 'number', min: 1, placeholder: 'رقم الآية', style: 'width:120px' });
   const validPage = () => { const v = Number(pageIn.value); return v >= 1 && v <= 604 ? v : null; };
   /* أزرار آيات الصفحة (0.15): ضغطة واحدة تختار السورة والآية معاً أثناء التلاوة */
   const ayahGrid = el('div', { class: 'ayahgrid' });

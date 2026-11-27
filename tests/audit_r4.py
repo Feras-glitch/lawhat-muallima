@@ -57,6 +57,7 @@ async def main():
             await pg.evaluate("(role) => { Sync.schedule = () => {}; App.setRole(role); App.view = 'settings'; UI.rerender(); }", role)
 
         async def click(pg, name):
+            await pg.evaluate("document.querySelectorAll('details.adv').forEach(d => { d.open = true; })")  # «إدارة متقدمة» مطوية منذ 0.16
             await pg.get_by_role('button', name=name, exact=True).first.click()
 
         async def yes(pg):

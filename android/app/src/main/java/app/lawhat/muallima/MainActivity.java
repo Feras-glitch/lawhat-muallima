@@ -156,6 +156,15 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> openExternalUri(Uri.parse(url)));
         }
 
+        /** إبقاء الشاشة مضاءة ما دامت جلسة مفتوحة (0.16) */
+        @JavascriptInterface
+        public void keepScreenOn(boolean on) {
+            runOnUiThread(() -> {
+                if (on) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            });
+        }
+
         @JavascriptInterface
         public boolean isPreview() {
             return BuildConfig.PREVIEW;

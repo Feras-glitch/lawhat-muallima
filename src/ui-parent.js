@@ -1,11 +1,12 @@
 /* ===== لوحة ولي الأمر، التقارير، الإعدادات ===== */
 Views.dash = function () {
   const wrap = el('div');
-  const due = BackupReminder(); if (due) wrap.append(due);
   const upd = AppUpdateBanner(); if (upd) wrap.append(upd);
+  { const su = SetupCard() || PinNudge(); if (su) wrap.append(su); }
+  const due = BackupReminder(); if (due) wrap.append(due);
   wrap.append(el('div', { class: 'grid2' }, CHILD_ORDER.map(c => { const h = healthOf(c); const d = h.st; return el('div', { class: 'card', style: 'margin:0;cursor:pointer', onclick: () => { App.sub.child = c; App.sub.ctab = 'summary'; App.view = 'children'; UI.rerender(); } },
     el('div', { class: 'row between' }, el('h2', { style: 'margin:0' }, CHILDREN[c].name), el('span', { class: 'light ' + h.light })),
-    el('div', { class: 'kpi', style: 'margin-top:8px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? 'أخضر في الفحص' : 'لم يُفحص')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, 'أقدم صفحة (يوم)'))),
+    el('div', { class: 'kpi', style: 'margin-top:8px' }, el('div', null, el('div', { class: 'v' }, h.examGreen == null ? '—' : `${h.examClean}/${h.examN}`), el('div', { class: 'k' }, h.examDay ? 'أخضر في الفحص' : 'لم يُفحص')), el('div', null, el('div', { class: 'v' }, h.gateFails), el('div', { class: 'k' }, 'سقوط بوابة')), el('div', null, el('div', { class: 'v' }, d.far.length ? d.maxGap : '—'), el('div', { class: 'k' }, d.far.length ? `يوماً منذ أقدم مراجعة · الحد ${d.gapRed}` : 'لا بعيد بعد'))),
     el('div', { class: 'small muted', style: 'margin-top:8px' }, `البعيد ${d.far.length} · القريب ${d.near.length} · التالي: ${d.nextNew ? pageLabel(d.nextNew) : '—'}`)); })));
   wrap.append(el('div', { style: 'height:14px' }), BriefCard(), GroupedAlerts());
   const today = todayKey(); const todays = Store.events.filter(e => e.day === today && ['outcome', 'error', 'new_page', 'session_done', 'decision'].includes(e.type));
@@ -79,6 +80,9 @@ function pct(list) { const x = outcomeStats(list); return x.pct == null ? '—' 
 /* ===== الإعدادات ===== */
 Views.settings = function () {
   const wrap = el('div'); const s = Store.settings;
+  /* إدارة متقدمة (0.16): النادر والخطِر (استعادة الخادم، الوقت، مسح البيانات) مطوي في آخر الصفحة */
+  const adv = el('details', { class: 'adv', ontoggle: e => { App.sub.advOpen = e.currentTarget.open; } }, el('summary', null, 'إدارة متقدمة: استعادة الخادم، ساعة التجربة، مسح البيانات'));
+  if (App.sub.advOpen || s.timeOffset) adv.setAttribute('open', '');
   const due = BackupReminder(); if (due) wrap.append(due);
   const upd = AppUpdateBanner(); if (upd) wrap.append(upd);
   wrap.append(el('div', { class: 'card' }, el('h2', null, 'الحساب'), el('p', null, `الدخول الحالي: ${App.role.title}`), el('button', { class: 'ghost', onclick: () => App.logout() }, 'خروج')));
@@ -123,13 +127,15 @@ Views.settings = function () {
   // النسخ الاحتياطي والاستعادة
   wrap.append(BackupCard());
   const appCard = AppCard(); if (appCard) wrap.append(appCard);
-  if (App.role.id === 'parent') wrap.append(AdminRestoreCard());
+  if (App.role.id === 'parent') adv.append(AdminRestoreCard());
   // محاكاة الوقت
   if (App.role.id !== 'asst') {
     const off = el('input', { type: 'datetime-local' });
-    if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
+    if (App.role.id === 'parent') adv.append(el('div', { class: 'card' }, el('h2', null, 'الوقت'), el('p', { class: 'small muted' }, 'للتجربة فقط: ضبط ساعة البرنامج على وقت آخر لمعاينة الجلسات. يعود الوقت الحقيقي بزر الإلغاء.'), el('div', { class: 'row' }, off, el('button', { onclick: () => { if (!off.value) return; s.timeOffset = new Date(off.value).getTime() - Date.now(); Store.saveSettings(); UI.rerender(); } }, 'ضبط'), el('button', { class: 'ghost', onclick: () => { s.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'الوقت الحقيقي')), s.timeOffset ? el('p', { class: 'alert' }, 'الوقت الآن محاكى.') : null));
   }
-  if (App.role.id === 'parent') wrap.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
+  if (App.role.id === 'parent') adv.append(el('div', { class: 'card' }, el('h2', null, 'مسح البيانات'), el('button', { class: 'danger', onclick: () => UI.confirm('حذف كل السجلات من هذا الجهاز؟ (لا يمس الخادم)', async () => { const ok = await Store.reset(); Store.settings.active = null; Store.saveSettings(); UI.toast(ok ? 'حُذفت كل نسخ السجلات من الجهاز' : 'تعذّر حذف بعض النسخ؛ أعيدي المحاولة'); UI.rerender(); }) }, 'حذف السجلات المحلية (مع تصفير المؤشر والمرفوضات والجلسة الجارية)')));
+  if (adv.children.length > 1) wrap.append(adv);
+  wrap.append(el('div', { class: 'card' }, el('div', { class: 'row between' }, el('span', null, 'معاني المصطلحات المستعملة في البرنامج'), helpButton())));
   wrap.append(el('p', { class: 'small muted', style: 'text-align:center' }, `لوحة المعلمة · الإصدار ${BUILD.version} (${BUILD.commit})${AppShell.inApp() ? ' · تطبيق أندرويد ' + (AppShell.version() || '') : ''} · الخطة بتوقيت بكين · مصحف المدينة 15 سطراً`));
   return wrap;
 };

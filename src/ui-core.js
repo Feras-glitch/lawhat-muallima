@@ -53,9 +53,13 @@ const el = (tag, attrs, ...children) => {
   if (attrs) for (const [k, v] of Object.entries(attrs)) {
     if (k === 'class') n.className = v; else if (k === 'html') n.innerHTML = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), guardHandler(v)); else if (v !== null && v !== undefined) n.setAttribute(k, v);
   }
-  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
+  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) n.append(c.nodeType ? c : document.createTextNode(neutral(String(c))));
   return n;
 };
+/* خطاب ولي الأمر (0.16): نصوص البرنامج تخاطب المعلمة بالمؤنث؛ في حساب ولي الأمر تُحوَّل أفعال الأمر إلى صيغة المذكر */
+const NEUTRAL = { 'أعيدي': 'أعد', 'اختاري': 'اختر', 'صدّري': 'صدّر', 'اكتبي': 'اكتب', 'ادخلي': 'ادخل', 'أدخلي': 'أدخل', 'ابدئي': 'ابدأ', 'اضغطي': 'اضغط', 'انظري': 'انظر', 'افتحي': 'افتح', 'سجّلي': 'سجّل', 'شغّلي': 'شغّل', 'أبلغي': 'أبلغ', 'غيّري': 'غيّر', 'تسجّلي': 'تسجّل', 'أغلقي': 'أغلق', 'نفّذي': 'نفّذ', 'أنشئي': 'أنشئ', 'راجعي': 'راجع', 'استعملي': 'استعمل', 'احذفي': 'احذف', 'تعتمدي': 'تعتمد', 'تغلقي': 'تغلق', 'استوردي': 'استورد', 'انسخي': 'انسخ', 'أرسلي': 'أرسل', 'اعتمدي': 'اعتمد', 'علّمي': 'علّم', 'احفظي': 'احفظ', 'حسابكِ': 'حسابك', 'بنفسكِ': 'بنفسك' };
+const NEUTRAL_RE = new RegExp('(^|[^\\u0621-\\u064A\\u0651])([وف]?)(' + Object.keys(NEUTRAL).join('|') + ')(?![\\u0621-\\u0652])', 'g');
+function neutral(t) { return (typeof App !== 'undefined' && App.role && App.role.id === 'parent' && t.length > 3) ? t.replace(NEUTRAL_RE, (m, a, w, v) => a + w + NEUTRAL[v]) : t; }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 const UI = {
@@ -104,18 +108,26 @@ const UI = {
     let main; try { main = el('main', null, (Views[App.view] || Views.now)()); }
     catch (err) { console.error(err); main = el('main', null, el('div', { class: 'card' }, el('h2', null, 'تعذّر عرض هذه الشاشة'), el('p', { class: 'small' }, 'سجل تالف وصل بالمزامنة أو خطأ في البرنامج: ', String(err && err.message || err)), el('div', { class: 'btns' }, el('button', { onclick: () => { App.view = 'settings'; UI.rerender(); } }, 'الإعدادات (تصدير البيانات)'), el('button', { class: 'ghost', onclick: () => { App.view = 'now'; UI.rerender(); } }, 'الآن')))); }
     this.root.append(this.header(), main, this.nav());
+    document.body.classList.toggle('insession', inSession());
+    Wake.sync();
     this.restoreDrafts(drafts);
     if (soft) window.scrollTo(0, scroll);
   },
   header() {
     const d = App.now();
+    const times = `${fmtTime12(hhmm(d))} بكين${sameTz() ? '' : ' · ' + App.realNow().toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' }) + ' ' + tzShort()}`;
+    const sim = Store.settings.timeOffset ? el('div', { class: 'alert red', style: 'width:100%;margin:6px 0 0;padding:4px 8px' }, '⚠ الوقت محاكى! ', el('button', { class: 'ghost small', onclick: () => { Store.settings.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'العودة للوقت الحقيقي')) : null;
+    /* أثناء الجلسة (0.16): رأس من سطر واحد، والشريط السفلي مطوي يُفتح بزر ☰؛ الشاشة للتسجيل */
+    if (inSession()) return el('header', { class: 'top slim' },
+      el('div', { class: 'sub' }, times),
+      el('button', { class: 'ghost small navtoggle', title: 'القائمة', onclick: () => { App.navOpen = !App.navOpen; UI.rerender(true); } }, App.navOpen ? '✕' : '☰'),
+      el('div', { class: 'status', id: 'status' }, this.statusInner()), sim);
     return el('header', { class: 'top' },
-      el('div', null, el('div', { class: 'title' }, 'لوحة المعلمة · برنامج القرآن'), el('div', { class: 'sub' }, `${App.role.title} · ${DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1} · ${fmtTime12(hhmm(d))} بكين${sameTz() ? '' : ' · ' + App.realNow().toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' }) + ' ' + tzShort()}`)),
-      el('div', { class: 'status', id: 'status' }, this.statusInner()),
-      Store.settings.timeOffset ? el('div', { class: 'alert red', style: 'width:100%;margin:6px 0 0;padding:4px 8px' }, '⚠ الوقت محاكى! ', el('button', { class: 'ghost small', onclick: () => { Store.settings.timeOffset = 0; Store.saveSettings(); UI.rerender(); } }, 'العودة للوقت الحقيقي')) : null);
+      el('div', null, el('div', { class: 'title' }, `لوحة المعلمة · ${App.role.name}`), el('div', { class: 'sub' }, `${DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1} · ${times}`)),
+      el('div', { class: 'status', id: 'status' }, this.statusInner()), sim);
   },
   statusInner() {
-    const m = Alarms.muted() && Alarms.on() ? ' · 🔇 الأصوات مكتومة أثناء الجلسة' : '';
+    const m = !inSession() && Alarms.muted() && Alarms.on() ? ' · 🔇 الأصوات مكتومة أثناء الجلسة' : '';
     if (Store.storageError) return [el('span', { class: 'dot bad' }), Store.storageError + m];
     if (Store.idbOk && Store.pendingCount()) return [el('span', { class: 'dot off' }), `جارٍ الحفظ… (${Store.pendingCount()})` + m];
     if (!Store.idbOk) { const used = (localStorage.getItem('lm_events_v1') || '').length / 1048576; if (used > 2.5) return [el('span', { class: 'dot bad' }), `تخزين محدود (${used.toFixed(1)} من 5 م.ب) — افتحي البرنامج من الرابط لا من الملف` + m]; }
@@ -141,7 +153,8 @@ const UI = {
     const items = App.role.id === 'parent'
       ? [['dash', '🏠', 'اللوحة'], ['children', '👧', 'الأطفال'], ['logs', '📒', 'السجلات'], ['reports', '📊', 'التقارير'], ['settings', '⚙️', 'الإعدادات']]
       : [['now', '⏱', 'الآن'], ['today', '📅', 'اليوم'], ['children', '👧', 'الأطفال'], ['logs', '📒', 'السجلات'], ['settings', '⚙️', 'الإعدادات']];
-    return el('nav', { class: 'bottom' }, items.map(([v, ico, name]) => el('button', { class: App.view === v || (v === 'today' && App.view === 'thursday') ? 'active' : '', onclick: () => { App.view = v; UI.rerender(); } }, el('span', { class: 'ico' }, ico), name)));
+    /* تغيير التبويب يبدأ من أعلى الشاشة الجديدة (0.16) */
+    return el('nav', { class: 'bottom' + (inSession() && !App.navOpen ? ' collapsed' : '') }, items.map(([v, ico, name]) => el('button', { class: App.view === v || (v === 'today' && App.view === 'thursday') ? 'active' : '', onclick: () => { const same = App.view === v; App.view = v; App.navOpen = false; UI.rerender(); if (!same) window.scrollTo(0, 0); } }, el('span', { class: 'ico' }, ico), name)));
   },
   modal(title, bodyEl, actions) {
     const bg = el('div', { class: 'modal-bg', onclick: e => { if (e.target === bg) bg.remove(); } });
@@ -216,14 +229,57 @@ Views.login = function () {
   let sel = null; const pin = el('input', { type: 'password', inputmode: 'numeric', placeholder: 'الرمز', style: 'text-align:center;font-size:1.3em;letter-spacing:6px' });
   const roles = el('div', { class: 'roles' });
   const msg = el('div', { class: 'muted small' });
-  for (const r of Object.values(ROLES)) roles.append(el('button', { onclick: e => { sel = r.id; [...roles.children].forEach(b => b.classList.remove('sel')); e.currentTarget.classList.add('sel'); pin.focus(); } }, el('div', { class: 'big' }, r.name), el('div', { class: 'muted small' }, r.title)));
+  for (const r of Object.values(ROLES)) roles.append(el('button', { onclick: e => { sel = r.id; [...roles.children].forEach(b => b.classList.remove('sel')); e.currentTarget.classList.add('sel'); pin.focus(); } }, el('div', { class: 'big' }, r.name), r.title !== r.name ? el('div', { class: 'muted small' }, r.title) : null));
   const go = () => { if (!sel) { msg.textContent = 'اختاري الحساب أولاً'; return; } if (pin.value !== Store.settings.pins[sel]) { msg.textContent = 'الرمز غير صحيح'; return; } App.setRole(sel); };
   pin.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
   wrap.append(roles, pin, el('button', { class: 'primary', style: 'width:100%;margin-top:12px', onclick: go }, 'دخول'), msg,
-    el('p', { class: 'small muted', style: 'margin-top:20px' }, 'الرموز الأولية: آية 1111 · المساعدة 2222 · ولي الأمر 3333، وتُغيَّر من الإعدادات. لربط الحسابات الثلاثة عبر الإنترنت: الإعدادات ← الخادم.'));
+    /* الرموز الأولية تُذكر فقط للحسابات التي لم تغيّر رمزها بعد (0.16) */
+    (() => { const left = Object.values(ROLES).filter(r => Store.settings.pins[r.id] === PIN_DEFAULTS[r.id]); return el('p', { class: 'small muted', style: 'margin-top:20px' }, left.length ? `الرموز الأولية: ${left.map(r => r.name + ' ' + PIN_DEFAULTS[r.id]).join(' · ')}، وتُغيَّر بعد أول دخول. ` : '', 'لربط الحسابات الثلاثة عبر الإنترنت: الإعدادات ← الخادم.'); })());
   return wrap;
 };
 function label(t) { return el('label', null, t); }
+const PIN_DEFAULTS = { aya: '1111', asst: '2222', parent: '3333' };
+/* هل الحساب الحالي داخل جلسة مفتوحة اليوم وعلى شاشة «الآن»؟ */
+function inSession() { const a = Store.settings && Store.settings.active; return !!(App.role && a && App.view === 'now' && a.role === App.role.id && a.dayK === todayKey()); }
+/* إبقاء الشاشة مضاءة ما دامت جلسة مفتوحة (0.16): المعلمة تستمع ولا تلمس الهاتف دقائق؛ بلا هذا تُقفل الشاشة وسط التسميع */
+const Wake = {
+  lock: null, want: false,
+  sync() {
+    const a = Store.settings && Store.settings.active;
+    const want = !!(App.role && a && a.role === App.role.id && a.dayK === todayKey());
+    if (want === this.want && (this.lock || !want)) return; this.want = want;
+    try { if (window.LawhatAndroid && window.LawhatAndroid.keepScreenOn) { window.LawhatAndroid.keepScreenOn(want); return; } } catch (e) {}
+    if (!want) { if (this.lock) { try { this.lock.release(); } catch (e) {} this.lock = null; } return; }
+    if (navigator.wakeLock && document.visibilityState === 'visible') navigator.wakeLock.request('screen').then(l => { this.lock = l; l.addEventListener('release', () => { if (this.lock === l) this.lock = null; }); if (!this.want) { l.release(); } }).catch(() => {});
+  },
+};
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Wake.want && !Wake.lock) { Wake.want = false; Wake.sync(); } });
+/* بطاقة «غيّري الرمز الأولي»: تبقى أعلى الشاشة الرئيسية حتى يُغيَّر رمز الحساب (في الدخول المحلي) */
+function pinField() {
+  const id = App.role.id;
+  const i = el('input', { type: 'password', inputmode: 'numeric', placeholder: 'رمز جديد (4 أرقام أو أكثر)', style: 'max-width:220px' });
+  return el('div', { class: 'row pinfield' }, i, el('button', { class: 'primary', onclick: () => { const v = i.value.trim(); if (!/^\d{4,}$/.test(v)) { UI.toast('الرمز 4 أرقام أو أكثر'); return; } if (Object.values(PIN_DEFAULTS).includes(v)) { UI.toast('اختاري رمزاً غير الرموز الأولية'); return; } Store.settings.pins[id] = v; Store.saveSettings(); UI.toast('حُفظ الرمز الجديد'); UI.rerender(); } }, 'حفظ الرمز'));
+}
+function pinIsDefault() { const id = App.role.id; return (!Sync.cfg() || Store.settings.localMode) && Store.settings.pins[id] === PIN_DEFAULTS[id]; }
+function PinNudge() {
+  if (!pinIsDefault()) return null;
+  return el('div', { class: 'card pinnudge', style: 'border:2px solid var(--yellow)' }, el('h2', null, 'غيّري رمز الدخول الأولي'), el('p', { class: 'small' }, `رمز هذا الحساب ما زال الرمز الأولي (${PIN_DEFAULTS[App.role.id]}) المكتوب على شاشة الدخول، فيعرفه كل من يفتح البرنامج.`), pinField());
+}
+/* معاني المصطلحات (0.16) */
+const GLOSSARY = [
+  ['الجديد', 'صفحة اليوم (أو مقطع اليوم للصغير). تُسمَّع ثلاث مرات في يومها ثم صباح الغد.'],
+  ['بوابة الأمس', 'تسميع صفحة آخر يوم حفظ غيباً أول الجلسة. إن لم تكن سالمة فلا جديد اليوم. صباح السبت بوابته صفحة الأربعاء.'],
+  ['القريب', 'صفحات الجزء الجاري. تُراجع كل يوم بسقف: الحمراء، ثم آخر 5 صفحات، ثم الجزء المنتظر فحصه، ثم الباقي بالتناوب.'],
+  ['البعيد', 'الأجزاء المختومة المجازة. لها حصة يومية تدور عليها كلها بالترتيب.'],
+  ['القائمة الصفراء', 'كل آية وقع فيها خطأ. تُشطب بعد ثلاثة تسميعات سالمة في ثلاثة أيام مختلفة.'],
+  ['المتشابهات', 'مواضع انتقل فيها الطفل إلى آية تشبهها. تُعالج في مجلس الخميس.'],
+  ['مستقل / بمساعدة / توقف', 'مستقل: بلا تلقين. بمساعدة: تلقين أو اثنان. توقف: ثلاثة فأكثر أو عجز عن الإكمال. اللون يحسبه البرنامج وتعتمده آية.'],
+  ['صباح إصلاح', 'قرار آية حين تسقط البوابة: الصباح لإصلاح صفحة الأمس بلا جديد.'],
+  ['بطاقة التسليم', 'ملخص جلسة المساعدة (النتائج والأخطاء والباقي) يصل إلى آية تلقائياً.'],
+  ['سقف المراجعة', 'أقصى عدد صفحات يومياً في القريب والبعيد. تضبطه آية لكل طفل.'],
+];
+function glossaryModal() { UI.modal('معاني المصطلحات', el('div', null, GLOSSARY.map(([k, v]) => el('p', { class: 'small', style: 'margin:8px 0' }, el('b', null, k + ': '), v)))); }
+function helpButton() { return el('button', { class: 'ghost small helpbtn', title: 'معاني المصطلحات', onclick: glossaryModal }, '؟ المصطلحات'); }
 /* نسخ نص: «نُسخت» فقط إن نجح النسخ فعلاً؛ وإلا نافذة بالنص محدداً للنسخ اليدوي (المتصفح قد يمنع الحافظة) */
 async function copyText(text) {
   try {
