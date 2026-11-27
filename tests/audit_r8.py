@@ -109,6 +109,29 @@ async def main():
         r = await pg.evaluate("async()=>{Store.add({type:'note',text:'A'});await Store.durable();let cb;AppShell.saveFile=(n,m,t,onSaved)=>{cb=onSaved;};Backup.download();await new Promise(r=>setTimeout(r,30));cb();const lb=Store.settings.lastBackup;const now=Date.now;Date.now=()=>lb.at+8*86400000;const overdue=Backup.overdue();Date.now=now;return overdue;}")
         ok('بلا سجلات بعد اللقطة: لا تذكير كاذب', r is None, r)
 
+        # ===== 0.16.3: LM0162-01..03 =====
+        for a_, b_, gone in (('✓', 'ناقص', False), ('مساعدة', 'ناقص', False), ('ناقص', '✓', True)):
+            pg = await fresh('aya', '2026-12-07')
+            await pg.evaluate("()=>{seed(Array.from({length:20},(_,i)=>({type:'layer',by:'aya',child:'c1',page:2+i,day:'2026-12-01',layer:'near',color:'green'})));window.draw=()=>document.querySelector('main').replaceChildren(PageListOutcome('c1',[2],'near',{steps:[]},{id:'near'}));draw();}")
+            await pg.locator('.prow').get_by_role('button', name=a_, exact=True).click(); await pg.evaluate("document.querySelectorAll('.modal-bg,.modalbg').forEach(x=>x.remove());draw()")
+            await pg.locator('.prow').get_by_role('button', name=b_, exact=True).click(); await pg.evaluate('Store.durable()')
+            await pg.reload(); await pg.wait_for_function('Store.raw && Store.idbOk')
+            r = await pg.evaluate("()=>{App.setRole('aya');Store.settings.timeOffset=Date.parse('2026-12-08T00:00:00Z')-Date.now();const d=deriveChild('c1');return {eff:effectiveOutcomes(e=>e.child==='c1'&&e.page===2&&e.step==='near').map(e=>e.result),lb:d.pages[2].lastBefore||null,in:d.nearToday.includes(2)};}")
+            ok(f'تصحيح «{a_}» إلى «{b_}» ثم إعادة الفتح: التواريخ تتبع النتيجة النافذة', len(r['eff']) == 1 and ((r['lb'] == '2026-12-07' and not r['in']) if gone else (r['lb'] is None and r['in'])), r)
+        pg = await fresh('aya', '2026-12-07')
+        r = await pg.evaluate("()=>{" + FAR.replace('N', '12') + "Store.add({type:'outcome',child:'c1',page:562,step:'far',result:'clean'});const fix=Store.add({type:'outcome',child:'c1',page:562,step:'far',result:'partial'});nextDay();const a=deriveChild('c1');const r1={far:a.todayFar[0],lfb:a.pages[562].lastFarBefore||null};Store.add({type:'undo',target:fix.id,child:'c1',reason:'اختبار'});const b2=deriveChild('c1');return {r1,r2:{in:b2.todayFar.slice(0,7).includes(562),lfb:b2.pages[562].lastFarBefore||null}};}")
+        ok('البعيد: «مستقل» ثم «ناقص» لا يُعدّ تسميعاً، والتراجع عن التصحيح يعيد أثر المكتمل', r == {'r1': {'far': 562, 'lfb': None}, 'r2': {'in': False, 'lfb': '2026-12-07'}}, r)
+        pg = await fresh('aya', '2026-12-10')
+        r = await pg.evaluate("()=>{" + FAR.replace('N', '5') + "seed(Array.from({length:5},(_,i)=>({type:'outcome',by:'aya',child:'c1',page:562+i,day:'2026-12-03',step:'exam',result:'clean'})));seed(Array.from({length:5},(_,i)=>({type:'outcome',by:'aya',child:'c1',page:562+i,day:todayKey(),step:'exam',result:'partial'})));const snap=()=>{const h=healthOf('c1');return {day:h.examDay,n:h.examN,inc:h.examIncomplete,light:h.light,al:alertsList().filter(x=>x.child==='c1'&&x.text.includes('غير مكتمل')).length};};const a=snap();const one=Store.add({type:'outcome',child:'c1',page:562,step:'exam',result:'clean'});const b2=snap();Store.add({type:'undo',target:one.id,child:'c1',reason:'اختبار'});const c=snap();return {a,b:b2,c,old:effectiveOutcomes(e=>e.child==='c1'&&e.step==='exam'&&e.day==='2026-12-03').length};}")
+        ok('فحص جديد كله ناقص بعد فحص قديم 5/5: «غير مكتمل» للجديد بلا أخضر مبني على القديم، والقديم باقٍ', r['a'] == {'day': '2026-12-10', 'n': 0, 'inc': True, 'light': 'grey', 'al': 1} and r['old'] == 5, r)
+        ok('إكمال جزء من الفحص الجديد ثم التراجع عنه', r['b'] == {'day': '2026-12-10', 'n': 1, 'inc': True, 'light': 'grey', 'al': 1} and r['c'] == r['a'], r)
+        pg = await fresh('aya', '2026-12-07')
+        r = await pg.evaluate("()=>{" + FAR.replace('N', '7') + "seed(Array.from({length:7},(_,i)=>({type:'outcome',by:'asst',child:'c1',page:562+i,day:'2026-12-02',step:'far',result:'clean'})));seed([{type:'layer',by:'aya',child:'c1',page:571,day:'2026-12-04',layer:'far',color:'green'}]);Store.add({type:'layer',child:'c1',page:570,layer:'far',color:'green'});const t=deriveChild('c1').todayFar;t.forEach(p=>Store.add({type:'outcome',child:'c1',page:p,step:'far',result:'clean'}));nextDay();return {today:t,next:deriveChild('c1').todayFar};}")
+        ok('صفحة دخلت البعيد بالجرد اليوم تنتظر آخر الدور، والتي دخلت قبل أيام تأتي بعد الأقدم تسميعاً', r['today'] == [562, 563, 564, 565, 566, 567, 568] and r['next'] == [571, 570, 562, 563, 564, 565, 566], r)
+        pg = await fresh('aya', '2026-12-07')
+        r = await pg.evaluate("()=>{seed(Array.from({length:20},(_,i)=>({type:'layer',by:'aya',child:'c1',page:582+i,day:'2026-11-01',layer:'near',color:'green'})));" + FAR.replace('N', '7') + "seed(Array.from({length:7},(_,i)=>({type:'outcome',by:'asst',child:'c1',page:562+i,day:'2026-12-02',step:'far',result:'clean'})));Store.add({type:'juz_passed',child:'c1',juz:30});const d=deriveChild('c1');return {far:d.far.length,today:d.todayFar};}")
+        ok('إجازة جزء اليوم: صفحاته لا تزاحم حصة البعيد الأقدم', r['far'] > 7 and r['today'] == [562, 563, 564, 565, 566, 567, 568], r)
+
         # ===== حجم الأزرار =====
         for w in (360, 390):
             pg = await fresh('asst', '2026-12-07', w)
@@ -120,6 +143,6 @@ async def main():
     if SOFT:
         print(f'SOFT: {len(fails)} فشل من {len(results)}'); return
     assert not errors, errors
-    print(f'AUDIT 0.16.2 OK ({len(results)} حالة)')
+    print(f'AUDIT 0.16.2-3 OK ({len(results)} حالة)')
 
 asyncio.run(main())
