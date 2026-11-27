@@ -15,6 +15,9 @@ def sh(*a, check=True):
     return subprocess.run(['adb', *a], check=check, capture_output=True, text=True).stdout
 
 
+RELAUNCHES = 0
+
+
 def launch():
     sh('shell', 'am', 'start', '-W', '-n', f'{PKG}/{ACT}')
 
@@ -25,6 +28,8 @@ def connect_url():
         if attempt in (8, 24, 40) and not sh('shell', 'pidof', PKG, check=False).strip():
             why = [l for l in sh('logcat', '-d', '-t', '3000', check=False).splitlines() if re.search(r'FATAL|ANR in|has died|Force stopping|lowmemorykiller|Killing \d+:app\.lawhat', l)]
             print('RELAUNCH: لا عملية للتطبيق؛ من السجل:', why[-6:], flush=True)
+            print('RELAUNCH exit-info:', ' | '.join(l.strip() for l in sh('shell', 'dumpsys', 'activity', 'exit-info', PKG, check=False).splitlines()[:40] if re.search(r'reason=|subreason=|description=|timestamp=|importance=|pss=', l))[:1500], flush=True)
+            global RELAUNCHES; RELAUNCHES += 1
             launch(); time.sleep(3)
         socks = [l.split('@')[-1].strip() for l in sh('shell', 'cat', '/proc/net/unix').splitlines() if 'webview_devtools_remote' in l]
         # بعد قتل العملية قد يبقى أكثر من مقبس؛ يُجرَّب كل واحد (الأحدث أولاً) حتى يجيب WebView التطبيق
@@ -164,7 +169,13 @@ async def main():
     time.sleep(2)
     print('قبل الرجوع:', sh('shell', 'dumpsys', 'activity', 'activities', check=False).count('app.lawhat.muallima'), flush=True)
     sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+    before = RELAUNCHES
     r = await poll(lambda r: not r['modal'])
+    if RELAUNCHES > before:  # العملية اختفت على المحاكي فأعيد فتح التطبيق وضاعت الحالة: تُعاد الخطوة مرة واحدة ويُطبع سبب الخروج أعلاه
+        print('WARN: أعيدت خطوة الرجوع بعد اختفاء العملية', flush=True)
+        await session(back_modal); time.sleep(2)
+        sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+        r = await poll(lambda r: not r['modal'])
     ok('زر الرجوع يغلق النافذة المفتوحة', r['modal'] is False and r['view'] == 'logs', r)
     time.sleep(1)
     sh('shell', 'input', 'keyevent', 'KEYCODE_BACK')
