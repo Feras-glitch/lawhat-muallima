@@ -9,7 +9,8 @@
 <style>
 :root{--bg:#f6f4ee;--card:#fff;--ink:#1f2a24;--muted:#6b7570;--line:#e3e0d6;--brand:#1f6f5f;--brand2:#2f8f7a;--soft:#e8f2ee;--green:#2e9e5b;--yellow:#e0a800;--red:#d14b3f;--blue:#2f6fb0;--grey:#c9c6bc;--radius:14px;--shadow:0 1px 3px rgba(0,0,0,.06),0 6px 20px rgba(0,0,0,.05)}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:"Noto Naskh Arabic","Segoe UI",Tahoma,"Noto Sans Arabic",system-ui,sans-serif;font-size:17px;line-height:1.6}
+/* خط النظام فقط (0.16.5): تسمية خط غير مثبّت تجعل WebView يطلبه من مزوّد خطوط Google فيرتبط بقاء التطبيق ببقاء خدماتها */
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:system-ui,sans-serif;font-size:17px;line-height:1.6}
 body{direction:rtl;min-height:100vh;padding-bottom:84px}
 button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:10px 16px;background:var(--soft);color:var(--brand)}
 button.primary{background:var(--brand);color:#fff}
@@ -162,7 +163,7 @@ button.opennow{border-color:var(--brand)}
 <body>
 <div id="app"></div>
 <script>
-const BUILD = {"version": "0.16.4", "commit": "fa074cd", "src": "3ec4d87d5e", "built": "2026-11-27"};
+const BUILD = {"version": "0.16.5", "commit": "fa074cd+تعديلات", "src": "207195ef3f", "built": "2026-11-28"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 /* الأطفال بمعرّفات لا تحمل أسماء: الأسماء ليست في الكود المنشور؛ تُدخل من الإعدادات وتُحفظ سجلاً على الخادم العائلي.
    c3 يحفظ بالأسطر (مقطع 4 أسطر)؛ c1 وc2 بالصفحة ويسيران معاً في الجلسات المشتركة */
@@ -959,11 +960,14 @@ function deriveChild(childId) {
   if (!isLines(childId)) for (let j = 1; j <= 30; j++) if (juzPages(j).every(p => pages[p].layer === 'near')) waitingJuz.push(j);
   const recent = nearPool.filter(p => pages[p].memSeq).sort((a, b) => pages[b].memSeq - pages[a].memSeq).slice(0, 5);
   const waitPages = nearPool.filter(p => waitingJuz.includes(juzOfPage(p))).sort(byOld);
-  const limit = Math.max(caps.near, reds.length);
-  const pick = reds.slice();
+  /* السقف حد فعلي يشمل الحمراء (0.16.5، قرار ولي الأمر): إن زادت الحمراء عنه تتناوب بالأقدم تسميعاً، والزائد redsOver يُعرض لآية لتقرر */
+  const limit = caps.near;
+  const redsByOld = reds.slice().sort(byOld);
+  const redsToday = redsByOld.slice(0, limit).sort((a, b) => a - b), redsOver = redsByOld.slice(limit).sort((a, b) => a - b);
+  const pick = redsToday.slice();
   for (const list of [recent, waitPages, nearPool.slice().sort(byOld)]) for (const p of list) { if (pick.length >= limit) break; if (!pick.includes(p)) pick.push(p); }
-  const nearToday = reds.concat(pick.filter(p => !reds.includes(p)).sort((a, b) => (pages[b].memSeq || 0) - (pages[a].memSeq || 0) || b - a));
-  return { id: childId, pages, far, near, nearToday, reds, waitingJuz, caps, currentJuz, lastNewPage, nextNew, nextLines, quota, cycleSessions, cycleDays, gapYellow, gapRed, todayFar, maxGap, maxGapPage, todayNew, yesterdayNew, paused, reduced, passedSurahs };
+  const nearToday = redsToday.concat(pick.filter(p => !redsToday.includes(p)).sort((a, b) => (pages[b].memSeq || 0) - (pages[a].memSeq || 0) || b - a));
+  return { id: childId, pages, far, near, nearToday, reds, redsOver, waitingJuz, caps, currentJuz, lastNewPage, nextNew, nextLines, quota, cycleSessions, cycleDays, gapYellow, gapRed, todayFar, maxGap, maxGapPage, todayNew, yesterdayNew, paused, reduced, passedSurahs };
 }
 
 /* آخر صفحة جديدة قبل اليوم (للبوابة) */
@@ -2172,7 +2176,7 @@ function StepControls(s, st, a) {
   if (st.outcome === 'gate') for (const c of kids) { const g = lastNewFor(c, true); if (!g) { box.append(el('div', { class: 'muted small' }, 'لا صفحة أمس.')); continue; } box.append(el('div', { class: 'small' }, pagesText(deriveChild(c), g.page, g.lines)), outcomeBtns(c, g.page, 'gate', isLines(c) && g.lines ? { lines: g.lines } : null)); }
   if (['first', 'second', 'third'].includes(st.outcome)) for (const c of kids) { const d = deriveChild(c); const p = d.todayNew.length ? d.todayNew[d.todayNew.length - 1] : null; if (!p) { box.append(el('div', { class: 'muted small' }, 'لم تُسجَّل صفحة اليوم بعد (تُسجَّل في خطوة الحفظ).')); continue; } const kl = youngLines(c, p); box.append(el('div', { class: 'small' }, pagesText(d, p, kl)), outcomeBtns(c, p, st.outcome, kl ? { lines: kl } : null)); }
   if (st.outcome === 'awael') for (const c of kids) { const g = lastNewFor(c, true); if (g) box.append(outcomeBtns(c, g.page, 'awael')); }
-  if (st.outcome === 'near') for (const c of kids) { const d = deriveChild(c); box.append(PageListOutcome(c, d.nearToday, 'near', a, st)); if (d.near.length > d.nearToday.length) box.append(el('div', { class: 'muted small' }, `سقف القريب ${d.caps.near} صفحات: الحمراء كل يوم، ثم آخر 5 صفحات، ثم الجزء المنتظر فحصه، ثم الباقي بالتناوب (${d.near.length - d.nearToday.length} صفحة في أيام تالية).`)); }
+  if (st.outcome === 'near') for (const c of kids) { const d = deriveChild(c); box.append(PageListOutcome(c, d.nearToday, 'near', a, st)); if (d.near.length > d.nearToday.length) box.append(el('div', { class: 'muted small' }, `سقف القريب ${d.caps.near} صفحات${d.redsOver.length ? ` (الحمراء ${d.reds.length}: ${d.redsOver.length} منها في أيام تالية بالتناوب)` : ''}: الحمراء أولاً، ثم آخر 5 صفحات، ثم الجزء المنتظر فحصه، ثم الباقي بالتناوب (${d.near.length - d.nearToday.length} صفحة في أيام تالية).`)); }
   if (st.outcome === 'far') for (const c of kids) box.append(PageListOutcome(c, deriveChild(c).todayFar, 'far', a, st));
   if (st.outcome === 'week') for (const c of kids) { const ws = weekStartKey(App.now()); const pages = [...new Set(Store.events.filter(e => e.type === 'new_page' && e.child === c && e.day >= ws).map(e => e.page))]; box.append(PageListOutcome(c, pages, 'week', a, st)); }
   if (st.outcome === 'exam') for (const c of kids) box.append(ExamBox(c, a, st, s));
@@ -2497,6 +2501,7 @@ function alertsList() {
     if (h.maxGap > h.st.gapRed && h.st.maxGapPage) out.push({ level: 'red', child: c, text: `الصفحة ${h.st.maxGapPage} بلا تسميع منذ ${h.maxGap} يوماً (الحد ${h.st.gapRed}).` });
     else if (h.maxGap > h.st.gapYellow && h.st.maxGapPage) out.push({ level: 'yellow', child: c, text: `الصفحة ${h.st.maxGapPage} تجاوزت الفاصل المتوقع ${h.st.gapYellow} يوماً (${h.maxGap}).` });
     /* تنبيه هادئ لآية وولي الأمر: دورة البعيد طالت فوق 21 يوماً، وحان القرار التربوي (تخفيف الجديد أو زيادة حصة البعيد) */
+    if (h.st.redsOver.length && App.role && App.role.id !== 'asst') out.push({ level: 'yellow', child: c, text: `الصفحات الحمراء ${h.st.reds.length} أكثر من سقف القريب ${h.st.caps.near}: ${h.st.redsOver.length} منها خارج حصة اليوم (${h.st.redsOver.map(pageLabel).join('، ')}) وتأتي بالتناوب. القرار لآية: تخفيف الجديد أو رفع السقف.` });
     if (h.st.cycleDays > 21 && App.role && App.role.id !== 'asst') out.push({ level: 'info', child: c, text: `دورة البعيد صارت نحو ${h.st.cycleDays} يوماً (${h.st.far.length} صفحة بحصة ${h.st.quota} يومياً). حدّ القرار 21 يوماً: تخفيف الجديد أو زيادة حصة البعيد.` });
     if (h.examGreen != null && h.examGreen < 85) out.push({ level: h.examGreen < 70 ? 'red' : 'yellow', child: c, text: `آخر فحص خميس: ${h.examClean}/${h.examN} أخضر.` });
     if (h.examIncomplete) out.push({ level: 'yellow', child: c, text: `فحص ${fmtDay(h.examDay)} غير مكتمل (${h.examN} من ${h.examNeed}).` });

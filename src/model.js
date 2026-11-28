@@ -600,11 +600,14 @@ function deriveChild(childId) {
   if (!isLines(childId)) for (let j = 1; j <= 30; j++) if (juzPages(j).every(p => pages[p].layer === 'near')) waitingJuz.push(j);
   const recent = nearPool.filter(p => pages[p].memSeq).sort((a, b) => pages[b].memSeq - pages[a].memSeq).slice(0, 5);
   const waitPages = nearPool.filter(p => waitingJuz.includes(juzOfPage(p))).sort(byOld);
-  const limit = Math.max(caps.near, reds.length);
-  const pick = reds.slice();
+  /* السقف حد فعلي يشمل الحمراء (0.16.5، قرار ولي الأمر): إن زادت الحمراء عنه تتناوب بالأقدم تسميعاً، والزائد redsOver يُعرض لآية لتقرر */
+  const limit = caps.near;
+  const redsByOld = reds.slice().sort(byOld);
+  const redsToday = redsByOld.slice(0, limit).sort((a, b) => a - b), redsOver = redsByOld.slice(limit).sort((a, b) => a - b);
+  const pick = redsToday.slice();
   for (const list of [recent, waitPages, nearPool.slice().sort(byOld)]) for (const p of list) { if (pick.length >= limit) break; if (!pick.includes(p)) pick.push(p); }
-  const nearToday = reds.concat(pick.filter(p => !reds.includes(p)).sort((a, b) => (pages[b].memSeq || 0) - (pages[a].memSeq || 0) || b - a));
-  return { id: childId, pages, far, near, nearToday, reds, waitingJuz, caps, currentJuz, lastNewPage, nextNew, nextLines, quota, cycleSessions, cycleDays, gapYellow, gapRed, todayFar, maxGap, maxGapPage, todayNew, yesterdayNew, paused, reduced, passedSurahs };
+  const nearToday = redsToday.concat(pick.filter(p => !redsToday.includes(p)).sort((a, b) => (pages[b].memSeq || 0) - (pages[a].memSeq || 0) || b - a));
+  return { id: childId, pages, far, near, nearToday, reds, redsOver, waitingJuz, caps, currentJuz, lastNewPage, nextNew, nextLines, quota, cycleSessions, cycleDays, gapYellow, gapRed, todayFar, maxGap, maxGapPage, todayNew, yesterdayNew, paused, reduced, passedSurahs };
 }
 
 /* آخر صفحة جديدة قبل اليوم (للبوابة) */

@@ -132,6 +132,17 @@ async def main():
         r = await pg.evaluate("()=>{seed(Array.from({length:20},(_,i)=>({type:'layer',by:'aya',child:'c1',page:582+i,day:'2026-11-01',layer:'near',color:'green'})));" + FAR.replace('N', '7') + "seed(Array.from({length:7},(_,i)=>({type:'outcome',by:'asst',child:'c1',page:562+i,day:'2026-12-02',step:'far',result:'clean'})));Store.add({type:'juz_passed',child:'c1',juz:30});const d=deriveChild('c1');return {far:d.far.length,today:d.todayFar};}")
         ok('إجازة جزء اليوم: صفحاته لا تزاحم حصة البعيد الأقدم', r['far'] > 7 and r['today'] == [562, 563, 564, 565, 566, 567, 568], r)
 
+        # ===== 0.16.5: سقف القريب حد فعلي يشمل الحمراء =====
+        pg = await fresh('aya')
+        r = await pg.evaluate("()=>{seed(Array.from({length:15},(_,i)=>({type:'layer',by:'aya',day:'2026-12-01',child:'c1',page:542+i,layer:'near',color:'red'})));const d1=deriveChild('c1');const al=alertsList().filter(a=>a.child==='c1'&&a.text.includes('سقف القريب')).map(a=>a.text);App.setRole('asst');const alA=alertsList().filter(a=>a.child==='c1'&&a.text.includes('سقف القريب')).length;d1.nearToday.forEach(p=>Store.add({type:'outcome',child:'c1',page:p,step:'near',result:'yellow',prompts:1}));const same=deriveChild('c1').nearToday;nextDay();const d2=deriveChild('c1');return {cap:d1.caps.near,reds:d1.reds.length,t1:d1.nearToday,over1:d1.redsOver,al,alA,same,t2:d2.nearToday};}")
+        ok('15 صفحة حمراء بسقف 10: حصة اليوم 10 فقط، والخمس الزائدة تُعرض لآية وحدها بأرقامها', r['cap'] == 10 and r['reds'] == 15 and r['t1'] == list(range(542, 552)) and r['over1'] == list(range(552, 557)) and len(r['al']) == 1 and '5 منها خارج حصة اليوم' in r['al'][0] and r['alA'] == 0, r)
+        ok('الحمراء تتناوب بالأقدم تسميعاً: الخمس المؤجلة تتقدم حصة الغد، والحصة ثابتة داخل اليوم', r['same'] == r['t1'] and set(range(552, 557)) <= set(r['t2']) and len(r['t2']) == 10, r['t2'])
+        pg = await fresh('aya')
+        r = await pg.evaluate("()=>{seed(Array.from({length:15},(_,i)=>({type:'layer',by:'aya',day:'2026-12-01',child:'c1',page:542+i,layer:'near',color:'red'})));Store.add({type:'decision',child:'c1',kind:'caps',near:15});const d=deriveChild('c1');return {n:d.nearToday.length,over:d.redsOver.length,al:alertsList().filter(a=>a.child==='c1'&&a.text.includes('سقف القريب')).length};}")
+        ok('رفع السقف بقرار آية إلى 15 يُدخل الحمراء كلها ويُسكت التنبيه', r == {'n': 15, 'over': 0, 'al': 0}, r)
+        r = await pg.evaluate("getComputedStyle(document.body).fontFamily")
+        ok('خط النظام فقط: لا اسم خط غير مثبّت في الصفحة', r.replace('"', '') == 'system-ui, sans-serif' and 'Noto' not in await pg.content(), r)
+
         # ===== حجم الأزرار =====
         for w in (360, 390):
             pg = await fresh('asst', '2026-12-07', w)
@@ -143,6 +154,6 @@ async def main():
     if SOFT:
         print(f'SOFT: {len(fails)} فشل من {len(results)}'); return
     assert not errors, errors
-    print(f'AUDIT 0.16.2-3 OK ({len(results)} حالة)')
+    print(f'AUDIT 0.16.2-5 OK ({len(results)} حالة)')
 
 asyncio.run(main())

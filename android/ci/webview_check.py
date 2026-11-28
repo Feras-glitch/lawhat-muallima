@@ -238,6 +238,17 @@ async def main():
     ok('«السجلات» داخل التطبيق: أزرار التراجع ظاهرة', n >= 2, n)
     shot('logs')
 
+    # 0.16.5: التطبيق لا يعتمد على مزوّد خطوط Google. إيقاف خدمات Google قسراً كان يقتل التطبيق (DEPENDENCY DIED) حين كان CSS يسمّي خطاً غير مثبّت
+    await session(logs)
+    pid0 = sh('shell', 'pidof', PKG, check=False).strip()
+    prov = sh('shell', 'dumpsys', 'activity', 'providers', 'com.google.android.gms/.fonts.provider.FontsProvider', check=False)
+    dep = PKG in prov
+    sh('shell', 'am', 'force-stop', 'com.google.android.gms', check=False); time.sleep(5)
+    pid1 = sh('shell', 'pidof', PKG, check=False).strip()
+    ok('إيقاف خدمات Google قسراً لا يُغلق التطبيق، ولا اتصال له بمزوّد خطوطها', bool(pid0) and pid1 == pid0 and not dep, {'before': pid0, 'after': pid1, 'fontsClient': dep})
+    n = await session(logs)
+    ok('والتطبيق يعمل بعده: السجلات ظاهرة', n >= 2, n)
+
     json.dump({'info': info, 'results': results}, open(OUT + '.json', 'w'), ensure_ascii=False, indent=1)
     bad = [k for k, v in results.items() if not v['ok']]
     if bad:
