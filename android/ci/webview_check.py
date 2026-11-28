@@ -196,6 +196,10 @@ async def main():
     async def chooser_closed(p):
         return await p.ev("({ ok: typeof Store !== 'undefined' && Array.isArray(Store.raw) && document.querySelector('main') !== null, errors: UI.errors.length })")
     r = await session(chooser_closed)
+    for _ in range(10):  # إن اختفت العملية على المحاكي (موت خدمات Google) يُعاد فتح التطبيق؛ يُنتظر اكتمال تحميله
+        if r['ok']:
+            break
+        time.sleep(1.5); r = await session(chooser_closed)
     ok('إغلاق نافذة الملفات دون اختيار يعيد التطبيق سليماً', r['ok'] and r['errors'] == 0, r)
 
     async def settings(p):
@@ -238,7 +242,7 @@ async def main():
     ok('«السجلات» داخل التطبيق: أزرار التراجع ظاهرة', n >= 2, n)
     shot('logs')
 
-    # 0.16.5: اعتماد التطبيق على مزوّد خطوط Google. تبيّن أن تسمية الخط في CSS ليست سببه (بقي الاتصال مع خط النظام)،
+    # اعتماد التطبيق على مزوّد خطوط Google مصدره WebView نفسه (يطلب «Noto Color Emoji Compat» من خدمات Google)، لا CSS الصفحة: بقي مع خط النظام،
     # فالمفحوص هنا ما يهمّ: إن أوقف النظام خدمات Google فأُغلق التطبيق، يعود ببياناته سليماً. وتُطبع طلبات الخطوط للتشخيص.
     await session(logs)
     pid0 = sh('shell', 'pidof', PKG, check=False).strip()

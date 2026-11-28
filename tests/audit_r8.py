@@ -140,8 +140,6 @@ async def main():
         pg = await fresh('aya')
         r = await pg.evaluate("()=>{seed(Array.from({length:15},(_,i)=>({type:'layer',by:'aya',day:'2026-12-01',child:'c1',page:542+i,layer:'near',color:'red'})));Store.add({type:'decision',child:'c1',kind:'caps',near:15});const d=deriveChild('c1');return {n:d.nearToday.length,over:d.redsOver.length,al:alertsList().filter(a=>a.child==='c1'&&a.text.includes('سقف القريب')).length};}")
         ok('رفع السقف بقرار آية إلى 15 يُدخل الحمراء كلها ويُسكت التنبيه', r == {'n': 15, 'over': 0, 'al': 0}, r)
-        r = await pg.evaluate("getComputedStyle(document.body).fontFamily")
-        ok('خط النظام فقط: لا اسم خط غير مثبّت في الصفحة', r.replace('"', '') == 'system-ui, sans-serif' and 'Noto' not in await pg.content(), r)
 
         # ===== حجم الأزرار =====
         for w in (360, 390):

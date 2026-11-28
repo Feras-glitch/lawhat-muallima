@@ -9,8 +9,7 @@
 <style>
 :root{--bg:#f6f4ee;--card:#fff;--ink:#1f2a24;--muted:#6b7570;--line:#e3e0d6;--brand:#1f6f5f;--brand2:#2f8f7a;--soft:#e8f2ee;--green:#2e9e5b;--yellow:#e0a800;--red:#d14b3f;--blue:#2f6fb0;--grey:#c9c6bc;--radius:14px;--shadow:0 1px 3px rgba(0,0,0,.06),0 6px 20px rgba(0,0,0,.05)}
 *{box-sizing:border-box}
-/* خط النظام فقط (0.16.5): تسمية خط غير مثبّت تجعل WebView يطلبه من مزوّد خطوط Google فيرتبط بقاء التطبيق ببقاء خدماتها */
-html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:system-ui,sans-serif;font-size:17px;line-height:1.6}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:"Noto Naskh Arabic","Segoe UI",Tahoma,"Noto Sans Arabic",system-ui,sans-serif;font-size:17px;line-height:1.6}
 body{direction:rtl;min-height:100vh;padding-bottom:84px}
 button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:10px 16px;background:var(--soft);color:var(--brand)}
 button.primary{background:var(--brand);color:#fff}
@@ -163,7 +162,7 @@ button.opennow{border-color:var(--brand)}
 <body>
 <div id="app"></div>
 <script>
-const BUILD = {"version": "0.16.5", "commit": "d3001d2", "src": "207195ef3f", "built": "2026-11-28"};
+const BUILD = {"version": "0.16.6", "commit": "d3001d2+تعديلات", "src": "207195ef3f", "built": "2026-11-28"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 /* الأطفال بمعرّفات لا تحمل أسماء: الأسماء ليست في الكود المنشور؛ تُدخل من الإعدادات وتُحفظ سجلاً على الخادم العائلي.
    c3 يحفظ بالأسطر (مقطع 4 أسطر)؛ c1 وc2 بالصفحة ويسيران معاً في الجلسات المشتركة */
