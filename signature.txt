@@ -1,0 +1,18 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v3.2 scheme (APK Signature Scheme v3.2): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+V2 Signer: certificate DN: CN=Lawhat Muallima Preview, C=EG
+V2 Signer: certificate SHA-256 digest: 9a2e3712a84d51c0208d41c1b452dfe20e4682e3781a71ff8ffaaf0c3397a16c
+V2 Signer: certificate SHA-1 digest: eb3f72d5c6f7e0007c8dfe609296384754852307
+V2 Signer: certificate MD5 digest: c508a81a9c1d1f9eebb3f7e74e456040
+V2 Signer: key algorithm: RSA
+V2 Signer: key size (bits): 2048
+V2 Signer: public key SHA-256 digest: fe48811ba8c5f72e2c09d2556a8dea95ce6f4a4d8d9103d2d4bbfea9dc0ed6d3
+V2 Signer: public key SHA-1 digest: 65408809f748ef10439198f8fed6c67056b1920b
+V2 Signer: public key MD5 digest: d8c15ce4869d6cd8d22348701055601b
