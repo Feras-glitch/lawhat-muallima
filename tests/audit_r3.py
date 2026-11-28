@@ -239,7 +239,7 @@ async def main():
         r = await pg.evaluate("(async () => { App.setRole('aya'); const x = Store.raw.find(e => e.id === 'v1-old'); Store.importEvents([Object.assign(Store.clean(x), { text: 'معدّل' })], { source: 'file' }); const ok = await Store.durable(); return { text: x.text, ok, stores: [...Store.db.objectStoreNames], version: Store.db.version }; })()")
         await pg.reload(); await pg.wait_for_function('Store.raw && Store.idbOk')
         r2 = await pg.evaluate("({ n: Store.raw.length, open: Store.openConflicts().length })")
-        ok('R3 ترقية القاعدة من 0.13.1: السجل القديم سليم، والتعارض يُحفظ ويبقى بعد إعادة الفتح', r['text'] == 'من 0.13.1' and r['ok'] and r['version'] == 2 and 'conflicts' in r['stores'] and r2 == {'n': 1, 'open': 1}, {**r, **r2})
+        ok('R3 ترقية القاعدة من 0.13.1: السجل القديم سليم، والتعارض يُحفظ ويبقى بعد إعادة الفتح', r['text'] == 'من 0.13.1' and r['ok'] and r['version'] == 3 and 'conflicts' in r['stores'] and 'kv' in r['stores'] and r2 == {'n': 1, 'open': 1}, {**r, **r2})
         await ctx.close()
 
         # تبويب بإصدار أقدم يمسك القاعدة: لا يُفتح البرنامج فارغاً، بل يطلب الإغلاق ويكمل وحده

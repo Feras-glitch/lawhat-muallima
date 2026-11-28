@@ -162,7 +162,7 @@ button.opennow{border-color:var(--brand)}
 <body>
 <div id="app"></div>
 <script>
-const BUILD = {"version": "0.16.7", "commit": "860f9ef", "src": "e58d0a5f54", "built": "2026-11-28"};
+const BUILD = {"version": "0.16.8", "commit": "860f9ef+تعديلات", "src": "2aefc60032", "built": "2026-11-28"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 /* الأطفال بمعرّفات لا تحمل أسماء: الأسماء ليست في الكود المنشور؛ تُدخل من الإعدادات وتُحفظ سجلاً على الخادم العائلي.
    c3 يحفظ بالأسطر (مقطع 4 أسطر)؛ c1 وc2 بالصفحة ويسيران معاً في الجلسات المشتركة */
@@ -374,8 +374,8 @@ const Store = {
   async openDb() {
     if (!window.indexedDB) return null;
     return new Promise((res) => {
-      let req; try { req = indexedDB.open('lawhat_muallima', 2); } catch (e) { res(null); return; }
-      req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains('events')) db.createObjectStore('events', { keyPath: 'id' }); if (!db.objectStoreNames.contains('conflicts')) db.createObjectStore('conflicts', { keyPath: 'key' }); };
+      let req; try { req = indexedDB.open('lawhat_muallima', 3); } catch (e) { res(null); return; }
+      req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains('events')) db.createObjectStore('events', { keyPath: 'id' }); if (!db.objectStoreNames.contains('conflicts')) db.createObjectStore('conflicts', { keyPath: 'key' }); if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv'); };
       /* الترقية إلى الإصدار 2 تنتظر إغلاق أي تبويب بإصدار أقدم: لا يُفتح البرنامج فارغاً على التخزين البديل، بل يُطلب الإغلاق ويُكمل وحده بعده */
       req.onblocked = () => this.blockNotice('البرنامج مفتوح بإصدار أقدم في تبويب أو نافذة أخرى على هذا الجهاز. أغلقيها ليكتمل التحديث؛ تُفتح هذه الصفحة تلقائياً بعدها، ولا يضيع شيء.');
       req.onsuccess = () => {
@@ -395,13 +395,18 @@ const Store = {
     try { this.settings = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'); } catch (e) { this.settings = {}; }
     if (!this.settings.pins) this.settings.pins = { aya: '1111', asst: '2222', parent: '3333' };
     if (!this.settings.deviceId) this.settings.deviceId = 'd' + Math.random().toString(36).slice(2, 10);
-    this.saveSettings();
+    this.saveSettings(true);
     let lsRaw = []; try { lsRaw = JSON.parse(localStorage.getItem(LS_EVENTS) || '[]'); } catch (e) { lsRaw = []; }
     let lsCf = []; try { lsCf = JSON.parse(localStorage.getItem(LS_CONFLICTS) || '[]'); } catch (e) { lsCf = []; }
     /* 0.12–0.13.1 كانت تحفظ التعارضات داخل الإعدادات: تُنقل منها */
     const legacyCf = Array.isArray(this.settings.conflicts) ? this.settings.conflicts.map(x => Object.assign({ key: this.cfKey(x.id, x.source) }, x)) : [];
     this.db = await this.openDb();
     if (this.db) {
+      /* الإعدادات (ومنها الجلسة الجارية وخطوتها) لها نسخة في قاعدة الجهاز (0.16.8): localStorage في WebView يُكتب إلى القرص متأخراً،
+         فإغلاق مفاجئ للتطبيق كان يعيدها ثوانيَ إلى الوراء. الأحدث rev يُعتمد */
+      const mirror = await new Promise((res) => { try { const tx = this.db.transaction(['kv'], 'readonly'); const r = tx.objectStore('kv').get('settings'); tx.oncomplete = () => res(r.result || null); tx.onerror = tx.onabort = () => res(null); } catch (e) { res(null); } });
+      if (mirror && typeof mirror === 'object' && (mirror.rev || 0) > (this.settings.rev || 0)) { this.settings = mirror; try { localStorage.setItem(LS_SETTINGS, JSON.stringify(this.settings)); } catch (e) {} }
+      this.mirrorSettings();
       const fromDb = await new Promise((res) => { try { const tx = this.db.transaction(['events', 'conflicts'], 'readonly'); const r = tx.objectStore('events').getAll(), q = tx.objectStore('conflicts').getAll(); tx.oncomplete = () => res({ ev: r.result || [], cf: q.result || [] }); tx.onerror = tx.onabort = () => res(null); } catch (e) { res(null); } });
       if (fromDb) {
         this.idbOk = true;
@@ -626,7 +631,7 @@ const Store = {
     } catch (e) { return false; }
   },
   /* ينتظر اكتمال الكتابة الدائمة لكل ما سُجّل حتى الآن */
-  async durable() { if (!this.idbOk) return !this.storageError; clearTimeout(this.flushTimer); await this.flush(); return this.saved(); },
+  async durable() { if (this.kvP) await this.kvP; if (!this.idbOk) return !this.storageError; clearTimeout(this.flushTimer); await this.flush(); return this.saved(); },
   gen: 0,
   /* كتابة دفعة واحدة من المعلّق؛ عند الفشل يبقى معلّقاً (إلا إن مُسح السجل أثناءها) */
   async flushOnce() {
@@ -700,7 +705,14 @@ const Store = {
     const cleared = this.idbOk ? this.clearDb() : Promise.resolve(true);
     return cleared.then(ok => { ok = ok && lsOk && setOk; if (ok && this.storageError) this.storageError = null; try { UI.renderStatus(); } catch (x) {} return ok; });
   },
-  saveSettings() { localStorage.setItem(LS_SETTINGS, JSON.stringify(this.settings)); },
+  saveSettings(keepRev) { if (!keepRev) this.settings.rev = (this.settings.rev || 0) + 1; localStorage.setItem(LS_SETTINGS, JSON.stringify(this.settings)); this.mirrorSettings(); },
+  kvP: null,
+  mirrorSettings() {
+    if (!this.db) return;
+    const snap = JSON.parse(JSON.stringify(this.settings));
+    const p = new Promise((res) => { try { const tx = this.db.transaction(['kv'], 'readwrite'); tx.objectStore('kv').put(snap, 'settings'); tx.oncomplete = () => res(true); tx.onerror = tx.onabort = () => res(false); } catch (e) { res(false); } });
+    this.kvP = p; p.then(() => { if (this.kvP === p) this.kvP = null; });
+  },
   add(ev) {
     ev.id = ev.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
     /* سجلان من هذا الجهاز في الميلي ثانية نفسها يبقيان بترتيب إنشائهما (0.16.7) */

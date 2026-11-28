@@ -82,7 +82,7 @@ async def main():
         murl = shim.url('srv_m'); uid = USERS['aya@lm.test'][0]
         ok_ev = {'id': 'M_OK', 'type': 'note', 'by': 'aya', 'ts': 1, 'day': '2026-11-01', 'text': 'ok'}
         pg.psql('srv_m', f"insert into public.events (id, ts, day, by, type, payload) values ('M_OK', 1, '2026-11-01', 'aya', 'note', '{json.dumps(ok_ev)}'::jsonb);")
-        old_settings = {'pins': {'aya': '1111', 'asst': '2222', 'parent': '3333'}, 'deviceId': 'dold', 'sbUrl': murl + '/', 'sbKey': 'anon', 'sbRole': 'aya',
+        old_settings = {'rev': 10**9, 'pins': {'aya': '1111', 'asst': '2222', 'parent': '3333'}, 'deviceId': 'dold', 'sbUrl': murl + '/', 'sbKey': 'anon', 'sbRole': 'aya',
                         'sbSession': {'access_token': f'srv_m|{uid}', 'refresh_token': f'srv_m|{uid}', 'expires_at': 9999999999999, 'email': 'aya@lm.test'},
                         'sbCursor': '1970-01-01T00:00:00Z', 'syncRejected': [{'id': 'M_RJ', 'type': 'note', 'by': 'aya', 'day': '2026-11-01', 'reason': 'قديم', 'at': 1, 'payload': {}, 'direction': 'push'}]}
         old_events = [dict(ok_ev, synced=True), {'id': 'M_PEND', 'type': 'note', 'by': 'aya', 'ts': 2, 'day': '2026-11-01', 'text': 'p', 'synced': False},

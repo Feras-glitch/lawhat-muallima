@@ -180,6 +180,19 @@ async def main():
         r = await pg.evaluate("()=>{seed([{type:'layer',by:'aya',day:'2026-12-01',child:'c1',page:562,layer:'far',color:'green'},{type:'outcome',by:'asst',day:'2026-12-07',child:'c1',page:562,step:'far',result:'clean'}]);Store.add({type:'outcome',child:'c1',page:562,step:'far',result:'partial'});return briefFor('c1').farHeard;}")
         ok('تسميع مكتمل في يوم آخر من الأسبوع يبقى محتسباً رغم محاولة ناقصة لاحقة', r == [562], r)
 
+        # ===== 0.16.8: الإعدادات والجلسة الجارية تنجو من رجوع localStorage (إغلاق مفاجئ في WebView) =====
+        pg = await fresh('asst')
+        r0 = await pg.evaluate("async()=>{" + FAR.replace('N', '12') + "await Store.durable();const stale=localStorage.getItem('lm_settings_v1');startSession(PLAN.find(s=>s.kind==='noon'&&s.child==='c1'));Store.settings.active.cur=1;saveActive();Store.settings.pins.asst='7788';Store.saveSettings();await Store.durable();const sid=Store.settings.active.sid;localStorage.setItem('lm_settings_v1',stale);return {sid,staleActive:!!JSON.parse(stale).active};}")
+        await pg.reload(); await pg.wait_for_function('Store.raw && Store.idbOk')
+        r = await pg.evaluate("({sid:Store.settings.active&&Store.settings.active.sid,cur:Store.settings.active&&Store.settings.active.cur,pin:Store.settings.pins.asst,ls:JSON.parse(localStorage.getItem('lm_settings_v1')).active.cur})")
+        ok('localStorage عاد إلى ما قبل بدء الجلسة: الجلسة وخطوتها ورقم الدخول الجديد تعود من قاعدة الجهاز', r0['staleActive'] is False and r == {'sid': r0['sid'], 'cur': 1, 'pin': '7788', 'ls': 1}, {'r0': r0, 'r': r})
+        r = await pg.evaluate("async()=>{endActiveForTest=()=>{Store.settings.active=null;Store.saveSettings();};endActiveForTest();await Store.durable();return true;}")
+        await pg.reload(); await pg.wait_for_function('Store.raw && Store.idbOk')
+        ok('والأحدث يُعتمد في الاتجاه الآخر: إنهاء الجلسة لا تُرجعه نسخة أقدم', await pg.evaluate("Store.settings.active === null"))
+        await pg.evaluate("()=>{const st=JSON.parse(localStorage.getItem('lm_settings_v1'));st.fluency_c3=590;localStorage.setItem('lm_settings_v1',JSON.stringify(st));}")
+        await pg.reload(); await pg.wait_for_function('Store.raw && Store.idbOk')
+        ok('عند تساوي الرقم التسلسلي يُعتمد localStorage (لا تُفرض النسخة الثانية بلا سبب)', await pg.evaluate("Store.settings.fluency_c3") == 590)
+
         # ===== حجم الأزرار =====
         for w in (360, 390):
             pg = await fresh('asst', '2026-12-07', w)
@@ -191,6 +204,6 @@ async def main():
     if SOFT:
         print(f'SOFT: {len(fails)} فشل من {len(results)}'); return
     assert not errors, errors
-    print(f'AUDIT 0.16.2-7 OK ({len(results)} حالة)')
+    print(f'AUDIT 0.16.2-8 OK ({len(results)} حالة)')
 
 asyncio.run(main())
