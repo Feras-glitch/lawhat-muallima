@@ -1,0 +1,144 @@
+{
+ "info": {
+  "origin": "https://appassets.androidplatform.net",
+  "inApp": true,
+  "preview": true,
+  "idb": true,
+  "ver": "0.16.9",
+  "app": "0.16.9-preview (1609)",
+  "sw": 412,
+  "sh": 842,
+  "dpr": 2.625,
+  "persist": "داخل تطبيق أندرويد: البيانات في مساحة ال"
+ },
+ "results": {
+  "الواجهة داخل التطبيق: أصل https ثابت، قاعدة الجهاز، الجسر": {
+   "ok": true,
+   "data": {
+    "origin": "https://appassets.androidplatform.net",
+    "inApp": true,
+    "preview": true,
+    "idb": true,
+    "ver": "0.16.9",
+    "app": "0.16.9-preview (1609)",
+    "sw": 412,
+    "sh": 842,
+    "dpr": 2.625,
+    "persist": "داخل تطبيق أندرويد: البيانات في مساحة ال"
+   }
+  },
+  "تسجيل ملاحظة وحفظها": {
+   "ok": true,
+   "data": 1
+  },
+  "بعد إعادة تحميل الصفحة: الملاحظة باقية": {
+   "ok": true,
+   "data": 1
+  },
+  "بعد إيقاف التطبيق وتشغيله: الملاحظة باقية (قاعدة الجهاز دائمة)": {
+   "ok": true,
+   "data": 1
+  },
+  "أثناء الجلسة: نافذة التطبيق تطلب إبقاء الشاشة مضاءة": {
+   "ok": true,
+   "data": [
+    "fl=KEEP_SCREEN_ON LAYOUT_IN_SCREEN LAYOUT_INSET_DECOR SPLIT_TOUCH HARDWARE_ACCELERATED DRAWS_SYSTEM_BAR_BACKGROUNDS"
+   ]
+  },
+  "بعد قتل العملية أثناء الجلسة: الخطأ المسجل باقٍ والجلسة تعود من الخطوة نفسها": {
+   "ok": true,
+   "data": {
+    "killed": true,
+    "before": {
+     "sid": "mx0lieb4gobj",
+     "key": "2026-11-28|12:50|noon|c1",
+     "errSid": "mx0lieb4gobj"
+    },
+    "after": {
+     "active": true,
+     "sid": "mx0lieb4gobj",
+     "steps": [
+      "far",
+      "second"
+     ],
+     "err": 1,
+     "inSession": true
+    }
+   }
+  },
+  "زر الرجوع يغلق النافذة المفتوحة": {
+   "ok": true,
+   "data": {
+    "modal": false,
+    "view": "logs",
+    "focus": false
+   }
+  },
+  "الرجوع التالي يعود إلى الشاشة الرئيسية لا يخرج": {
+   "ok": true,
+   "data": {
+    "modal": false,
+    "view": "now",
+    "focus": false
+   }
+  },
+  "اختيار ملف للاستيراد يفتح نافذة ملفات النظام": {
+   "ok": true,
+   "data": [
+    "topResumedActivity=ActivityRecord{7ae49b u0 com.google.android.documentsui/com.android.documentsui.picker.PickActivity t11}",
+    "ResumedActivity: ActivityRecord{7ae49b u0 com.google.android.documentsui/com.android.documentsui.picker.PickActivity t11}"
+   ]
+  },
+  "إغلاق نافذة الملفات دون اختيار يعيد التطبيق سليماً": {
+   "ok": true,
+   "data": {
+    "ok": true,
+    "errors": 0
+   }
+  },
+  "الإعدادات تعرض بطاقة «تطبيق أندرويد»": {
+   "ok": true,
+   "data": true
+  },
+  "الدوران لا يعيد تحميل الصفحة (والأبعاد تنقلب)": {
+   "ok": true,
+   "data": {
+    "before": {
+     "m": 0.45540453876062936,
+     "w": 412,
+     "h": 842
+    },
+    "after": {
+     "m": 0.45540453876062936,
+     "w": 866,
+     "h": 364
+    }
+   }
+  },
+  "«السجلات» داخل التطبيق: أزرار التراجع ظاهرة": {
+   "ok": true,
+   "data": 4
+  },
+  "__gms_survived": {
+   "ok": true,
+   "data": false
+  },
+  "بعد إيقاف خدمات Google قسراً (بعد إعادة فتح التطبيق): كل السجلات بمعرّفاتها ومحتواها والجلسة وخطوتها مطابقة لما قبله، بلا أي كتابة بينهما": {
+   "ok": true,
+   "data": {
+    "before": {
+     "n": 6,
+     "hash": "38d91415b18960a21e601c8de2e9323104fd6858e08d18c1b20d734350c1571e",
+     "sid": "mx0lji2zmb5v",
+     "cur": 1
+    },
+    "after": {
+     "n": 6,
+     "hash": "38d91415b18960a21e601c8de2e9323104fd6858e08d18c1b20d734350c1571e",
+     "sid": "mx0lji2zmb5v",
+     "cur": 1
+    }
+   }
+  }
+ }
+}
