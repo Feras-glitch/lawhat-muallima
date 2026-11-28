@@ -197,7 +197,7 @@ async def asserts():
         await page.click('.roles button:nth-child(2)'); await page.fill('input[type=password]', '2222'); await page.click('button.primary')
         await page.evaluate("Store.settings.timeOffset = Date.UTC(2026,10,9,4,55) - Date.now(); Store.saveSettings(); const s=PLAN.find(x=>x.kind==='noon'&&x.child==='c1'); startSession(s);")
         await page.evaluate("const a=Store.settings.active; Store.add({type:'outcome',child:'c1',page:562,step:'far',result:'yellow'}); Store.add({type:'error',child:'c1',page:562,surah:58,ayah:2,etype:'jump',target:{surah:79,ayah:2}});")
-        assert await page.evaluate("Store.events.slice(-1)[0].sid === Store.settings.active.sid"), 'sid not attached'
+        assert await page.evaluate("Store.events.filter(e=>e.type==='error'&&e.page===562&&e.surah===58).pop().sid === Store.settings.active.sid"), 'sid not attached'
         r = await page.evaluate("""(async()=>{ const s=PLAN.find(x=>x.kind==='noon'&&x.child==='c1'); const a=Store.settings.active;
             let n=0; const orig=Store.saveEvents.bind(Store); Store.saveEvents=function(){ n++; if(n===2){ this.storageError='sim'; return false;} return orig(); };
             await commitEnd(s,a,'partial',['second','cards'],null,'');
@@ -243,7 +243,7 @@ async def asserts():
         assert await page.evaluate("JSON.stringify(youngLines('c3',594))") == '[5,8]'
         # --- التراجع: يلغي الأثر ويبقى الأثر ---
         n_live = await page.evaluate("Store.events.length"); n_raw = await page.evaluate("Store.raw.length")
-        await page.evaluate("const last=Store.events.slice(-1)[0]; Store.add({type:'undo',target:last.id,child:last.child});")
+        await page.evaluate("const last=effectiveOutcomes(e=>e.child==='c3'&&e.page===594).pop(); Store.add({type:'undo',target:last.id,child:last.child});")
         assert await page.evaluate("Store.events.length") == n_live - 1, 'undo did not remove live event'
         assert await page.evaluate("Store.raw.length") == n_raw + 1, 'undo trail missing'
         assert await page.evaluate("effectiveOutcomes(e=>e.child==='c3'&&e.page===594).length") == 0

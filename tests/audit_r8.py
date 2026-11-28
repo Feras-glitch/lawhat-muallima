@@ -122,7 +122,7 @@ async def main():
         r = await pg.evaluate("()=>{" + FAR.replace('N', '12') + "Store.add({type:'outcome',child:'c1',page:562,step:'far',result:'clean'});const fix=Store.add({type:'outcome',child:'c1',page:562,step:'far',result:'partial'});nextDay();const a=deriveChild('c1');const r1={far:a.todayFar[0],lfb:a.pages[562].lastFarBefore||null};Store.add({type:'undo',target:fix.id,child:'c1',reason:'اختبار'});const b2=deriveChild('c1');return {r1,r2:{in:b2.todayFar.slice(0,7).includes(562),lfb:b2.pages[562].lastFarBefore||null}};}")
         ok('البعيد: «مستقل» ثم «ناقص» لا يُعدّ تسميعاً، والتراجع عن التصحيح يعيد أثر المكتمل', r == {'r1': {'far': 562, 'lfb': None}, 'r2': {'in': False, 'lfb': '2026-12-07'}}, r)
         pg = await fresh('aya', '2026-12-10')
-        r = await pg.evaluate("()=>{" + FAR.replace('N', '5') + "seed(Array.from({length:5},(_,i)=>({type:'outcome',by:'aya',child:'c1',page:562+i,day:'2026-12-03',step:'exam',result:'clean'})));seed(Array.from({length:5},(_,i)=>({type:'outcome',by:'aya',child:'c1',page:562+i,day:todayKey(),step:'exam',result:'partial'})));const snap=()=>{const h=healthOf('c1');return {day:h.examDay,n:h.examN,inc:h.examIncomplete,light:h.light,al:alertsList().filter(x=>x.child==='c1'&&x.text.includes('غير مكتمل')).length};};const a=snap();const one=Store.add({type:'outcome',child:'c1',page:562,step:'exam',result:'clean'});const b2=snap();Store.add({type:'undo',target:one.id,child:'c1',reason:'اختبار'});const c=snap();return {a,b:b2,c,old:effectiveOutcomes(e=>e.child==='c1'&&e.step==='exam'&&e.day==='2026-12-03').length};}")
+        r = await pg.evaluate("()=>{" + FAR.replace('N', '5') + "seed(Array.from({length:5},(_,i)=>({type:'outcome',by:'aya',child:'c1',page:562+i,day:'2026-12-03',step:'exam',result:'clean'})));seed(Array.from({length:5},(_,i)=>({type:'outcome',by:'aya',child:'c1',page:562+i,day:todayKey(),step:'exam',result:'partial'})));const snap=()=>{const h=healthOf('c1');return {day:h.examDay,n:h.examN,inc:h.examIncomplete,light:h.light,al:alertsList().filter(x=>x.child==='c1'&&x.text.includes('غير مكتمل')).length};};const a=snap();Store.settings.timeOffset+=7200000;const one=Store.add({type:'outcome',child:'c1',page:562,step:'exam',result:'clean'});const b2=snap();Store.add({type:'undo',target:one.id,child:'c1',reason:'اختبار'});const c=snap();return {a,b:b2,c,old:effectiveOutcomes(e=>e.child==='c1'&&e.step==='exam'&&e.day==='2026-12-03').length};}")
         ok('فحص جديد كله ناقص بعد فحص قديم 5/5: «غير مكتمل» للجديد بلا أخضر مبني على القديم، والقديم باقٍ', r['a'] == {'day': '2026-12-10', 'n': 0, 'inc': True, 'light': 'grey', 'al': 1} and r['old'] == 5, r)
         ok('إكمال جزء من الفحص الجديد ثم التراجع عنه', r['b'] == {'day': '2026-12-10', 'n': 1, 'inc': True, 'light': 'grey', 'al': 1} and r['c'] == r['a'], r)
         pg = await fresh('aya', '2026-12-07')
@@ -141,6 +141,45 @@ async def main():
         r = await pg.evaluate("()=>{seed(Array.from({length:15},(_,i)=>({type:'layer',by:'aya',day:'2026-12-01',child:'c1',page:542+i,layer:'near',color:'red'})));Store.add({type:'decision',child:'c1',kind:'caps',near:15});const d=deriveChild('c1');return {n:d.nearToday.length,over:d.redsOver.length,al:alertsList().filter(a=>a.child==='c1'&&a.text.includes('سقف القريب')).length};}")
         ok('رفع السقف بقرار آية إلى 15 يُدخل الحمراء كلها ويُسكت التنبيه', r == {'n': 15, 'over': 0, 'al': 0}, r)
 
+        # ===== 0.16.7: LM0166-01..03 =====
+        RED = "seed(Array.from({length:15},(_,i)=>({type:'layer',by:'aya',day:'2026-12-01',child:'c1',page:542+i,layer:'near',color:'red'})));"
+        pg = await fresh('aya')
+        r = await pg.evaluate("async()=>{" + RED + "const a=deriveChild('c1').nearToday;for(const p of a)Store.add({type:'outcome',child:'c1',page:p,step:'near',result:'clean'});Store.add({type:'color',child:'c1',page:542,color:'yellow'});let d=deriveChild('c1');const one={list:d.nearToday.slice().sort((x,y)=>x-y),over:d.redsOver};for(const p of a.slice(1))Store.add({type:'color',child:'c1',page:p,color:'yellow'});d=deriveChild('c1');const all={list:d.nearToday.slice().sort((x,y)=>x-y),over:d.redsOver,al:alertsList().filter(x=>x.child==='c1'&&x.text.includes('سقف القريب')).length};await Store.durable();return {a,one,all};}")
+        ten = list(range(542, 552)); five = list(range(552, 557))
+        ok('عشر حمراء سُمّعت ثم تحسن لون واحدة: الحصة هي العشر نفسها، لا صفحة بديلة', r['a'] == ten and r['one'] == {'list': ten, 'over': five}, r['one'])
+        ok('ثم تحسن لون العشر كلها: المجموع يبقى 10، والخمس الحمراء الباقية خارج الحصة وتنبيهها باقٍ', r['all'] == {'list': ten, 'over': five, 'al': 1}, r['all'])
+        await pg.reload(); await pg.wait_for_function('Store.raw && Store.idbOk')
+        r = await pg.evaluate("()=>{App.setRole('aya');Store.settings.timeOffset=Date.parse('2026-12-07T00:00:00Z')-Date.now();const d=deriveChild('c1');const same=d.nearToday.slice().sort((x,y)=>x-y);const dec=Store.add({type:'decision',child:'c1',kind:'caps',near:5});const down=deriveChild('c1').nearToday.length;Store.add({type:'undo',child:'c1',target:dec.id,reason:'اختبار'});Store.add({type:'decision',child:'c1',kind:'caps',near:12});const up=deriveChild('c1');return {same,down,up:up.nearToday.slice().sort((x,y)=>x-y),over:up.redsOver};}")
+        ok('بعد إعادة الفتح الحصة نفسها؛ خفض السقف إلى 5 لا يمحو المنجز، ورفعه إلى 12 يضيف صفحتين فقط', r == {'same': ten, 'down': 10, 'up': list(range(542, 554)), 'over': [554, 555, 556]}, r)
+        pg = await fresh('aya')
+        r = await pg.evaluate("()=>{" + RED + "seed([{type:'layer',by:'aya',day:'2026-12-01',child:'c1',page:562,layer:'far',color:'green'}]);const a=deriveChild('c1').nearToday;a.slice(0,4).forEach(p=>Store.add({type:'outcome',child:'c1',page:p,step:'near',result:'clean'}));Store.add({type:'outcome',child:'c1',page:a[4],step:'near',result:'partial'});Store.add({type:'color',child:'c1',page:562,color:'red'});const d=deriveChild('c1');return {n:d.nearToday.length,has:d.nearToday.includes(562),over:d.redsOver.includes(562),done:a.slice(0,4).every(p=>d.nearToday.includes(p))};}")
+        ok('حمراء من البعيد تُضاف وسط اليوم والميزانية ممتلئة: لا تتضخم الحصة، وتظهر في الزائد', r == {'n': 10, 'has': False, 'over': True, 'done': True}, r)
+        pg = await fresh('aya')
+        r = await pg.evaluate("()=>{" + RED + "const a=deriveChild('c1').nearToday;const o=Store.add({type:'outcome',child:'c1',page:542,step:'near',result:'clean'});Store.add({type:'color',child:'c1',page:542,color:'yellow'});const kept=deriveChild('c1').nearToday.includes(542);Store.add({type:'undo',child:'c1',target:o.id,reason:'اختبار'});const d=deriveChild('c1');return {kept,after:d.nearToday.includes(542),n:d.nearToday.length};}")
+        ok('التراجع عن التسميع يردّ الميزانية: الصفحة التي لم تعد حمراء ولا منجزة تخرج ويدخل غيرها', r == {'kept': True, 'after': False, 'n': 10}, r)
+
+        outs = {}
+        for rev in (False, True):
+            pg = await fresh('aya')
+            a_ = await pg.evaluate("rev=>{seed([{type:'layer',by:'aya',day:'2026-12-01',child:'c1',page:562,layer:'far',color:'green'}]);const ts=Date.parse('2026-12-07T01:00:00Z');const a={id:'same-a',ts,day:'2026-12-07',by:'asst',type:'outcome',child:'c1',page:562,step:'far',result:'clean'};const b={...a,id:'same-b',result:'partial'};if(rev===2){Store.importEvents([b]);Store.importEvents([a]);}else Store.importEvents(rev?[b,a]:[a,b]);return {eff:effectiveOutcomes(e=>e.child==='c1').map(e=>[e.id,e.result]),lastFar:deriveChild('c1').pages[562].lastFar,order:Store.raw.filter(e=>e.type==='outcome').map(e=>e.id)};}", rev)
+            await pg.evaluate('Store.durable()'); await pg.reload(); await pg.wait_for_function('Store.raw && Store.idbOk')
+            b_ = await pg.evaluate("()=>{App.setRole('aya');Store.settings.timeOffset=Date.parse('2026-12-07T00:00:00Z')-Date.now();return {eff:effectiveOutcomes(e=>e.child==='c1').map(e=>[e.id,e.result]),lastFar:deriveChild('c1').pages[562].lastFar,order:Store.raw.filter(e=>e.type==='outcome').map(e=>e.id)};}")
+            outs[rev] = (a_, b_)
+        pg = await fresh('aya')
+        split = await pg.evaluate("()=>{seed([{type:'layer',by:'aya',day:'2026-12-01',child:'c1',page:562,layer:'far',color:'green'}]);const ts=Date.parse('2026-12-07T01:00:00Z');const a={id:'same-a',ts,day:'2026-12-07',by:'asst',type:'outcome',child:'c1',page:562,step:'far',result:'clean'};const b={...a,id:'same-b',result:'partial'};Store.importEvents([b]);Store.importEvents([a]);const eff=effectiveOutcomes(e=>e.child==='c1').map(e=>[e.id,e.result]);Store.add({type:'undo',child:'c1',target:eff[0][0],reason:'اختبار'});return {eff,afterUndo:effectiveOutcomes(e=>e.child==='c1').map(e=>[e.id,e.result]),lastFar:deriveChild('c1').pages[562].lastFar};}")
+        ok('سجلان بتوقيت واحد: النتيجة النافذة واحدة سواء وصلا [أ،ب] أو [ب،أ] أو في دفعتين، وقبل إعادة الفتح وبعدها', outs[False][0] == outs[True][0] == outs[False][1] == outs[True][1] and split['eff'] == outs[False][0]['eff'] and outs[False][0]['order'] == ['same-a', 'same-b'], {'ab': outs[False], 'ba': outs[True], 'split': split})
+        ok('والتراجع عن الفائزة يُظهر الأخرى', split['eff'] == [['same-b', 'partial']] and split['afterUndo'] == [['same-a', 'clean']] and split['lastFar'] == '2026-12-07', split)
+        pg = await fresh('aya')
+        r = await pg.evaluate("()=>{const t=Date.now;const fixed=t();Date.now=()=>fixed;const x=Store.add({type:'note',text:'1'}),y=Store.add({type:'note',text:'2'}),z=Store.add({type:'note',text:'3'});Date.now=t;return {inc:x.ts<y.ts&&y.ts<z.ts,order:Store.raw.filter(e=>e.type==='note').map(e=>e.text)};}")
+        ok('سجلات الجهاز نفسه في الميلي ثانية نفسها تبقى بترتيب إنشائها', r == {'inc': True, 'order': ['1', '2', '3']}, r)
+
+        pg = await fresh('aya')
+        r = await pg.evaluate("()=>{Store.add({type:'layer',child:'c1',page:562,layer:'far',color:'green'});Store.add({type:'outcome',child:'c1',page:562,step:'far',result:'clean'});const one=briefFor('c1').farHeard;const fix=Store.add({type:'outcome',child:'c1',page:562,step:'far',result:'partial'});const zero=briefFor('c1').farHeard;Store.add({type:'undo',child:'c1',target:fix.id,reason:'اختبار'});const back=briefFor('c1').farHeard;return {one,zero,back};}")
+        ok('الموجز الأسبوعي: تسميع بعيد صُحّح إلى «ناقص» لا يُحتسب، والتراجع عن التصحيح يعيده', r == {'one': [562], 'zero': [], 'back': [562]}, r)
+        pg = await fresh('aya', '2026-12-08')
+        r = await pg.evaluate("()=>{seed([{type:'layer',by:'aya',day:'2026-12-01',child:'c1',page:562,layer:'far',color:'green'},{type:'outcome',by:'asst',day:'2026-12-07',child:'c1',page:562,step:'far',result:'clean'}]);Store.add({type:'outcome',child:'c1',page:562,step:'far',result:'partial'});return briefFor('c1').farHeard;}")
+        ok('تسميع مكتمل في يوم آخر من الأسبوع يبقى محتسباً رغم محاولة ناقصة لاحقة', r == [562], r)
+
         # ===== حجم الأزرار =====
         for w in (360, 390):
             pg = await fresh('asst', '2026-12-07', w)
@@ -152,6 +191,6 @@ async def main():
     if SOFT:
         print(f'SOFT: {len(fails)} فشل من {len(results)}'); return
     assert not errors, errors
-    print(f'AUDIT 0.16.2-5 OK ({len(results)} حالة)')
+    print(f'AUDIT 0.16.2-7 OK ({len(results)} حالة)')
 
 asyncio.run(main())

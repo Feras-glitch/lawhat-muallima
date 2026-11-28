@@ -167,7 +167,8 @@ function briefFor(c) {
   const ws = weekStartKey(App.now()); const d = deriveChild(c);
   const wk = e => e.child === c && e.day >= ws;
   const newPages = [...new Set(Store.events.filter(e => e.type === 'new_page' && wk(e)).map(e => e.page))];
-  const farHeard = [...new Set(effectiveOutcomes(e => wk(e) && e.step === 'far' && e.result !== 'partial').map(e => e.page))];
+  /* النتيجة النافذة أولاً ثم استبعاد الناقص (0.16.7): تسميع صُحّح إلى «ناقص» لا يُحتسب */
+  const farHeard = [...new Set(effectiveOutcomes(e => wk(e) && e.step === 'far').filter(e => e.result !== 'partial').map(e => e.page))];
   const colors = Store.events.filter(e => e.type === 'color' && e.child === c);
   const prevColor = {}; const improved = [];
   for (const e of colors) { if (e.day >= ws && prevColor[e.page] && prevColor[e.page] !== 'green' && e.color === 'green') improved.push(e.page); prevColor[e.page] = e.color; }

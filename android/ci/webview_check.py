@@ -244,16 +244,34 @@ async def main():
 
     # اعتماد التطبيق على مزوّد خطوط Google مصدره WebView نفسه (يطلب «Noto Color Emoji Compat» من خدمات Google)، لا CSS الصفحة: بقي مع خط النظام،
     # فالمفحوص هنا ما يهمّ: إن أوقف النظام خدمات Google فأُغلق التطبيق، يعود ببياناته سليماً. وتُطبع طلبات الخطوط للتشخيص.
-    await session(logs)
+    # LM0166-04: لقطة معرّفات ومحتويات كل السجلات والجلسة الجارية قبل القتل، ثم قراءة فقط بعده بلا أي كتابة، ومطابقة تامة.
+    SNAP = """(async () => { await Store.durable(); const rows = Store.raw.map(e => JSON.stringify(Store.clean(e))).sort();
+        const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rows.join('\\n'))))].map(x => x.toString(16).padStart(2, '0')).join('');
+        const a = Store.settings.active; return { n: rows.length, ids: Store.raw.map(e => e.id).sort().join(','), hash: h, sid: a ? a.sid : null, cur: a ? a.cur : null, kind: a ? a.kind : null }; })()"""
+
+    async def gms_before(p):
+        await p.ev("""(async () => { App.setRole('asst'); startSession(PLAN.find(s => s.kind === 'noon' && s.child === 'c1')); Store.settings.active.cur = 1; saveActive();
+            Store.add({ id: 'gms-probe', type: 'note', text: 'قبل إيقاف خدمات Google' }); UI.rerender(); await Store.durable(); return true; })()""")
+        return await p.ev(SNAP)
+    before_snap = await session(gms_before)
     pid0 = sh('shell', 'pidof', PKG, check=False).strip()
     prov = sh('shell', 'dumpsys', 'activity', 'providers', 'com.google.android.gms/.fonts.provider.FontsProvider', check=False)
     fl = [l.split(': ', 1)[-1][:200] for l in sh('logcat', '-d', '-t', '20000', check=False).splitlines() if re.search(r'FontLog|FontsProvider|FontsContract|fonts\.provider', l) and 'Killing' not in l]
-    print('INFO fonts: client=%s | %s' % (PKG in prov, ' || '.join(dict.fromkeys(fl))[:2500]), flush=True)
+    print('INFO fonts: client=%s | %s' % (PKG in prov, ' || '.join(dict.fromkeys(fl))[:1200]), flush=True)
     sh('shell', 'am', 'force-stop', 'com.google.android.gms', check=False); time.sleep(5)
     pid1 = sh('shell', 'pidof', PKG, check=False).strip()
-    print('INFO gms-kill: before=%s after=%s survived=%s' % (pid0, pid1, bool(pid0) and pid0 == pid1), flush=True)
-    n = await session(logs)
-    ok('بعد إيقاف خدمات Google قسراً: التطبيق يعمل (أو يعود) وسجلاته كاملة', n >= 2, n)
+    survived = bool(pid0) and pid0 == pid1
+    # نتيجتان منفصلتان: «بقي حياً» معلومة تُسجَّل ولا تُشترط؛ «احتاج إعادة فتح» يعيد الاختبار فتحه بنفسه (كما تفعل المعلمة)، ثم المطابقة شرط
+    print('INFO gms-kill: before=%s after=%s -> %s' % (pid0, pid1, 'بقي حياً' if survived else 'أُغلق واحتاج إعادة فتح'), flush=True)
+    results['__gms_survived'] = {'ok': True, 'data': survived}
+    if not survived:
+        launch(); time.sleep(4)
+
+    async def gms_after(p):
+        return await p.ev(SNAP)
+    after_snap = await session(gms_after)
+    ok('بعد إيقاف خدمات Google قسراً (%s): كل السجلات بمعرّفاتها ومحتواها والجلسة وخطوتها مطابقة لما قبله، بلا أي كتابة بينهما' % ('بقي التطبيق حياً' if survived else 'بعد إعادة فتح التطبيق'),
+       after_snap == before_snap and before_snap['n'] > 0 and 'gms-probe' in before_snap['ids'] and before_snap['sid'] and before_snap['cur'] == 1, {'before': {k: v for k, v in before_snap.items() if k != 'ids'}, 'after': {k: v for k, v in after_snap.items() if k != 'ids'}})
 
     json.dump({'info': info, 'results': results}, open(OUT + '.json', 'w'), ensure_ascii=False, indent=1)
     bad = [k for k, v in results.items() if not v['ok']]

@@ -50,7 +50,7 @@ const Store = {
            ولأن الاستبدال والحسم يُكتبان في معاملة واحدة فلا يُستعاد أحدهما دون الآخر (LM0131-R3-02) */
         const have = new Set(fromDb.ev.map(e => e.id));
         const migrate = lsRaw.filter(e => e && e.id && !have.has(e.id));
-        this.raw = fromDb.ev.concat(migrate).sort((a, b) => a.ts - b.ts);
+        this.raw = fromDb.ev.concat(migrate).sort(evOrder);
         const haveCf = new Set(fromDb.cf.map(x => x.key));
         const cfAdd = lsCf.concat(legacyCf).filter(x => x && x.key && !haveCf.has(x.key) && (haveCf.add(x.key), true));
         this.conflicts = fromDb.cf.concat(cfAdd).sort((a, b) => a.at - b.at);
@@ -61,8 +61,8 @@ const Store = {
           try { if (lsRaw.length) localStorage.removeItem(LS_EVENTS); if (lsCf.length) localStorage.removeItem(LS_CONFLICTS); } catch (e) {}
           if (legacyCf.length) { delete this.settings.conflicts; this.saveSettings(); }
         }
-      } else { this.raw = lsRaw; this.conflicts = lsCf.concat(legacyCf); }
-    } else { this.raw = lsRaw; this.conflicts = lsCf.concat(legacyCf); }
+      } else { this.raw = lsRaw.sort(evOrder); this.conflicts = lsCf.concat(legacyCf); }
+    } else { this.raw = lsRaw.sort(evOrder); this.conflicts = lsCf.concat(legacyCf); }
     if (!this.idbOk && legacyCf.length) { try { localStorage.setItem(LS_CONFLICTS, JSON.stringify(this.conflicts)); delete this.settings.conflicts; this.saveSettings(); } catch (e) {} }
     this.checkResolutions();
     this.migrateV2();
@@ -344,7 +344,8 @@ const Store = {
   saveSettings() { localStorage.setItem(LS_SETTINGS, JSON.stringify(this.settings)); },
   add(ev) {
     ev.id = ev.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
-    ev.ts = ev.ts || App.realNow().getTime();
+    /* سجلان من هذا الجهاز في الميلي ثانية نفسها يبقيان بترتيب إنشائهما (0.16.7) */
+    if (!ev.ts) { ev.ts = App.realNow().getTime(); if (this.lastAddTs && ev.ts <= this.lastAddTs && this.lastAddTs - ev.ts < 1000) ev.ts = this.lastAddTs + 1; this.lastAddTs = ev.ts; }
     ev.day = ev.day || dayKey(wallClock(new Date(ev.ts)));
     ev.by = ev.by || (App.role && App.role.id) || 'unknown';
     ev.dev = this.settings.deviceId;
@@ -355,6 +356,7 @@ const Store = {
     if (!this.roleAllows(ev.by, ev)) { const msg = `لا يُسمح لحساب ${ROLES[ev.by] ? ROLES[ev.by].name : ev.by} بتسجيل «${ev.type}»؛ يُطلب من آية`; try { UI.toast(msg); } catch (x) {} throw new Error(msg); }
     this.raw.push(ev);
     if (!this.saveEvents([ev])) { this.raw.pop(); try { UI.toast(this.storageError); UI.renderStatus(); } catch (x) {} throw new Error(this.storageError); }
+    { const n = this.raw.length; if (n > 1 && evOrder(this.raw[n - 2], ev) > 0) this.raw.sort(evOrder); }
     this.refresh();
     Sync.schedule();
     return ev;
@@ -461,7 +463,7 @@ const Store = {
         this.raw.push(e); have.set(e.id, e); n++; added.push(e);
       }
     } catch (err) { undo(); throw err; }
-    this.raw.sort((a, b) => a.ts - b.ts);
+    this.raw.sort(evOrder);
     if (!this.saveEvents(added.concat(touched))) { undo(); throw new Error(this.storageError); }
     this.refresh();
     return n;
@@ -529,6 +531,7 @@ function deriveChild(childId) {
   /* النتيجة النافذة لكل هوية دليل (0.16.3): تصحيح «مستقل» إلى «ناقص» في اليوم نفسه يُبطل أثر الأولى على التواريخ؛ الخام يبقى للتدقيق */
   const okey = e => `${e.page}|${e.step}|${e.day}|${segKey(e.lines)}|${e.parent ? 'p' : ''}|${e.surah || ''}`;
   const lastOutcome = new Map(); for (const e of evs) if (e.type === 'outcome') lastOutcome.set(okey(e), e);
+  const doneNear = new Set(); for (const e of lastOutcome.values()) if (e.step === 'near' && e.day === today && e.result !== 'partial' && !e.parent) doneNear.add(e.page);
   for (const e of evs) {
     if (e.page != null && !pages[e.page]) continue; // حدث بصفحة غير صالحة لا يُسقط العرض
     if (e.type === 'outcome' && lastOutcome.get(okey(e)) !== e) continue;
@@ -601,11 +604,14 @@ function deriveChild(childId) {
   const recent = nearPool.filter(p => pages[p].memSeq).sort((a, b) => pages[b].memSeq - pages[a].memSeq).slice(0, 5);
   const waitPages = nearPool.filter(p => waitingJuz.includes(juzOfPage(p))).sort(byOld);
   /* السقف حد فعلي يشمل الحمراء (0.16.5، قرار ولي الأمر): إن زادت الحمراء عنه تتناوب بالأقدم تسميعاً، والزائد redsOver يُعرض لآية لتقرر */
+  /* السقف ميزانية اليوم (0.16.7): ما سُمّع كاملاً اليوم في القريب يستهلكها ويبقى في القائمة ولو تحسن لونه أو خُفض السقف؛
+     لا يُستبدل تلقائياً بعمل إضافي. غير المنفَّذ يُعاد ترتيبه داخل ما بقي من الميزانية */
   const limit = caps.near;
-  const redsByOld = reds.slice().sort(byOld);
-  const redsToday = redsByOld.slice(0, limit).sort((a, b) => a - b), redsOver = redsByOld.slice(limit).sort((a, b) => a - b);
-  const pick = redsToday.slice();
-  for (const list of [recent, waitPages, nearPool.slice().sort(byOld)]) for (const p of list) { if (pick.length >= limit) break; if (!pick.includes(p)) pick.push(p); }
+  const doneToday = [...doneNear].filter(p => pages[p] && !todaySet.has(p) && (pages[p].layer === 'near' || pages[p].layer === 'far')).sort((a, b) => a - b);
+  const pick = doneToday.slice();
+  const redsByOld = reds.filter(p => !pick.includes(p)).sort(byOld);
+  for (const list of [redsByOld, recent, waitPages, nearPool.slice().sort(byOld)]) for (const p of list) { if (pick.length >= limit) break; if (!pick.includes(p)) pick.push(p); }
+  const redsToday = reds.filter(p => pick.includes(p)), redsOver = reds.filter(p => !pick.includes(p));
   const nearToday = redsToday.concat(pick.filter(p => !redsToday.includes(p)).sort((a, b) => (pages[b].memSeq || 0) - (pages[a].memSeq || 0) || b - a));
   return { id: childId, pages, far, near, nearToday, reds, redsOver, waitingJuz, caps, currentJuz, lastNewPage, nextNew, nextLines, quota, cycleSessions, cycleDays, gapYellow, gapRed, todayFar, maxGap, maxGapPage, todayNew, yesterdayNew, paused, reduced, passedSurahs };
 }
@@ -659,11 +665,15 @@ function cardsFor(childId) {
 /* أسبوع العمل الحالي: من السبت */
 function weekStartKey(d) { const x = new Date(d); const diff = (x.getDay() + 1) % 7; x.setDate(x.getDate() - diff); return dayKey(x); }
 
+/* ترتيب كلي موحد للسجلات (0.16.7): الوقت ثم المعرّف. المجموعة نفسها تعطي الترتيب نفسه على كل جهاز وبعد كل إعادة فتح،
+   مهما اختلف ترتيب وصولها. عند تعادل الوقت لا يُزعم معرفة «الأحدث الحقيقي»؛ المضمون هو الاتساق */
+function evOrder(a, b) { return (a.ts - b.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); }
+
 /* النتيجة النافذة: آخر حدث لكل (طفل، صفحة، خطوة، يوم) — إعادة النقر تصحيح لا تكرار */
 function effectiveOutcomes(filter) {
   const map = new Map();
   for (const e of Store.events) if (e.type === 'outcome' && (!filter || filter(e))) map.set(`${e.child}|${e.page}|${e.step}|${e.day}|${segKey(e.lines)}|${e.parent ? 'p' : ''}|${e.surah || ''}`, e);
-  return [...map.values()].sort((a, b) => a.ts - b.ts);
+  return [...map.values()].sort(evOrder);
 }
 
 /* تعريف واحد للنتيجة في كل الشاشات والتقارير (LM0121-R2-05/06):
