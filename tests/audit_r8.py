@@ -197,6 +197,11 @@ async def main():
         for w in (360, 390):
             pg = await fresh('asst', '2026-12-07', w)
             r = await pg.evaluate("()=>{" + FAR.replace('N', '12') + "startSession(PLAN.find(s=>s.kind==='noon'&&s.child==='c1'));Store.settings.active.cur=1;UI.rerender();const bs=[...document.querySelectorAll('.prow')][2].querySelectorAll('button');const rs=[...bs].map(e=>e.getBoundingClientRect());return {ok:Math.round(rs[0].width),h:Math.round(rs[0].height),overflow:document.documentElement.scrollWidth>innerWidth,inside:rs.every(x=>x.left>=0&&x.right<=innerWidth),overlap:rs.some((x,i)=>rs.some((y,j)=>i<j&&x.left<y.right-1&&y.left<x.right-1))};}")
+            await pg.locator('.prow').nth(0).get_by_role('button', name='✓', exact=True).click()
+            await pg.locator('.prow').nth(1).get_by_role('button', name='مساعدة', exact=True).click(); await pg.wait_for_timeout(200)
+            await pg.evaluate("document.querySelectorAll('.modal-bg').forEach(x=>x.remove())")
+            r2 = await pg.evaluate("()=>{const out=[...document.querySelectorAll('.pagelist *')].filter(x=>{const b=x.getBoundingClientRect();return b.width&&(b.left<-1||b.right>innerWidth+1)}).length;return {doc:document.documentElement.scrollWidth,iw:innerWidth,out};}")
+            ok(f'عرض {w}: صف سُجّلت نتيجته «مساعدة» (زر التفاصيل وسطر التلقين) لا يوسّع الصفحة ولا يخرج عنها', r2['doc'] <= r2['iw'] and r2['out'] == 0, r2)
             ok(f'عرض {w}: زر ✓ لا يقل عن 44×40، والأزرار داخل الشاشة بلا تزاحم', r['ok'] >= 44 and r['h'] >= 40 and not r['overflow'] and r['inside'] and not r['overlap'], r)
 
         await b.close()
@@ -204,6 +209,6 @@ async def main():
     if SOFT:
         print(f'SOFT: {len(fails)} فشل من {len(results)}'); return
     assert not errors, errors
-    print(f'AUDIT 0.16.2-8 OK ({len(results)} حالة)')
+    print(f'AUDIT 0.16.2-9 OK ({len(results)} حالة)')
 
 asyncio.run(main())

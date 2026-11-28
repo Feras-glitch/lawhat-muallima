@@ -128,13 +128,15 @@ body.insession main{padding-bottom:24px}
 .prow .plabel b{font-size:1.15em}
 .prow .plabel .muted{font-size:.78em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prow .ocl{width:auto;flex:1;min-width:0}
-.prow .ocl .btns{margin-top:0;gap:4px;flex-wrap:nowrap;justify-content:flex-end}
-.prow .ocl .btns button{padding:4px 7px!important;font-size:.92em;min-height:40px;white-space:nowrap}
+.prow .ocl .btns{margin-top:0;gap:3px;justify-content:flex-end}
+.prow .ocl .btns button{padding:4px 5px!important;font-size:.92em;min-height:40px;white-space:nowrap}
 .prow .ocl .chips{justify-content:flex-end;margin-top:2px}
 .prow .ocl .btns button.btn-g{min-width:44px}
 .prow .btns .chip.more{padding:0 6px!important;min-height:40px;border-radius:10px}
 .prow .plabel{flex:1 1 52px}
-.prow .ocl{flex:0 0 auto}
+/* صف سُجّلت نتيجته يزيد زر التفاصيل وسطر التلقين (0.16.9): يلتفّ داخل الشاشة ولا يوسّع الصفحة أفقياً */
+.prow .ocl{flex:0 1 auto;max-width:calc(100% - 58px)}
+.prow .ocl .btns,.prow .ocl .chips{flex-wrap:wrap}
 .pinfield{margin-top:6px}
 .chip.more{color:var(--muted)}
 .map .c.mk-red::after{content:'!';font-weight:700;margin-inline-start:1px}
@@ -162,7 +164,7 @@ button.opennow{border-color:var(--brand)}
 <body>
 <div id="app"></div>
 <script>
-const BUILD = {"version": "0.16.8", "commit": "ec7cf44", "src": "2aefc60032", "built": "2026-11-28"};
+const BUILD = {"version": "0.16.9", "commit": "ec7cf44+تعديلات", "src": "2aefc60032", "built": "2026-11-28"};
 /* ===== البيانات الثابتة: الأطفال، المصحف، الخطة ===== */
 /* الأطفال بمعرّفات لا تحمل أسماء: الأسماء ليست في الكود المنشور؛ تُدخل من الإعدادات وتُحفظ سجلاً على الخادم العائلي.
    c3 يحفظ بالأسطر (مقطع 4 أسطر)؛ c1 وc2 بالصفحة ويسيران معاً في الجلسات المشتركة */
