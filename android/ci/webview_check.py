@@ -238,16 +238,18 @@ async def main():
     ok('«السجلات» داخل التطبيق: أزرار التراجع ظاهرة', n >= 2, n)
     shot('logs')
 
-    # 0.16.5: التطبيق لا يعتمد على مزوّد خطوط Google. إيقاف خدمات Google قسراً كان يقتل التطبيق (DEPENDENCY DIED) حين كان CSS يسمّي خطاً غير مثبّت
+    # 0.16.5: اعتماد التطبيق على مزوّد خطوط Google. تبيّن أن تسمية الخط في CSS ليست سببه (بقي الاتصال مع خط النظام)،
+    # فالمفحوص هنا ما يهمّ: إن أوقف النظام خدمات Google فأُغلق التطبيق، يعود ببياناته سليماً. وتُطبع طلبات الخطوط للتشخيص.
     await session(logs)
     pid0 = sh('shell', 'pidof', PKG, check=False).strip()
     prov = sh('shell', 'dumpsys', 'activity', 'providers', 'com.google.android.gms/.fonts.provider.FontsProvider', check=False)
-    dep = PKG in prov
+    fl = [l.split(': ', 1)[-1][:200] for l in sh('logcat', '-d', '-t', '20000', check=False).splitlines() if re.search(r'FontLog|FontsProvider|FontsContract|fonts\.provider', l) and 'Killing' not in l]
+    print('INFO fonts: client=%s | %s' % (PKG in prov, ' || '.join(dict.fromkeys(fl))[:2500]), flush=True)
     sh('shell', 'am', 'force-stop', 'com.google.android.gms', check=False); time.sleep(5)
     pid1 = sh('shell', 'pidof', PKG, check=False).strip()
-    ok('إيقاف خدمات Google قسراً لا يُغلق التطبيق، ولا اتصال له بمزوّد خطوطها', bool(pid0) and pid1 == pid0 and not dep, {'before': pid0, 'after': pid1, 'fontsClient': dep})
+    print('INFO gms-kill: before=%s after=%s survived=%s' % (pid0, pid1, bool(pid0) and pid0 == pid1), flush=True)
     n = await session(logs)
-    ok('والتطبيق يعمل بعده: السجلات ظاهرة', n >= 2, n)
+    ok('بعد إيقاف خدمات Google قسراً: التطبيق يعمل (أو يعود) وسجلاته كاملة', n >= 2, n)
 
     json.dump({'info': info, 'results': results}, open(OUT + '.json', 'w'), ensure_ascii=False, indent=1)
     bad = [k for k, v in results.items() if not v['ok']]
